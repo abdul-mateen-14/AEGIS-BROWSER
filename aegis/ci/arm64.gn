@@ -12,6 +12,8 @@
 #   symbol_level = 0          : no native debug symbols -> much smaller
 #                               build directory (saves ~20+ GB disk).
 #   v8_symbol_level = 0       : same, for the V8 engine.
+#   blink_symbol_level = 0    : same, for the Blink renderer (defaults to 2
+#                               even when symbol_level=0 in some configs).
 #   is_component_build=false  : release-style static build (correct for APKs).
 #   disable_fieldtrial_testing_config : no experiment configs; predictable.
 #   ffmpeg_branding="Chrome" + proprietary_codecs=true : H.264/AAC etc., as
@@ -28,6 +30,7 @@ is_official_build = false
 is_component_build = false
 symbol_level = 0
 v8_symbol_level = 0
+blink_symbol_level = 0
 use_thin_lto = false
 chrome_pgo_phase = 0
 disable_fieldtrial_testing_config = true

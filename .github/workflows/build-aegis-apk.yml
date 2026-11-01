@@ -39,7 +39,10 @@ jobs:
     permissions:
       contents: write              # needed to create the draft release
     env:
-      WORK: /mnt/aegis-work        # /mnt has the most free disk on the runner VM
+      # /mnt is root-owned on hosted runners (plain mkdir fails with
+      # "Permission denied"), so keep the workspace under the runner's home.
+      # Same physical disk (~145 GB, >100 GB free after the cleanup step).
+      WORK: /home/runner/aegis-work
 
     steps:
       - name: Checkout this repository (workflow + patches + branding)
@@ -66,7 +69,7 @@ jobs:
           sudo mkswap /mnt/swapfile > /dev/null
           sudo swapon /mnt/swapfile
           echo "--- memory ---"; free -h
-          echo "--- disk ---";  df -h / /mnt
+          echo "--- disk ---";  df -h / "$WORK"
 
       - name: Resolve Chromium version to build
         run: |
