@@ -28,7 +28,7 @@
     {
       "binding": "DB",
       "database_name": "aegis-sync",
-      "database_id": "REPLACE_WITH_YOUR_D1_ID"
+      "database_id": "b95a43f3-906b-4917-827e-955fad618fdd"
     }
   ]
 }

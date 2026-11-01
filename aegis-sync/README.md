@@ -11,9 +11,29 @@ never leave your devices. What the server can see is limited to:
 - item counts, types, versions and timestamps,
 - blob sizes (metadata leakage — see "Threat model" below).
 
-Verified by `test/crypto.test.mjs` (15 tests) and `test/e2e.mjs` (40 tests:
+Verified by `test/crypto.test.mjs` (15 tests), `test/e2e.mjs` (40 tests:
 registration → login → multi-device sync → conflicts → tombstones → password
-change → device revocation → account deletion → rate limiting).
+change → device revocation → account deletion → rate limiting) and
+`test/live-smoke.mjs` (13 checks against a LIVE deployment).
+
+---
+
+## 0. Deployment status — LIVE
+
+**Production URL: `https://aegis-sync.abdulmateen14.workers.dev`**
+
+Deployed 2026-11-01 on the Cloudflare free tier (Workers + D1
+`b95a43f3-906b-4917-827e-955fad618fdd`), nightly cleanup cron at 03:00 UTC,
+open registration (set the `INVITE_CODE` var + a matching client
+`invite_code` to make it invite-only). Verified live with:
+
+```bash
+AEGIS_BASE=https://aegis-sync.abdulmateen14.workers.dev node test/live-smoke.mjs
+# -> LIVE SMOKE: 13 passed, 0 failed
+```
+
+Re-deploy any time from CI (Actions → "Deploy aegis-sync") or locally:
+`npm install && npx wrangler deploy`.
 
 ---
 
