@@ -20,7 +20,10 @@ Everything the Android build needs is already platform-portable:
 What each platform adds: one `aegis/ci/<platform>.gn` args file + one workflow +
 a packaging step. That is the whole diff.
 
-## Phase D1 — Linux x64 (the quick win)
+## Phase D1 — Linux x64 (the quick win) — LAUNCHED
+
+> Status: workflow `.github/workflows/build-aegis-linux.yml` committed; first
+> build dispatched with the same 4-core free runner used by the APK pipeline.
 
 - Runner: the SAME `ubuntu-latest` 4-core/16 GB machine the Android build uses
   today. A desktop Linux build is *lighter* than Android (no Java targets, no

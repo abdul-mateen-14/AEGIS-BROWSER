@@ -1,0 +1,198 @@
+name: Build Aegis Browser Linux x64 (free GitHub-hosted runner)
+
+# Free-build pipeline for Aegis Browser (Linux, x64 desktop) — Phase D1 of
+# docs/DESKTOP_PLAN.md. Same $0 model as the Android build:
+#
+#   1. Frees disk space and adds swap on the runner
+#   2. Fetches Chromium source WITHOUT git history (saves ~20 GB)
+#   3. Checks out a specific Chromium stable tag
+#   4. Applies the SAME aegis/patches/*.patch series (desktop shares the files)
+#   5. Runs the desktop branding hook (English UI strings -> "Aegis")
+#   6. Builds `chrome` + the proper `stable_deb` package with low-RAM gn args
+#   7. Publishes .deb + portable .zip to a draft GitHub Release
+#
+# Realistic wall time on the free 4-core/16 GB runner: 3-5 hours (lighter than
+# the Android build — no Java targets, no APK packaging).
+
+on:
+  workflow_dispatch:
+    inputs:
+      chromium_version:
+        description: 'Chromium version tag (empty = latest Chrome stable, e.g. 156.0.8078.79)'
+        required: false
+        default: ''
+
+concurrency:
+  group: aegis-linux-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04          # pinned: 'ubuntu-latest' is migrating to 26.04 during Oct-Nov 2026
+    timeout-minutes: 350           # GitHub hard cap is 360 for hosted runners
+    permissions:
+      contents: write              # needed to create the draft release
+    env:
+      # /mnt is root-owned on hosted runners; keep the workspace in home.
+      WORK: /home/runner/aegis-work
+
+    steps:
+      - name: Checkout this repository (workflow + patches + branding)
+        uses: actions/checkout@v4
+
+      - name: Free up disk space (~25 GB)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true            # preinstalled Android SDK is dead weight for desktop builds too
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: false
+
+      - name: Add 16 GB swap
+        run: |
+          set -e
+          sudo fallocate -l 16G /mnt/swapfile
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile > /dev/null
+          sudo swapon /mnt/swapfile
+          echo "--- memory ---"; free -h
+          echo "--- disk ---";  df -h /
+
+      - name: Resolve Chromium version to build
+        run: |
+          set -e
+          if [ -n "${{ github.event.inputs.chromium_version }}" ]; then
+            VERSION="${{ github.event.inputs.chromium_version }}"
+          else
+            VERSION=$(curl -s "https://versionhistory.googleapis.com/v1/chrome/platforms/linux/channels/stable/versions?pageSize=1" \
+              | python3 -c "import json,sys; print(json.load(sys.stdin)['versions'][0]['version'])")
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Building Chromium $VERSION for Linux x64"
+
+      - name: Install depot_tools
+        run: |
+          set -e
+          mkdir -p "$WORK"
+          cd "$WORK"
+          git clone --depth=1 https://chromium.googlesource.com/chromium/tools/depot_tools.git
+          echo "$WORK/depot_tools" >> "$GITHUB_PATH"
+          git config --global user.email "aegis@build.local"
+          git config --global user.name  "Aegis Builder"
+
+      - name: Fetch Chromium source (no history) + checkout target tag
+        run: |
+          set -e
+          cd "$WORK"
+          fetch --no-history --nohooks chromium
+          cd "$WORK/src"
+          git fetch --depth=1 origin "refs/tags/${VERSION}:refs/tags/${VERSION}"
+          git checkout --detach "refs/tags/${VERSION}"
+          cd "$WORK"
+          gclient sync -D -j 4
+
+      - name: Install build dependencies + run hooks
+        run: |
+          set -e
+          (cd "$WORK/src" && bash build/install-build-deps.sh) \
+            || echo "::warning::install-build-deps reported an error - continuing (runner usually ships the needed packages)"
+          cd "$WORK"
+          gclient runhooks -j 4
+
+      - name: Apply Aegis patches (aegis/patches/*.patch)
+        run: |
+          set -e
+          shopt -s nullglob
+          patches=( "$GITHUB_WORKSPACE"/aegis/patches/*.patch )
+          if [ ${#patches[@]} -gt 0 ]; then
+            for p in $(printf '%s\n' "${patches[@]}" | sort); do
+              echo "Applying $(basename "$p")"
+              (cd "$WORK/src" && git apply --3way "$p" 2>/dev/null) \
+                || (cd "$WORK/src" && git apply "$p") \
+                || { echo "::error::Patch failed: $p"; exit 1; }
+            done
+          else
+            echo "No patches found - building vanilla Chromium with Aegis branding only."
+          fi
+
+      - name: Run branding hooks (desktop + android-noop)
+        run: |
+          set -e
+          bash "$GITHUB_WORKSPACE/aegis/branding/apply_desktop.sh" "$WORK/src"
+          # the android hook is a no-op for the desktop binary but keeps both
+          # pipelines symmetric; ignore it if it is absent.
+          if [ -f "$GITHUB_WORKSPACE/aegis/branding/apply.sh" ]; then
+            bash "$GITHUB_WORKSPACE/aegis/branding/apply.sh" "$WORK/src" || true
+          fi
+
+      - name: Generate build files (low-RAM gn args)
+        run: |
+          set -e
+          cd "$WORK/src"
+          gn gen out/linux_x64 "--args=$(cat "$GITHUB_WORKSPACE/aegis/ci/linux_x64.gn")"
+          gn args out/linux_x64 --list --short > /dev/null
+
+      - name: Build chrome + stable deb (3-5 h on the free 4-core runner)
+        run: |
+          set -e
+          cd "$WORK/src"
+          autoninja -C out/linux_x64 chrome chrome/installer/linux:stable_deb
+
+      - name: Collect artifacts (.deb + portable .zip)
+        run: |
+          set -e
+          cd "$WORK/src/out/linux_x64"
+          DEB_IN=$(ls -1t *.deb 2>/dev/null | head -1)
+          test -n "$DEB_IN" || { echo "::error::no .deb produced"; exit 1; }
+          DEB_OUT="AegisBrowser_${VERSION}_linux_x64_r${GITHUB_RUN_NUMBER}.deb"
+          cp "$DEB_IN" "$GITHUB_WORKSPACE/$DEB_OUT"
+          # portable zip: unpack the deb and re-zip (the deb carries the exact
+          # canonical file list, so extraction is the reliable way to get one)
+          rm -rf /tmp/debx && mkdir -p /tmp/debx
+          dpkg-deb -x "$DEB_IN" /tmp/debx
+          ZOUT="AegisBrowser_${VERSION}_linux_x64_r${GITHUB_RUN_NUMBER}.zip"
+          (cd /tmp/debx && zip -qr "$GITHUB_WORKSPACE/$ZOUT" .)
+          cp "$DEB_OUT" "$GITHUB_WORKSPACE/" 2>/dev/null || true
+          echo "DEB_NAME=$DEB_OUT" >> "$GITHUB_ENV"
+          echo "ZIP_NAME=$ZOUT" >> "$GITHUB_ENV"
+          ls -la "$GITHUB_WORKSPACE" | grep -E 'Aegis.*linux' || true
+
+      - name: Upload artifacts (kept 1 day, just in case)
+        uses: actions/upload-artifact@v4
+        with:
+          name: aegis-linux-x64-${{ github.run_number }}
+          path: |
+            ${{ github.workspace }}/${{ env.DEB_NAME }}
+            ${{ github.workspace }}/${{ env.ZIP_NAME }}
+          retention-days: 1
+
+      - name: Attach artifacts to a draft GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          TAG="linux-${VERSION}-r${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" --draft \
+            --title "Aegis Browser - Chromium ${VERSION} (Linux x64)" \
+            --notes "Automated free build from GitHub Actions. Chromium ${VERSION}, linux x64, unofficial build (no LTO/PGO), Aegis patch series applied. Install the .deb (\`sudo apt install ./<file>.deb\`) or unzip the portable .zip and run ./chrome. If sandbox errors appear in exotic kernels, prefer the .deb - it sets up chrome-sandbox correctly." \
+            "$GITHUB_WORKSPACE/${{ env.DEB_NAME }}" \
+            "$GITHUB_WORKSPACE/${{ env.ZIP_NAME }}"
+          echo "Draft release created: $TAG"
+
+      - name: Build summary
+        if: always()
+        run: |
+          {
+            echo "## Aegis Linux build summary"
+            echo ""
+            echo "| Item | Value |"
+            echo "| --- | --- |"
+            echo "| Chromium | ${VERSION:-n/a} |"
+            echo "| Target | chrome + chrome/installer/linux:stable_deb (linux x64) |"
+            echo "| Runner | ubuntu-24.04 hosted (4 vCPU / 16 GB) |"
+            echo "| Deb | ${{ env.DEB_NAME || 'not produced' }} |"
+            echo "| Zip | ${{ env.ZIP_NAME || 'not produced' }} |"
+          } >> "$GITHUB_STEP_SUMMARY"

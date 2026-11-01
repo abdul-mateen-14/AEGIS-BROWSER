@@ -1,0 +1,30 @@
+# Aegis Browser - free CI gn args (Linux x64 desktop)
+#
+# Same low-RAM family as arm64.gn, aimed at the desktop Linux target on a
+# 4 vCPU / 16 GB GitHub-hosted runner with the 6-hour job cap:
+#
+#   is_official_build = false : no ThinLTO + PGO (the multi-GB RAM link spike);
+#                               the binary is still -O2 optimized.
+#   symbol_level = 0 / v8_symbol_level = 0 / blink_symbol_level = 0 :
+#                               no debug symbols -> far smaller out/ dir.
+#   is_component_build = false: one static binary, correct for packaging.
+#   disable_fieldtrial_testing_config : no experiment configs; predictable.
+#   ffmpeg_branding="Chrome" + proprietary_codecs=true : H.264/AAC etc. as
+#                               shipped in Chrome and every public fork.
+#
+# A desktop Linux build is LIGHTER than the Android APK build (no Java
+# targets, no APK packaging), so the 3-5 h estimate fits comfortably.
+
+target_os = "linux"
+target_cpu = "x64"
+is_debug = false
+is_official_build = false
+is_component_build = false
+symbol_level = 0
+v8_symbol_level = 0
+blink_symbol_level = 0
+use_thin_lto = false
+chrome_pgo_phase = 0
+disable_fieldtrial_testing_config = true
+ffmpeg_branding = "Chrome"
+proprietary_codecs = true

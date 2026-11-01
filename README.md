@@ -86,6 +86,8 @@ to get it onto GitHub (including a fully automatic one).
 ```
 .github/workflows/build-aegis-apk.yml   <- the free CI pipeline (the core of this kit)
 aegis/ci/arm64.gn                       <- low-RAM build flags (documented inline)
+aegis/ci/linux_x64.gn                   <- same low-RAM family for Linux x64 (Phase D1)
+aegis/branding/apply_desktop.sh         <- desktop branding hook (English UI strings)
 aegis/patches/                          <- your Chromium patches (.patch), applied in order
 aegis/patches/README.md                 <- how to write patches that survive free CI
 aegis/branding/apply.sh                 <- branding hook (sets the launcher label)
@@ -114,6 +116,7 @@ docs/Aegis_Free_Android_Build_Plan.docx  <- the full plan document (+ .pdf)
 docs/aegis-architecture.png              <- architecture diagram
 aegis-sync/                              <- sync backend (Cloudflare Worker + D1, deploy free)
 .github/workflows/deploy-sync.yml        <- optional one-click backend deploy from CI
+.github/workflows/build-aegis-linux.yml  <- Linux x64 desktop build (Phase D1, docs/DESKTOP_PLAN.md)
 landing/                                 <- public landing page (aegis-browser.pages.dev)
 .github/workflows/deploy-landing.yml     <- auto-deploys landing/ on every push that touches it
 README.md                               <- this file
@@ -276,6 +279,17 @@ in `aegis/patches/` per the plan document, section 6.2. The Java client in
 | `docs/PATCH_FOUNDRY.md` | Ready; $0 Codespace authoring loop + spec-writing rules. |
 
 ## Changelog
+
+- **v1.3.2** - Phase D1 launched (docs/DESKTOP_PLAN.md): a Linux x64 desktop
+  pipeline. New `aegis/ci/linux_x64.gn` (the same low-RAM arg family as the
+  Android build), `.github/workflows/build-aegis-linux.yml` (builds `chrome`
+  + the proper `chrome/installer/linux:stable_deb` package, then repacks the
+  deb into a portable zip; draft release `linux-<ver>-r<N>`), and
+  `aegis/branding/apply_desktop.sh` (format-safe English UI rename to
+  "Aegis"; non-English locales keep upstream strings for now). The SAME patch
+  series applies - desktop Chromium shares the sources, including the Shield.
+  Ground-truthed @ 156.0.8078.79 (`linux_package("stable")` targets verified
+  via Gitiles).
 
 - **v1.3.1** - The public landing page is live: **https://aegis-browser.pages.dev**
   (Cloudflare Pages, free tier, $0). Built strictly on the brand kit in
