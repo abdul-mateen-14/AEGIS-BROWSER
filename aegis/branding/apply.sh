@@ -29,3 +29,21 @@ done < <(find "$SRC/chrome/android/java" -type f -name '*.xml' -path '*res*' -pr
 if [ "$count" -eq 0 ]; then
   echo "Branding: no app_name string found under chrome/android/java - check the Chromium layout for this version"
 fi
+
+# --- Launcher icons (Aegis mark over Chromium's) -------------------------
+# Overwrites Chromium's launcher assets with same-name files generated from
+# aegis/branding/logo/aegis-logo.png by scripts/branding/make_icons.py.
+# Layout verified @ chromium 156.0.8078.79 (chrome/android/java/res_chromium_base):
+#   mipmap-*/app_icon.png                     legacy launcher
+#   mipmap-*/layered_app_icon.png             composed adaptive foreground (used by ic_launcher)
+#   mipmap-*/layered_app_icon_background.png  adaptive background layer
+#   mipmap-nodpi/layered_app_icon_foreground.xml  adaptive foreground vector (ic_launcher_round)
+#   drawable/themed_app_icon.xml              Android 13 monochrome layer
+ICONS="$(cd "$(dirname "$0")" && pwd)/icons/res_chromium_base"
+DEST="$SRC/chrome/android/java/res_chromium_base"
+if [ -d "$ICONS" ] && [ -d "$DEST" ]; then
+  (cd "$ICONS" && tar -cf - --exclude=preview.png .) | (cd "$DEST" && tar -xf -)
+  echo "Branding: launcher icons replaced with the Aegis mark ($ICONS -> $DEST)"
+else
+  echo "Branding: icon override skipped (missing $ICONS or $DEST - layout changed upstream?)"
+fi

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Aegis Browser launcher icon - traced from aegis/branding/logo/aegis-logo.png -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="90dp"
+    android:height="90dp"
+    android:viewportWidth="90"
+    android:viewportHeight="90">
+    <path
+        android:pathData="M44.95,28.54 L 28.00,61.41 L 53.22,61.41 L 46.42,47.15 L 49.67,40.73 L 59.78,61.41 L 61.91,61.41 L 49.96,38.22 L 41.98,54.04 L 35.32,54.04 L 46.61,31.94 Z M29.70,60.51 L 32.49,54.99 L 49.11,54.99 L 51.80,60.51 Z"
+        android:fillColor="#000000" android:fillType="evenOdd" />
+</vector>

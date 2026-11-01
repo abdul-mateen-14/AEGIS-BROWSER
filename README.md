@@ -251,6 +251,15 @@ in `aegis/patches/` per the plan document, section 6.2. The Java client in
 
 ## Changelog
 
+- **v1.2.2** - Real branding: the Aegis shield-"A" mark is now the launcher
+  icon. Master logo committed (`aegis/branding/logo/`), the mark traced into
+  an Android VectorDrawable (IoU 0.989 vs the master) and the full icon set
+  generated (`scripts/branding/make_icons.py`): adaptive background/foreground
+  + legacy + Android 13 monochrome, all densities. Brand kit (palette,
+  Montserrat typography, design language) documented in `docs/BRAND.md`.
+  `aegis/branding/apply.sh` now installs the icons into
+  `chrome/android/java/res_chromium_base/` (layout verified @ 156.0.8078.79).
+  Takes effect from the next CI build.
 - **v1.2.1** - Shipped the first real patch series: `aegis/patches/010-040`
   (third-party cookies blocked by default, search suggestions off, DNT on,
   metrics opt-in only). All anchors ground-truthed against Chromium
