@@ -251,6 +251,13 @@ in `aegis/patches/` per the plan document, section 6.2. The Java client in
 
 ## Changelog
 
+- **v1.2.1** - Shipped the first real patch series: `aegis/patches/010-040`
+  (third-party cookies blocked by default, search suggestions off, DNT on,
+  metrics opt-in only). All anchors ground-truthed against Chromium
+  `156.0.8078.79`; every emitted patch re-verified with `git apply --check`.
+  See `docs/PATCHES_BATCH_1.md`. Also fixed a Patch Foundry engine bug:
+  multi-line `EDITn_OLD` literals were miscounted by the line-based grep
+  pre-check; the exact Python check is now authoritative.
 - **v1.2** - Java twin of the sync client for direct chrome_java
   integration: `AegisCrypto.java` passes the same 16 generated vectors,
   `AegisSyncClient.java` passes the same 13 live E2E steps (re-verified on

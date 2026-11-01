@@ -89,16 +89,10 @@ apply_edit() {
     pattern: $pat
     -> Chromium moved; locate the new location and update this anchor."
 
-  count="$(grep -F -c -- "$old" "$abs" || true)"
-  [ "$count" = "1" ] || die "OLD literal matched $count times (need exactly 1) in $file:
-    old: ${old:0:120}"
-
-  if [ "$DRY" = "1" ]; then
-    echo "  [dry-run] would edit $file"
-    return 0
-  fi
-
-  OLD="$old" NEW="$new" python3 - "$abs" <<'PYEOF'
+  # Exact OLD-literal check is done in Python below (multi-line safe; a
+  # line-based grep -F would split multi-line literals into separate
+  # patterns and miscount them).
+  OLD="$old" NEW="$new" DRY="$DRY" python3 - "$abs" <<'PYEOF'
 import os, sys, pathlib
 p = pathlib.Path(sys.argv[1])
 s = p.read_text(encoding="utf-8")
@@ -107,8 +101,14 @@ n = s.count(old)
 if n != 1:
     print(f"OLD literal found {n} times in {p}", file=sys.stderr)
     sys.exit(3)
-p.write_text(s.replace(old, new, 1), encoding="utf-8")
+if os.environ.get("DRY") != "1":
+    p.write_text(s.replace(old, new, 1), encoding="utf-8")
 PYEOF
+  if [ "$DRY" = "1" ]; then
+    echo "  [dry-run] would edit $file (OLD literal verified exactly once)"
+    return 0
+  fi
+
   restore+=("$file")
   echo "  edited $file"
 }

@@ -1,0 +1,13 @@
+diff --git a/chrome/browser/browser_process_impl.cc b/chrome/browser/browser_process_impl.cc
+index bed9453..ef4a6aa 100644
+--- a/chrome/browser/browser_process_impl.cc
++++ b/chrome/browser/browser_process_impl.cc
+@@ -1355,7 +1355,7 @@ void BrowserProcessImpl::RegisterPrefs(PrefRegistrySimple* registry) {
+ #endif  // BUILDFLAG(IS_CHROMEOS)
+ 
+   registry->RegisterBooleanPref(metrics::prefs::kMetricsReportingEnabled,
+-                                GoogleUpdateSettings::GetCollectStatsConsent());
++                                false);  // Aegis: metrics reporting opt-in only
+   registry->RegisterBooleanPref(prefs::kDevToolsRemoteDebuggingAllowed, true);
+   registry->RegisterBooleanPref(prefs::kDevToolsRemoteDebuggingEnabled, false);
+ 
