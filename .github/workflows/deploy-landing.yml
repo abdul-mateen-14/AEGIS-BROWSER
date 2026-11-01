@@ -1,0 +1,46 @@
+name: Deploy landing page (Cloudflare Pages free tier)
+
+# The public landing page at https://aegis-browser.pages.dev
+# Deploys automatically whenever landing/ changes on main.
+#
+# One-time setup (already done): the Pages project 'aegis-browser' was
+# created with:
+#   npx wrangler@4 pages project create aegis-browser --production-branch=main
+# Requires the same two repository Secrets as deploy-sync.yml:
+#   CLOUDFLARE_API_TOKEN (needs "Cloudflare Pages: Edit")
+#   CLOUDFLARE_ACCOUNT_ID
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'landing/**'
+      - '.github/workflows/deploy-landing.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: pages-landing
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy landing/ to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          workingDirectory: landing
+          wranglerVersion: "4"
+          command: pages deploy . --project-name=aegis-browser --branch=main --commit-dirty=true
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Verify the production domain serves it
+        run: |
+          sleep 10
+          code=$(curl -s -o /dev/null -w "%{http_code}" https://aegis-browser.pages.dev/)
+          echo "https://aegis-browser.pages.dev/ -> HTTP $code"
+          test "$code" = "200"

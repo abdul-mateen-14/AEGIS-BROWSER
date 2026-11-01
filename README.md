@@ -7,6 +7,7 @@ using GitHub's free hosted runners for public repositories.
 - No cloud VMs, no spot instances, no build services
 - One command to start a build: open GitHub -> Actions -> "Build Aegis Browser APK" -> Run
 - Result: a signed APK attached to a draft GitHub Release, 4-7 hours later
+- Live landing page: **https://aegis-browser.pages.dev** (Cloudflare Pages, free tier)
 
 ## What's new in v1.3
 
@@ -113,6 +114,8 @@ docs/Aegis_Free_Android_Build_Plan.docx  <- the full plan document (+ .pdf)
 docs/aegis-architecture.png              <- architecture diagram
 aegis-sync/                              <- sync backend (Cloudflare Worker + D1, deploy free)
 .github/workflows/deploy-sync.yml        <- optional one-click backend deploy from CI
+landing/                                 <- public landing page (aegis-browser.pages.dev)
+.github/workflows/deploy-landing.yml     <- auto-deploys landing/ on every push that touches it
 README.md                               <- this file
 ```
 
@@ -274,6 +277,16 @@ in `aegis/patches/` per the plan document, section 6.2. The Java client in
 
 ## Changelog
 
+- **v1.3.1** - The public landing page is live: **https://aegis-browser.pages.dev**
+  (Cloudflare Pages, free tier, $0). Built strictly on the brand kit in
+  `docs/BRAND.md` - the traced shield mark as inline SVG, Montserrat, the
+  monochrome ink ramp, dark-first, hard angles. Sections: hero, Aegis Shield
+  (92,957-host network blocking stats), feature grid with honest per-feature
+  status tags, the Aegis ecosystem cards (AM Products / CoreX / OS / AEGIS
+  SOC), download steps, and a 1280x640 social preview (`og-image.png`) that
+  doubles as the GitHub repo social image. Source lives in `landing/` and
+  auto-deploys from CI (`.github/workflows/deploy-landing.yml`) on every push
+  that touches it.
 - **v1.3.0** - Aegis Shield v1 (network-level ad/tracker blocking,
   92,957 hosts, first-party safe) + the Aegis Ecosystem settings page
   (AM Products / CoreX / AEGIS OS / AEGIS SOC). Patches 052/054/070

@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<title>Aegis Browser — Your Ultimate Digital Shield</title>
+<meta name="description" content="A privacy-hardened Chromium browser for Android: network-level ad and tracker blocking (92,957 hosts), third-party cookies off by default, end-to-end encrypted sync. Free and open source.">
+<meta property="og:title" content="Aegis Browser — Your Ultimate Digital Shield">
+<meta property="og:description" content="Privacy-hardened Chromium for Android. Network-level ad blocking, E2E encrypted sync, no telemetry. Free and open source.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://aegis-browser.pages.dev/">
+<meta property="og:image" content="https://aegis-browser.pages.dev/og-image.png">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --black:#070707;
+    --ink1:#0C0C0E;
+    --ink2:#141416;
+    --ink3:#1E1F22;
+    --line:#2A2A2E;
+    --smoke:#9E9EA4;
+    --smoke2:#C9C9CE;
+    --white:#FFFFFF;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--black);
+    color:var(--smoke2);
+    font-family:'Montserrat',system-ui,-apple-system,sans-serif;
+    font-weight:400;
+    font-size:16px;
+    line-height:1.7;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:inherit;text-decoration:none}
+  img,svg{display:block}
+  .container{max-width:1120px;margin:0 auto;padding:0 32px}
+  section{border-top:1px solid var(--line)}
+
+  /* ---------- type ---------- */
+  .caption{
+    font-size:.72rem;font-weight:500;letter-spacing:.22em;
+    text-transform:uppercase;color:var(--smoke);
+  }
+  h1{font-size:clamp(2.5rem,6vw,4.1rem);font-weight:600;line-height:1.08;color:var(--white);letter-spacing:-.01em}
+  h2{font-size:clamp(1.7rem,3.4vw,2.5rem);font-weight:600;line-height:1.15;color:var(--white);letter-spacing:-.005em}
+  .lede{font-size:1.05rem;color:var(--smoke);max-width:640px}
+
+  /* ---------- nav ---------- */
+  nav{
+    border-bottom:1px solid var(--line);
+    background:rgba(7,7,7,.88);
+    backdrop-filter:blur(10px);
+    position:sticky;top:0;z-index:50;
+  }
+  .nav-inner{display:flex;align-items:center;justify-content:space-between;height:64px}
+  .brand{display:flex;align-items:center;gap:12px}
+  .brand svg{width:26px;height:26px}
+  .brand-name{
+    color:var(--white);font-weight:700;font-size:.85rem;
+    letter-spacing:.08em;text-transform:uppercase;
+  }
+  .nav-links{display:flex;gap:36px;align-items:center}
+  .nav-links a{
+    font-size:.72rem;font-weight:500;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--smoke);
+    transition:color .15s ease;
+  }
+  .nav-links a:hover{color:var(--white)}
+  .nav-cta{
+    border:1px solid var(--line);padding:10px 18px;
+    transition:border-color .15s ease,color .15s ease;
+  }
+  .nav-cta:hover{border-color:var(--white);color:var(--white)}
+  @media(max-width:760px){.nav-links{display:none}}
+
+  /* ---------- buttons ---------- */
+  .btn{
+    display:inline-block;
+    font-size:.78rem;font-weight:700;letter-spacing:.14em;
+    text-transform:uppercase;
+    padding:17px 30px;
+    transition:background .15s ease,border-color .15s ease,color .15s ease;
+  }
+  .btn-solid{background:var(--white);color:var(--black)}
+  .btn-solid:hover{background:var(--smoke2)}
+  .btn-ghost{border:1px solid var(--line);color:var(--white)}
+  .btn-ghost:hover{border-color:var(--white)}
+
+  /* ---------- hero ---------- */
+  .hero{position:relative;overflow:hidden;border-top:none}
+  .hero-mark{
+    position:absolute;right:-140px;top:50%;transform:translateY(-54%);
+    width:560px;height:560px;pointer-events:none;
+  }
+  .hero-inner{
+    position:relative;
+    padding:132px 0 110px;
+    display:flex;flex-direction:column;align-items:flex-start;gap:30px;
+  }
+  .hero .mark{width:88px;height:88px;margin-bottom:6px}
+  .hero .lede{font-size:1.08rem}
+  .hero-ctas{display:flex;gap:16px;flex-wrap:wrap;margin-top:8px}
+  .hero-chips{
+    display:flex;flex-wrap:wrap;gap:0;
+    border:1px solid var(--line);
+    margin-top:34px;width:100%;
+  }
+  .chip{
+    padding:13px 22px;
+    font-size:.68rem;font-weight:500;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--smoke);
+    border-right:1px solid var(--line);
+  }
+  .chip:last-child{border-right:none}
+  @media(max-width:720px){
+    .hero-mark{opacity:.5}
+    .chip{border-right:none;border-bottom:1px solid var(--line);width:100%}
+    .chip:last-child{border-bottom:none}
+  }
+
+  /* ---------- section header ---------- */
+  .sec-head{padding:96px 0 56px;display:flex;flex-direction:column;gap:18px}
+  .sec-head .caption{color:var(--white)}
+
+  /* ---------- shield ---------- */
+  .shield-grid{
+    display:grid;grid-template-columns:1.2fr .8fr;gap:64px;
+    padding-bottom:88px;align-items:start;
+  }
+  .shield-copy p+p{margin-top:18px}
+  .shield-note{
+    margin-top:26px;padding-top:20px;border-top:1px solid var(--line);
+    font-size:.8rem;color:var(--smoke);
+  }
+  .stats{
+    display:grid;grid-template-columns:1fr;
+    border:1px solid var(--line);
+  }
+  .stat{padding:30px 28px;border-bottom:1px solid var(--line)}
+  .stat:last-child{border-bottom:none}
+  .stat b{
+    display:block;font-size:2.15rem;font-weight:800;
+    color:var(--white);letter-spacing:-.01em;line-height:1.1;
+  }
+  .stat span{
+    display:block;margin-top:6px;
+    font-size:.68rem;font-weight:500;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--smoke);
+  }
+  @media(max-width:860px){.shield-grid{grid-template-columns:1fr;gap:44px}}
+
+  /* ---------- features ---------- */
+  .grid-3{
+    display:grid;grid-template-columns:repeat(3,1fr);
+    border:1px solid var(--line);margin-bottom:96px;
+  }
+  .card{
+    padding:36px 32px 38px;
+    border-right:1px solid var(--line);border-bottom:1px solid var(--line);
+    background:var(--ink1);
+    transition:border-color .2s ease;
+  }
+  .card:hover{border-color:var(--smoke)}
+  .grid-3 .card:nth-child(3n){border-right:none}
+  .grid-3 .card:nth-last-child(-n+3){border-bottom:none}
+  @media(max-width:980px){
+    .grid-3{grid-template-columns:1fr 1fr}
+    .grid-3 .card:nth-child(3n){border-right:1px solid var(--line)}
+    .grid-3 .card:nth-child(2n){border-right:none}
+    .grid-3 .card:nth-last-child(-n+3){border-bottom:1px solid var(--line)}
+    .grid-3 .card:nth-last-child(-n+2){border-bottom:none}
+  }
+  @media(max-width:640px){
+    .grid-3{grid-template-columns:1fr}
+    .grid-3 .card{border-right:none;border-bottom:1px solid var(--line)}
+    .grid-3 .card:last-child{border-bottom:none}
+  }
+  .card svg{width:26px;height:26px;margin-bottom:22px}
+  .card h3{font-size:1rem;font-weight:600;color:var(--white);margin-bottom:10px}
+  .card p{font-size:.86rem;color:var(--smoke)}
+  .tag{
+    display:inline-block;margin-top:20px;
+    font-size:.62rem;font-weight:600;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--smoke2);
+    border:1px solid var(--line);padding:5px 10px;
+  }
+
+  /* ---------- ecosystem ---------- */
+  .grid-4{
+    display:grid;grid-template-columns:repeat(4,1fr);
+    border:1px solid var(--line);margin-bottom:96px;
+  }
+  .eco{
+    padding:32px 28px 34px;
+    border-right:1px solid var(--line);
+    background:var(--ink1);
+    display:flex;flex-direction:column;gap:12px;
+    transition:border-color .2s ease,background .2s ease;
+    min-height:230px;
+  }
+  .eco:hover{border-color:var(--smoke);background:var(--ink2)}
+  .grid-4 .eco:last-child{border-right:none}
+  @media(max-width:980px){
+    .grid-4{grid-template-columns:1fr 1fr}
+    .grid-4 .eco:nth-child(2n){border-right:none}
+    .grid-4 .eco:nth-child(-n+2){border-bottom:1px solid var(--line)}
+  }
+  @media(max-width:560px){
+    .grid-4{grid-template-columns:1fr}
+    .grid-4 .eco{border-right:none;border-bottom:1px solid var(--line);min-height:0}
+    .grid-4 .eco:last-child{border-bottom:none}
+  }
+  .eco .kind{
+    font-size:.62rem;font-weight:600;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--smoke);
+  }
+  .eco h3{font-size:1.05rem;font-weight:700;color:var(--white);letter-spacing:.01em}
+  .eco p{font-size:.82rem;color:var(--smoke);flex:1}
+  .eco .go{
+    font-size:.72rem;font-weight:600;letter-spacing:.1em;
+    color:var(--smoke2);
+  }
+  .eco:hover .go{color:var(--white)}
+
+  /* ---------- download ---------- */
+  .dl-wrap{display:grid;grid-template-columns:1fr 1fr;gap:64px;padding-bottom:104px}
+  .steps{display:flex;flex-direction:column}
+  .step{
+    display:flex;gap:26px;align-items:flex-start;
+    padding:26px 0;border-top:1px solid var(--line);
+  }
+  .step:last-child{border-bottom:1px solid var(--line)}
+  .step b{
+    font-size:1.9rem;font-weight:800;color:var(--ink3);
+    line-height:1;letter-spacing:-.02em;
+  }
+  .step h4{font-size:.92rem;font-weight:600;color:var(--white);margin-bottom:4px}
+  .step p{font-size:.82rem;color:var(--smoke)}
+  .dl-note{font-size:.78rem;color:var(--smoke);margin-top:22px}
+  @media(max-width:860px){.dl-wrap{grid-template-columns:1fr;gap:40px}}
+
+  /* ---------- footer ---------- */
+  footer{border-top:1px solid var(--line);padding:56px 0 48px}
+  .foot-top{display:flex;justify-content:space-between;align-items:flex-start;gap:32px;flex-wrap:wrap}
+  .foot-brand{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+  .foot-brand svg{width:22px;height:22px}
+  .foot-legal{font-size:.74rem;color:var(--smoke);max-width:420px}
+  .foot-links{display:flex;gap:28px;flex-wrap:wrap}
+  .foot-links a{
+    font-size:.7rem;font-weight:500;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--smoke);
+  }
+  .foot-links a:hover{color:var(--white)}
+  .foot-bottom{
+    margin-top:44px;padding-top:22px;border-top:1px solid var(--line);
+    display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;
+    font-size:.7rem;color:var(--smoke);letter-spacing:.06em;
+  }
+</style>
+</head>
+<body>
+
+<!-- ==================== NAV ==================== -->
+<nav>
+  <div class="container nav-inner">
+    <a class="brand" href="#top" aria-label="Aegis Browser home">
+      <svg viewBox="0 0 108 108" aria-hidden="true"><path fill="#FFFFFF" fill-rule="evenodd" d="M53.91,23.99 L 23.00,83.92 L 68.98,83.92 L 56.58,57.92 L 62.52,46.21 L 80.95,83.92 L 84.83,83.92 L 63.04,41.64 L 48.49,70.49 L 36.35,70.49 L 56.93,30.19 Z M26.10,82.29 L 31.18,72.21 L 61.49,72.21 L 66.40,82.29 Z"/></svg>
+      <span class="brand-name">Aegis Browser</span>
+    </a>
+    <div class="nav-links">
+      <a href="#shield">Shield</a>
+      <a href="#features">Features</a>
+      <a href="#ecosystem">Ecosystem</a>
+      <a href="#download" class="nav-cta">Download</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ==================== HERO ==================== -->
+<header class="hero" id="top">
+  <svg class="hero-mark" viewBox="23 24 62 60" aria-hidden="true"><path fill="#101013" fill-rule="evenodd" d="M53.91,23.99 L 23.00,83.92 L 68.98,83.92 L 56.58,57.92 L 62.52,46.21 L 80.95,83.92 L 84.83,83.92 L 63.04,41.64 L 48.49,70.49 L 36.35,70.49 L 56.93,30.19 Z M26.10,82.29 L 31.18,72.21 L 61.49,72.21 L 66.40,82.29 Z"/></svg>
+  <div class="container hero-inner">
+    <svg class="mark" viewBox="0 0 108 108" aria-hidden="true"><path fill="#FFFFFF" fill-rule="evenodd" d="M53.91,23.99 L 23.00,83.92 L 68.98,83.92 L 56.58,57.92 L 62.52,46.21 L 80.95,83.92 L 84.83,83.92 L 63.04,41.64 L 48.49,70.49 L 36.35,70.49 L 56.93,30.19 Z M26.10,82.29 L 31.18,72.21 L 61.49,72.21 L 66.40,82.29 Z"/></svg>
+    <span class="caption">Privacy-hardened Chromium for Android</span>
+    <h1>Your ultimate digital shield.</h1>
+    <p class="lede">Aegis is Chromium, rebuilt with privacy as the default — ad and tracker blocking at the network layer, third-party cookies off, end-to-end encrypted sync through your own infrastructure. Every patch is public. Every build is free.</p>
+    <div class="hero-ctas">
+      <a class="btn btn-solid" href="#download">Download for Android</a>
+      <a class="btn btn-ghost" href="https://github.com/abdul-mateen-14/AEGIS-BROWSER" target="_blank" rel="noopener">View source</a>
+    </div>
+    <div class="hero-chips">
+      <span class="chip">Chromium 156 · arm64</span>
+      <span class="chip">92,957 hosts blocked</span>
+      <span class="chip">E2E encrypted sync</span>
+      <span class="chip">Free, forever</span>
+    </div>
+  </div>
+</header>
+
+<!-- ==================== SHIELD ==================== -->
+<section id="shield">
+  <div class="container">
+    <div class="sec-head">
+      <span class="caption">Aegis Shield</span>
+      <h2>Ad blocking lives in the network service,<br>not in an extension.</h2>
+    </div>
+    <div class="shield-grid">
+      <div class="shield-copy">
+        <p>A small C++ engine inside Chromium's network layer inspects every subresource request and drops third-party connections to known ad and tracker hosts with <strong style="color:var(--white)">ERR_BLOCKED_BY_CLIENT</strong> — the same signal adblock extensions produce, without installing anything.</p>
+        <p>The blocklist is generated from EasyList and EasyPrivacy and compiled into the build. Browser-initiated and same-party requests always pass, and the Aegis sync and ecosystem domains are hard-allowlisted, so the browser can never break itself.</p>
+        <p class="shield-note">Design, scope and policy: <a href="https://github.com/abdul-mateen-14/AEGIS-BROWSER/blob/main/docs/SHIELD.md" target="_blank" rel="noopener" style="text-decoration:underline;text-underline-offset:3px">docs/SHIELD.md</a> · semantics-tested blocklist, generated by <span style="color:var(--smoke2)">scripts/aegis-shield/gen_blocklist.py</span></p>
+      </div>
+      <div class="stats">
+        <div class="stat"><b>92,957</b><span>ad &amp; tracker hosts</span></div>
+        <div class="stat"><b>0</b><span>extensions needed</span></div>
+        <div class="stat"><b>1</b><span>network pass, first party safe</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== FEATURES ==================== -->
+<section id="features">
+  <div class="container">
+    <div class="sec-head">
+      <span class="caption">What is inside</span>
+      <h2>Hardened by default. Quiet by design.</h2>
+    </div>
+    <div class="grid-3">
+      <div class="card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#9E9EA4" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M5.8 5.8 L18.2 18.2"/></svg>
+        <h3>Private by default</h3>
+        <p>Third-party cookies blocked, search suggestions off, Do Not Track on, metrics opt-in only. A ground-truthed patch series against Chromium 156.0.8078.79.</p>
+        <span class="tag">Shipped · v1.2.1</span>
+      </div>
+      <div class="card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#9E9EA4" stroke-width="1.5" aria-hidden="true"><path d="M12 3 L20 6 V12 C20 17 16.5 20 12 21.5 C7.5 20 4 17 4 12 V6 Z"/></svg>
+        <h3>Aegis Shield</h3>
+        <p>Network-level ad and tracker blocking compiled into the browser. No extension, no lists to manage, no telemetry phoning home about what you block.</p>
+        <span class="tag">Shipped · v1.3</span>
+      </div>
+      <div class="card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#9E9EA4" stroke-width="1.5" aria-hidden="true"><rect x="5" y="10" width="14" height="10"/><path d="M8 10 V7 a4 4 0 0 1 8 0 V10"/></svg>
+        <h3>Sync that trusts no one</h3>
+        <p>Bookmarks and settings sync end-to-end encrypted through your own Cloudflare Worker. AES-256-GCM with a 600,000-iteration KDF — the server only ever sees ciphertext.</p>
+        <span class="tag">Backend live · UI in build</span>
+      </div>
+      <div class="card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#9E9EA4" stroke-width="1.5" aria-hidden="true"><rect x="4" y="4" width="7" height="7"/><rect x="13" y="4" width="7" height="7"/><rect x="4" y="13" width="7" height="7"/><rect x="13" y="13" width="7" height="7"/></svg>
+        <h3>The ecosystem, built in</h3>
+        <p>Settings ends with an Aegis section: CoreX, OS, AEGIS SOC and the full product catalog, one tap away. Your tools travel with your browser.</p>
+        <span class="tag">Shipped · v1.3</span>
+      </div>
+      <div class="card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#9E9EA4" stroke-width="1.5" aria-hidden="true"><path d="M12 3 L20.5 19 H15.5 L12 11.5 L8.5 19 H3.5 Z"/></svg>
+        <h3>A real identity</h3>
+        <p>A traced shield mark as the launcher icon, adaptive icons for every density, Android 13 monochrome support. Dark-first, monochrome, Montserrat. Not a reskin.</p>
+        <span class="tag">Shipped · v1.2.2</span>
+      </div>
+      <div class="card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#9E9EA4" stroke-width="1.5" aria-hidden="true"><path d="M9 7 L4 12 L9 17"/><path d="M15 7 L20 12 L15 17"/></svg>
+        <h3>Open source, free forever</h3>
+        <p>Every patch, workflow and script is public on GitHub. Builds run on GitHub's free runners and releases cost nothing. $0 a month, by construction.</p>
+        <span class="tag">Always</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== ECOSYSTEM ==================== -->
+<section id="ecosystem">
+  <div class="container">
+    <div class="sec-head">
+      <span class="caption">The Aegis ecosystem</span>
+      <h2>One shield. A wider armory.</h2>
+      <p class="lede">Aegis is part of a family of self-owned tools, each running on its own infrastructure. Nothing rented, nothing leased — the data stays yours.</p>
+    </div>
+    <div class="grid-4">
+      <a class="eco" href="https://am.infy.uk/products/" target="_blank" rel="noopener">
+        <span class="kind">The catalog</span>
+        <h3>AM Products</h3>
+        <p>Software built, owned and shipped end to end — hosting, code and data. Start here.</p>
+        <span class="go">am.infy.uk/products ↗</span>
+      </a>
+      <a class="eco" href="https://corex.site.je/" target="_blank" rel="noopener">
+        <span class="kind">Market terminal</span>
+        <h3>CoreX</h3>
+        <p>Live crypto, forex, stocks, indices and commodities — screener, alerts, charting. Free, not rented.</p>
+        <span class="go">corex.site.je ↗</span>
+      </a>
+      <a class="eco" href="https://os-cloudflare.pages.dev/" target="_blank" rel="noopener">
+        <span class="kind">Private messenger</span>
+        <h3>OS</h3>
+        <p>Private conversations, minimal identity, zero trace. Encrypted in your browser, wiped from the server on delivery.</p>
+        <span class="go">os-cloudflare.pages.dev ↗</span>
+      </a>
+      <a class="eco" href="https://agis-soc.whf.bz/" target="_blank" rel="noopener">
+        <span class="kind">Security operations</span>
+        <h3>AEGIS SOC</h3>
+        <p>Every attack on the websites you operate, one console — telemetry, correlation, anomaly detection.</p>
+        <span class="go">agis-soc.whf.bz ↗</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== DOWNLOAD ==================== -->
+<section id="download">
+  <div class="container">
+    <div class="sec-head">
+      <span class="caption">Download</span>
+      <h2>Get Aegis on Android.</h2>
+    </div>
+    <div class="dl-wrap">
+      <div>
+        <p class="lede" style="margin-bottom:30px">The APK is attached to a draft release after every build, signed with the project's own key. arm64, Android 8 and up.</p>
+        <a class="btn btn-solid" href="https://github.com/abdul-mateen-14/AEGIS-BROWSER/releases" target="_blank" rel="noopener">Open GitHub Releases ↗</a>
+        <p class="dl-note">v1.3.0 build in flight — Releases always carries the latest signed build.<br>Prefer to verify everything yourself? The full build pipeline is one click in the <a href="https://github.com/abdul-mateen-14/AEGIS-BROWSER/actions" target="_blank" rel="noopener" style="text-decoration:underline;text-underline-offset:3px">Actions tab</a>.</p>
+      </div>
+      <div class="steps">
+        <div class="step">
+          <b>01</b>
+          <div>
+            <h4>Download the APK</h4>
+            <p>Grab <span style="color:var(--smoke2)">AegisBrowser_…_arm64.apk</span> from the latest GitHub release, on your phone or your desktop.</p>
+          </div>
+        </div>
+        <div class="step">
+          <b>02</b>
+          <div>
+            <h4>Allow install unknown apps</h4>
+            <p>Android asks once, per browser, for permission to install outside the Play Store.</p>
+          </div>
+        </div>
+        <div class="step">
+          <b>03</b>
+          <div>
+            <h4>Install and browse</h4>
+            <p>The shield-A appears in your launcher. Open it and the network-level blocking is already on.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== FOOTER ==================== -->
+<footer>
+  <div class="container">
+    <div class="foot-top">
+      <div>
+        <div class="foot-brand">
+          <svg viewBox="0 0 108 108" aria-hidden="true"><path fill="#FFFFFF" fill-rule="evenodd" d="M53.91,23.99 L 23.00,83.92 L 68.98,83.92 L 56.58,57.92 L 62.52,46.21 L 80.95,83.92 L 84.83,83.92 L 63.04,41.64 L 48.49,70.49 L 36.35,70.49 L 56.93,30.19 Z M26.10,82.29 L 31.18,72.21 L 61.49,72.21 L 66.40,82.29 Z"/></svg>
+          <span class="brand-name">Aegis Browser</span>
+        </div>
+        <p class="foot-legal">Your ultimate digital shield. Not affiliated with Google. Chromium and Android are trademarks of their respective owners.</p>
+      </div>
+      <div class="foot-links">
+        <a href="https://github.com/abdul-mateen-14/AEGIS-BROWSER" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://am.infy.uk/products/" target="_blank" rel="noopener">Products</a>
+        <a href="https://corex.site.je/" target="_blank" rel="noopener">CoreX</a>
+        <a href="https://os-cloudflare.pages.dev/" target="_blank" rel="noopener">OS</a>
+        <a href="https://agis-soc.whf.bz/" target="_blank" rel="noopener">AEGIS SOC</a>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>© 2026 Abdul Mateen</span>
+      <span>aegis-browser.pages.dev</span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
