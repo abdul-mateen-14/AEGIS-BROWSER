@@ -11,8 +11,12 @@ name: Build Aegis Browser Linux x64 (free GitHub-hosted runner)
 #   6. Builds `chrome` + the proper `stable_deb` package with low-RAM gn args
 #   7. Publishes .deb + portable .zip to a draft GitHub Release
 #
-# Realistic wall time on the free 4-core/16 GB runner: 3-5 hours (lighter than
-# the Android build — no Java targets, no APK packaging).
+# Full compile on the free 4-core runner is ~8-12 h vs the 6 h job cap, so
+# builds are RESUMABLE via a persistent ccache (actions/cache): every run
+# banks its compiled objects even when it hits the cap, and the next run
+# restores them and continues. Expect 2-3 runs for the first full build,
+# then 1-2 h incremental rebuilds. The watchdog cron re-dispatches
+# automatically when a run reaches the time cap.
 
 on:
   workflow_dispatch:
@@ -51,9 +55,21 @@ jobs:
           docker-images: true
           swap-storage: false
 
-      - name: Add 16 GB swap
+      - name: Install ccache and add 16 GB swap
         run: |
           set -e
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ccache > /dev/null
+          # Persistent compiler cache: banks compiled objects across runs so a
+          # multi-hour compile can converge over several 6 h-capped runs.
+          ccache --set-config=cache_dir=/home/runner/.cache/aegis-ccache
+          ccache --set-config=max_size=4G
+          ccache --set-config=compression=true
+          ccache --set-config=compiler_check=content
+          ccache --set-config=hash_dir=false
+          ccache --set-config=depend_mode=true
+          ccache --set-config=sloppiness=file_stat_matches,include_file_ctime,include_file_mtime,pch_defines,no_system_headers,time_macros
+          ccache --show-config | grep -E 'cache_dir|max_size|depend_mode' || true
           sudo fallocate -l 16G /mnt/swapfile
           sudo chmod 600 /mnt/swapfile
           sudo mkswap /mnt/swapfile > /dev/null
@@ -102,6 +118,15 @@ jobs:
           cd "$WORK"
           gclient runhooks -j 4
 
+      - name: Restore compiler cache (ccache)
+        uses: actions/cache/restore@v4
+        with:
+          path: /home/runner/.cache/aegis-ccache
+          key: aegis-ccache-linux-x64-${{ env.VERSION }}-${{ github.run_id }}
+          restore-keys: |
+            aegis-ccache-linux-x64-${{ env.VERSION }}-
+            aegis-ccache-linux-x64-
+
       - name: Apply Aegis patches (aegis/patches/*.patch)
         run: |
           set -e
@@ -135,11 +160,21 @@ jobs:
           gn gen out/linux_x64 "--args=$(cat "$GITHUB_WORKSPACE/aegis/ci/linux_x64.gn")"
           gn args out/linux_x64 --list --short > /dev/null
 
-      - name: Build chrome + stable deb (3-5 h on the free 4-core runner)
+      - name: Build chrome + stable deb (made resumable by ccache)
         run: |
           set -e
           cd "$WORK/src"
+          ccache --zero-stats || true
           autoninja -C out/linux_x64 chrome chrome/installer/linux:stable_deb
+          ccache --show-stats || true
+
+      - name: Save compiler cache (also runs when the build hits the time cap)
+        if: always()
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: /home/runner/.cache/aegis-ccache
+          key: aegis-ccache-linux-x64-${{ env.VERSION }}-${{ github.run_id }}
 
       - name: Collect artifacts (.deb + portable .zip)
         run: |

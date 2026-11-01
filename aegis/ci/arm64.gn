@@ -18,6 +18,11 @@
 #   disable_fieldtrial_testing_config : no experiment configs; predictable.
 #   ffmpeg_branding="Chrome" + proprietary_codecs=true : H.264/AAC etc., as
 #                               shipped in Chrome and every public fork.
+#   cc_wrapper = "/usr/bin/ccache" : route every compile through ccache so
+#                               objects are banked across runs (see the
+#                               workflow's "Restore/Save compiler cache"
+#                               steps). Required to converge the 12-14 h
+#                               compile over several 6 h-capped runs.
 #
 # If you later build on a machine with 32 GB+ RAM, flip is_official_build
 # to true and drop the use_thin_lto / chrome_pgo_phase lines for a
@@ -36,3 +41,4 @@ chrome_pgo_phase = 0
 disable_fieldtrial_testing_config = true
 ffmpeg_branding = "Chrome"
 proprietary_codecs = true
+cc_wrapper = "/usr/bin/ccache"

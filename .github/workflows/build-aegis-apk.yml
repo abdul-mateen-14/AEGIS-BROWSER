@@ -12,9 +12,12 @@ name: Build Aegis Browser APK (free GitHub-hosted runner)
 #   6. Signs it with YOUR release keystore (from repo Secrets)
 #   7. Publishes the APK to a draft GitHub Release
 #
-# Realistic wall time on the free 4-core/16 GB runner: 4-7 hours.
-# The GitHub job cap is 6 hours; if a build times out, simply re-run it
-# (it costs nothing on public repos). See README.md for mitigations.
+# Full compile on the free 4-core runner is ~12-14 h vs the 6 h job cap,
+# so builds are RESUMABLE via a persistent ccache (actions/cache):
+# every run banks its compiled objects even when it hits the cap, and the
+# next run restores them and continues. Expect 2-3 runs for the first full
+# build, then 1-2 h incremental rebuilds. The watchdog cron re-dispatches
+# automatically when a run reaches the time cap.
 
 on:
   workflow_dispatch:
@@ -59,11 +62,21 @@ jobs:
           docker-images: true
           swap-storage: false
 
-      - name: Install JDK 17 and add 16 GB swap
+      - name: Install JDK 17, ccache, and add 16 GB swap
         run: |
           set -e
           sudo apt-get update -qq
-          sudo apt-get install -y -qq openjdk-17-jdk > /dev/null
+          sudo apt-get install -y -qq openjdk-17-jdk ccache > /dev/null
+          # Persistent compiler cache: banks compiled objects across runs so a
+          # 12-14 h compile can converge over several 6 h-capped runs.
+          ccache --set-config=cache_dir=/home/runner/.cache/aegis-ccache
+          ccache --set-config=max_size=4G
+          ccache --set-config=compression=true
+          ccache --set-config=compiler_check=content
+          ccache --set-config=hash_dir=false
+          ccache --set-config=depend_mode=true
+          ccache --set-config=sloppiness=file_stat_matches,include_file_ctime,include_file_mtime,pch_defines,no_system_headers,time_macros
+          ccache --show-config | grep -E 'cache_dir|max_size|depend_mode' || true
           sudo fallocate -l 16G /mnt/swapfile
           sudo chmod 600 /mnt/swapfile
           sudo mkswap /mnt/swapfile > /dev/null
@@ -113,6 +126,15 @@ jobs:
           cd "$WORK"
           gclient runhooks -j 4
 
+      - name: Restore compiler cache (ccache)
+        uses: actions/cache/restore@v4
+        with:
+          path: /home/runner/.cache/aegis-ccache
+          key: aegis-ccache-android-${{ env.VERSION }}-${{ github.run_id }}
+          restore-keys: |
+            aegis-ccache-android-${{ env.VERSION }}-
+            aegis-ccache-android-
+
       - name: Apply Aegis patches (aegis/patches/*.patch)
         run: |
           set -e
@@ -144,11 +166,21 @@ jobs:
           gn gen out/arm64 "--args=$(cat "$GITHUB_WORKSPACE/aegis/ci/arm64.gn")"
           gn args out/arm64 --list --short > /dev/null
 
-      - name: Build (4-7 h on the free 4-core runner)
+      - name: Build (12-14 h of compile, made resumable by ccache)
         run: |
           set -e
           cd "$WORK/src"
+          ccache --zero-stats || true
           autoninja -C out/arm64 "${{ github.event.inputs.build_target }}"
+          ccache --show-stats || true
+
+      - name: Save compiler cache (also runs when the build hits the time cap)
+        if: always()
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: /home/runner/.cache/aegis-ccache
+          key: aegis-ccache-android-${{ env.VERSION }}-${{ github.run_id }}
 
       - name: Sign APK with the release keystore
         env:
