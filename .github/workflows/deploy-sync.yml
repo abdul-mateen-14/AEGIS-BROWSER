@@ -1,0 +1,43 @@
+name: Deploy aegis-sync (Cloudflare Workers free tier)
+
+# OPTIONAL pipeline: deploys the sync backend from CI instead of your laptop.
+# Cloudflare Workers + D1 free tiers are sufficient for personal use.
+#
+# One-time setup:
+#   1. Create a D1 database (locally or via any wrangler install):
+#        npx wrangler d1 create aegis-sync
+#      ...and put the printed database_id into aegis-sync/wrangler.jsonc.
+#   2. Create an API token with the "Edit Cloudflare Workers" template
+#      (includes Workers scripts + D1 edit permissions).
+#   3. Add two repository Secrets (Settings -> Secrets and variables -> Actions):
+#        CLOUDFLARE_API_TOKEN
+#        CLOUDFLARE_ACCOUNT_ID   (required only if the token sees multiple accounts)
+#
+# Run: Actions tab -> "Deploy aegis-sync" -> Run workflow.
+# The schema step is idempotent (CREATE TABLE IF NOT EXISTS), safe to re-run.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy worker + apply D1 schema
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          workingDirectory: aegis-sync
+          command: d1 execute DB --remote --file=schema.sql
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Deploy the Worker itself
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          workingDirectory: aegis-sync
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

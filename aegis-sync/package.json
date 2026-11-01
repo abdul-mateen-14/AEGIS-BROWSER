@@ -1,0 +1,24 @@
+{
+  "name": "aegis-sync",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Aegis Browser - E2E-encrypted sync backend on Cloudflare Workers + D1",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:init:local": "wrangler d1 execute DB --local --file=schema.sql",
+    "db:init:remote": "wrangler d1 execute DB --remote --file=schema.sql",
+    "typecheck": "tsc --noEmit",
+    "test": "node test/crypto.test.mjs && node test/e2e.mjs"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261023.1",
+    "typescript": "^5.6.0",
+    "wrangler": "^4.42.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "workerd@1.20261023.1": true
+  }
+}

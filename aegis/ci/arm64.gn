@@ -1,0 +1,35 @@
+# Aegis Browser - free CI gn args (Android arm64)
+#
+# Goal: fit a full Chromium APK build into a 4 vCPU / 16 GB GitHub-hosted
+# runner with a 6-hour job cap. Each flag below exists to cut RAM or time:
+#
+#   is_official_build = false : official builds enable ThinLTO + PGO; the
+#                               final link alone can want 20-30+ GB RAM and
+#                               add 1-2 h. Unofficial is still -O2 optimized.
+#   use_thin_lto = false      : removes ThinLTO from the link (the biggest
+#                               memory spike).
+#   chrome_pgo_phase = 0      : no Profile-Guided Optimization data pass.
+#   symbol_level = 0          : no native debug symbols -> much smaller
+#                               build directory (saves ~20+ GB disk).
+#   v8_symbol_level = 0       : same, for the V8 engine.
+#   is_component_build=false  : release-style static build (correct for APKs).
+#   disable_fieldtrial_testing_config : no experiment configs; predictable.
+#   ffmpeg_branding="Chrome" + proprietary_codecs=true : H.264/AAC etc., as
+#                               shipped in Chrome and every public fork.
+#
+# If you later build on a machine with 32 GB+ RAM, flip is_official_build
+# to true and drop the use_thin_lto / chrome_pgo_phase lines for a
+# smaller, faster binary.
+
+target_os = "android"
+target_cpu = "arm64"
+is_debug = false
+is_official_build = false
+is_component_build = false
+symbol_level = 0
+v8_symbol_level = 0
+use_thin_lto = false
+chrome_pgo_phase = 0
+disable_fieldtrial_testing_config = true
+ffmpeg_branding = "Chrome"
+proprietary_codecs = true

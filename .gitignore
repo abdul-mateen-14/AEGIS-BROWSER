@@ -1,0 +1,27 @@
+# --- Node / wrangler (aegis-sync) ---
+node_modules/
+.wrangler/
+.dev.vars
+.dev.vars.*
+dist/
+
+# --- Never commit secrets or keys ---
+*.keystore
+*.jks
+*.p12
+keystore/
+*.zip.release-key
+
+# --- Build outputs (Chromium / Android) ---
+out/
+*.apk
+*.aab
+.gradle/
+local.properties
+
+# --- Editor / OS noise ---
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

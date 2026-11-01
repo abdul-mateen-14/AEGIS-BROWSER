@@ -1,0 +1,204 @@
+name: Build Aegis Browser APK (free GitHub-hosted runner)
+
+# Free-build pipeline for Aegis Browser (Android, arm64).
+# Runs entirely on GitHub's free hosted runners for PUBLIC repositories.
+#
+# What it does:
+#   1. Frees disk space and adds swap on the runner
+#   2. Fetches Chromium source WITHOUT git history (saves ~20 GB)
+#   3. Checks out a specific Chromium stable tag
+#   4. Applies your Aegis patches from aegis/patches/ (if any)
+#   5. Builds chrome_public_apk for arm64 with low-RAM gn args (no LTO/PGO)
+#   6. Signs it with YOUR release keystore (from repo Secrets)
+#   7. Publishes the APK to a draft GitHub Release
+#
+# Realistic wall time on the free 4-core/16 GB runner: 4-7 hours.
+# The GitHub job cap is 6 hours; if a build times out, simply re-run it
+# (it costs nothing on public repos). See README.md for mitigations.
+
+on:
+  workflow_dispatch:
+    inputs:
+      chromium_version:
+        description: 'Chromium version tag (empty = latest Chrome stable, e.g. 156.0.8078.79)'
+        required: false
+        default: ''
+      build_target:
+        description: 'Ninja target'
+        required: false
+        default: 'chrome_public_apk'
+
+concurrency:
+  group: aegis-android-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04          # pinned: 'ubuntu-latest' is migrating to 26.04 during Oct-Nov 2026
+    timeout-minutes: 350           # GitHub hard cap is 360 for hosted runners
+    permissions:
+      contents: write              # needed to create the draft release
+    env:
+      WORK: /mnt/aegis-work        # /mnt has the most free disk on the runner VM
+
+    steps:
+      - name: Checkout this repository (workflow + patches + branding)
+        uses: actions/checkout@v4
+
+      - name: Free up disk space (~25 GB)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true            # Chromium downloads its own SDK/NDK; the preinstalled one is dead weight
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: false
+
+      - name: Install JDK 17 and add 16 GB swap
+        run: |
+          set -e
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq openjdk-17-jdk > /dev/null
+          sudo fallocate -l 16G /mnt/swapfile
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile > /dev/null
+          sudo swapon /mnt/swapfile
+          echo "--- memory ---"; free -h
+          echo "--- disk ---";  df -h / /mnt
+
+      - name: Resolve Chromium version to build
+        run: |
+          set -e
+          if [ -n "${{ github.event.inputs.chromium_version }}" ]; then
+            VERSION="${{ github.event.inputs.chromium_version }}"
+          else
+            VERSION=$(curl -s "https://versionhistory.googleapis.com/v1/chrome/platforms/linux/channels/stable/versions?pageSize=1" \
+              | python3 -c "import json,sys; print(json.load(sys.stdin)['versions'][0]['version'])")
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Building Chromium $VERSION for arm64"
+
+      - name: Install depot_tools
+        run: |
+          set -e
+          mkdir -p "$WORK"
+          cd "$WORK"
+          git clone --depth=1 https://chromium.googlesource.com/chromium/tools/depot_tools.git
+          echo "$WORK/depot_tools" >> "$GITHUB_PATH"
+          git config --global user.email "aegis@build.local"
+          git config --global user.name  "Aegis Builder"
+
+      - name: Fetch Chromium source (no history) + checkout target tag
+        run: |
+          set -e
+          cd "$WORK"
+          fetch --no-history --nohooks chromium
+          echo "target_os = [ 'linux', 'android' ]" >> "$WORK/.gclient"
+          cd "$WORK/src"
+          git fetch --depth=1 origin "refs/tags/${VERSION}:refs/tags/${VERSION}"
+          git checkout --detach "refs/tags/${VERSION}"
+          cd "$WORK"
+          gclient sync -D -j 4
+
+      - name: Install build dependencies + run hooks (downloads Android SDK/NDK)
+        run: |
+          set -e
+          (cd "$WORK/src" && bash build/install-build-deps.sh) \
+            || echo "::warning::install-build-deps reported an error - continuing (runner usually ships the needed packages)"
+          cd "$WORK"
+          gclient runhooks -j 4
+
+      - name: Apply Aegis patches (aegis/patches/*.patch)
+        run: |
+          set -e
+          shopt -s nullglob
+          patches=( "$GITHUB_WORKSPACE"/aegis/patches/*.patch )
+          if [ ${#patches[@]} -gt 0 ]; then
+            for p in $(printf '%s\n' "${patches[@]}" | sort); do
+              echo "Applying $(basename "$p")"
+              (cd "$WORK/src" && git apply --3way "$p" 2>/dev/null) \
+                || (cd "$WORK/src" && git apply "$p") \
+                || { echo "::error::Patch failed: $p"; exit 1; }
+            done
+          else
+            echo "No patches found - building vanilla Chromium with Aegis branding hooks only."
+          fi
+
+      - name: Run branding hook (aegis/branding/apply.sh)
+        run: |
+          if [ -f "$GITHUB_WORKSPACE/aegis/branding/apply.sh" ]; then
+            bash "$GITHUB_WORKSPACE/aegis/branding/apply.sh" "$WORK/src"
+          else
+            echo "No branding hook - APK will keep Chromium package identity."
+          fi
+
+      - name: Generate build files (low-RAM gn args)
+        run: |
+          set -e
+          cd "$WORK/src"
+          gn gen out/arm64 "--args=$(cat "$GITHUB_WORKSPACE/aegis/ci/arm64.gn")"
+          gn args out/arm64 --list --short > /dev/null
+
+      - name: Build (4-7 h on the free 4-core runner)
+        run: |
+          set -e
+          cd "$WORK/src"
+          autoninja -C out/arm64 "${{ github.event.inputs.build_target }}"
+
+      - name: Sign APK with the release keystore
+        env:
+          KS_B64:    ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_ALIAS:  ${{ secrets.ANDROID_KEY_ALIAS }}
+          KS_PASS:   ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASS:  ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -e
+          cd "$WORK/src"
+          APK_IN="out/arm64/apks/ChromePublic.apk"
+          test -f "$APK_IN" || { echo "::error::$APK_IN not found"; exit 1; }
+          echo "$KS_B64" | base64 -d > /tmp/aegis.keystore
+          ZIPALIGN=$(ls -1 third_party/android_sdk/public/build-tools/*/zipalign  | sort | tail -1)
+          APKSIGNER=$(ls -1 third_party/android_sdk/public/build-tools/*/apksigner | sort | tail -1)
+          "$ZIPALIGN" -f -p 4 "$APK_IN" /tmp/aegis-aligned.apk
+          OUT="AegisBrowser_${VERSION}_arm64_r${GITHUB_RUN_NUMBER}.apk"
+          "$APKSIGNER" sign --ks /tmp/aegis.keystore --ks-key-alias "$KS_ALIAS" \
+            --ks-pass "env:KS_PASS" --key-pass "env:KEY_PASS" --out "$OUT" /tmp/aegis-aligned.apk
+          "$APKSIGNER" verify --print-certs "$OUT"
+          cp "$OUT" "$GITHUB_WORKSPACE/"
+          echo "APK_NAME=$OUT" >> "$GITHUB_ENV"
+
+      - name: Upload APK artifact (kept 1 day, just in case)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APK_NAME }}
+          path: ${{ github.workspace }}/${{ env.APK_NAME }}
+          retention-days: 1
+
+      - name: Attach APK to a draft GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          cd "$WORK/src"
+          TAG="build-${VERSION}-r${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" --draft \
+            --title "Aegis Browser - Chromium ${VERSION} (arm64)" \
+            --notes "Automated free build from GitHub Actions. Chromium ${VERSION}, target_cpu=arm64, unofficial build (no LTO/PGO). Sideload: enable 'Install unknown apps', then install the APK." \
+            "$GITHUB_WORKSPACE/${{ env.APK_NAME }}"
+          echo "Draft release created: $TAG"
+
+      - name: Build summary
+        if: always()
+        run: |
+          {
+            echo "## Aegis build summary"
+            echo ""
+            echo "| Item | Value |"
+            echo "| --- | --- |"
+            echo "| Chromium | ${VERSION:-n/a} |"
+            echo "| Target | ${{ github.event.inputs.build_target }} (arm64) |"
+            echo "| Runner | ubuntu-24.04 hosted (4 vCPU / 16 GB) |"
+            echo "| APK | ${{ env.APK_NAME || 'not produced' }} |"
+          } >> "$GITHUB_STEP_SUMMARY"

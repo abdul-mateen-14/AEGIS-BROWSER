@@ -1,0 +1,34 @@
+// Aegis Browser sync backend - Cloudflare Workers configuration.
+//
+// BEFORE DEPLOYING:
+//   1. Replace REPLACE_WITH_YOUR_D1_ID below with the database_id printed by:
+//        npx wrangler d1 create aegis-sync
+//   2. (Optional) set INVITE_CODE to a secret string to make registration
+//      invite-only. Empty string = open registration.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "aegis-sync",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-10-01",
+  "workers_dev": true,
+
+  "triggers": {
+    // Nightly cleanup: expired sessions, 90-day-old tombstones, stale rate limits
+    "crons": ["0 3 * * *"]
+  },
+
+  "vars": {
+    // Allowed CORS origin for browser-based clients. Native apps ignore CORS.
+    "CORS_ORIGIN": "*",
+    // If non-empty, registration requires this code in the body ("invite_code").
+    "INVITE_CODE": ""
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "aegis-sync",
+      "database_id": "REPLACE_WITH_YOUR_D1_ID"
+    }
+  ]
+}
