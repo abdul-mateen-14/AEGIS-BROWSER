@@ -9,9 +9,20 @@ still apply: keep each addition reviewable and one concern per patch).
 
 ## Current contents
 
-(none yet)
+- `aegis/AegisEcosystemSettings.java` — the Aegis Ecosystem settings
+  page (patch 054); opens the AM Products / CoreX / AEGIS OS / AEGIS SOC
+  sites. Modeled on `AboutChromeSettings`.
+- `aegis/res/xml/aegis_ecosystem_preferences.xml` — its preference XML
+  (patch 054).
+- `aegis/shield/aegis_shield.h` / `.cc` — the Aegis Shield engine
+  (patch 070).
+- `aegis/shield/aegis_shield_blocklist.h` — shield data header
+  (patch 070).
+- `aegis/shield/aegis_shield_blocklist.cc` — **generated** by
+  `scripts/aegis-shield/gen_blocklist.py` (EasyList + EasyPrivacy); do
+  not edit by hand (patch 070).
 
-## Planned (Phase 3 UI integration, per the free-build plan section 6.2)
+## Planned (batch 3, sync UI)
 
 The tested sync client already lives in `android-sync/java/`:
 

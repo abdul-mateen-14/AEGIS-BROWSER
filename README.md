@@ -1,4 +1,4 @@
-# Aegis Browser - Free Android Build Kit (v1.2)
+# Aegis Browser - Free Android Build Kit (v1.3)
 
 Everything you need to build **Aegis Browser for Android (arm64) for $0/month**
 using GitHub's free hosted runners for public repositories.
@@ -8,8 +8,29 @@ using GitHub's free hosted runners for public repositories.
 - One command to start a build: open GitHub -> Actions -> "Build Aegis Browser APK" -> Run
 - Result: a signed APK attached to a draft GitHub Release, 4-7 hours later
 
-## What's new in v1.2
+## What's new in v1.3
 
+- **Aegis Shield v1 - built-in, Brave-style ad & tracker blocking.** A
+  ~60-line C++ engine in the network service (`services/network/
+  aegis_shield.cc`) drops third-party requests to **92,957** known
+  ad/tracker hosts with `ERR_BLOCKED_BY_CLIENT` - the same error adblock
+  extensions produce. Browser-initiated and same-party requests always
+  pass, the Aegis ecosystem/sync domains are hard-allowlisted, and the
+  data is generated from EasyList + EasyPrivacy by
+  `scripts/aegis-shield/gen_blocklist.py` (semantics-tested in
+  `scripts/test-shield-semantics.py`). See `docs/SHIELD.md`.
+- **Aegis Ecosystem page.** Settings now ends with an "Aegis" section
+  opening the **Aegis Ecosystem** screen with the whole product family:
+  AM Products (`am.infy.uk/products/`), CoreX, AEGIS OS and AEGIS SOC.
+  Shipped as patches `052` (menu entry) + `054` (fragment + XML),
+  ground-truthed @ `156.0.8078.79`.
+- **Sync UI moved to batch 3** (was batch 2): the Ecosystem entry takes
+  the free settings slot first; the sync screen patch series is planned
+  in the updated `docs/PATCHES_BATCH_2_PLAN.md`.
+- Patch Foundry: a spec may now edit the same file more than once
+  (include + call-site in one patch).
+
+## What's new in v1.2
 - **The sync client now ships as a Java twin - and both layers are re-proven
   in it.** Chromium's chrome_java targets are Java-first, so the tested
   Kotlin client was ported to `android-sync/java/org/aegis/sync/`
@@ -84,6 +105,8 @@ scripts/patch-foundry/fetch-chromium-src.sh <- cheap source fetch (authoring mac
 scripts/patch-foundry/gn-args-hardening.conf <- batch-1 hardening GN args (self-verifying)
 scripts/patch-foundry/edits/000-TEMPLATE.conf <- spec format + conventions
 scripts/patch-foundry/additions/         <- whole NEW files to inject (no anchors needed)
+scripts/aegis-shield/gen_blocklist.py    <- Aegis Shield data generator (EasyList+EasyPrivacy)
+docs/SHIELD.md                           <- Aegis Shield design, policy and scope
 docs/PATCH_FOUNDRY.md                    <- the $0 Codespace patch-authoring guide
 docs/PUSH_TO_GITHUB.md                   <- how to push this folder to GitHub (3 ways)
 docs/Aegis_Free_Android_Build_Plan.docx  <- the full plan document (+ .pdf)
@@ -251,6 +274,13 @@ in `aegis/patches/` per the plan document, section 6.2. The Java client in
 
 ## Changelog
 
+- **v1.3.0** - Aegis Shield v1 (network-level ad/tracker blocking,
+  92,957 hosts, first-party safe) + the Aegis Ecosystem settings page
+  (AM Products / CoreX / AEGIS OS / AEGIS SOC). Patches 052/054/070
+  emitted via the Patch Foundry against Chromium 156.0.8078.79 and
+  re-verified with `git apply --check` on a tag-faithful mock tree;
+  blocklist semantics covered by a 9-case test. Sync UI re-planned to
+  batch 3.
 - **v1.2.2** - Real branding: the Aegis shield-"A" mark is now the launcher
   icon. Master logo committed (`aegis/branding/logo/`), the mark traced into
   an Android VectorDrawable (IoU 0.989 vs the master) and the full icon set

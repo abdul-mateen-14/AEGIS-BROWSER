@@ -80,8 +80,17 @@ apply_edit() {
   local file="$1" pat="$2" old="$3" new="$4"
   local abs="$SRC/$file"
   [ -f "$abs" ] || die "anchor target not found in this tag: $file"
-  [ -z "$(git -C "$SRC" status --porcelain -- "$file")" ] \
-    || die "$file already has uncommitted changes - refusing to mix edits"
+
+  # A spec may edit the same file several times (e.g. include + hook call).
+  # Uncommitted changes are only acceptable if THIS spec made them.
+  if [ -n "$(git -C "$SRC" status --porcelain -- "$file")" ]; then
+    local known=0
+    for r in ${restore[@]+"${restore[@]}"}; do
+      [ "$r" = "$file" ] && known=1
+    done
+    [ "$known" = "1" ] \
+      || die "$file already has uncommitted changes - refusing to mix edits"
+  fi
 
   local count
   count="$(grep -E -c -- "$pat" "$abs" || true)"

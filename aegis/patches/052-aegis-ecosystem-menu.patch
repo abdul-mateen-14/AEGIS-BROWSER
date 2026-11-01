@@ -1,0 +1,21 @@
+diff --git a/chrome/android/java/res/xml/main_preferences.xml b/chrome/android/java/res/xml/main_preferences.xml
+index 67228cb..b323704 100644
+--- a/chrome/android/java/res/xml/main_preferences.xml
++++ b/chrome/android/java/res/xml/main_preferences.xml
+@@ -143,4 +143,16 @@ found in the LICENSE file.
+         android:order="31"
+         android:title="@string/prefs_about_chrome"/>
+ 
++    <org.chromium.components.browser_ui.settings.ChromeBasePreferenceCategory
++        android:key="aegis_section"
++        android:order="99"
++        android:title="Aegis">
++    <org.chromium.components.browser_ui.settings.ChromeBasePreference
++        android:fragment="org.chromium.chrome.browser.aegis.AegisEcosystemSettings"
++        android:key="aegis_ecosystem"
++        android:order="1"
++        android:title="Aegis Ecosystem"
++        android:summary="AM Products · CoreX · AEGIS OS · AEGIS SOC" />
++    </org.chromium.components.browser_ui.settings.ChromeBasePreferenceCategory>
++
+ </PreferenceScreen>
