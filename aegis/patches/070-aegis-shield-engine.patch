@@ -18,7 +18,7 @@ new file mode 100644
 index 0000000000000000000000000000000000000000..ddfd3cbd3f7775caa1cac3ae40ae600d8e6b6f38
 --- /dev/null
 +++ b/services/network/aegis_shield.cc
-@@ -0,0 +1,80 @@
+@@ -0,0 +1,88 @@
 +// Copyright 2026 The Aegis Browser Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -29,6 +29,7 @@ index 0000000000000000000000000000000000000000..ddfd3cbd3f7775caa1cac3ae40ae600d
 +#include <string>
 +#include <string_view>
 +
++#include "base/compiler_specific.h"
 +#include "base/containers/span.h"
 +#include "services/network/aegis_shield_blocklist.h"
 +
@@ -37,7 +38,10 @@ index 0000000000000000000000000000000000000000..ddfd3cbd3f7775caa1cac3ae40ae600d
 +
 +// Binary search in a sorted array of NUL-terminated domain names.
 +// Iterators + string_view only: the unsafe-buffers plugin forbids raw
-+// pointer arithmetic and <cstring> calls on Chromium code paths.
++// pointer arithmetic and <cstring> calls on Chromium code paths. The
++// (pointer, count) span bridges in ShouldBlock are wrapped in
++// UNSAFE_BUFFERS(): both arrays are compile-time constants with
++// sizeof-derived lengths, so the spans are provably in-bounds.
 +bool EntryExists(base::span<const char* const> entries,
 +                 const std::string& host) {
 +  auto it = std::lower_bound(
@@ -82,7 +86,9 @@ index 0000000000000000000000000000000000000000..ddfd3cbd3f7775caa1cac3ae40ae600d
 +  }
 +  // 1) The Aegis ecosystem / sync backend are never blocked.
 +  if (HostInList(
-+          host, base::span(kAegisAllowDomains, kAegisAllowDomainsCount))) {
++          host,
++          UNSAFE_BUFFERS(
++              base::span(kAegisAllowDomains, kAegisAllowDomainsCount)))) {
 +    return false;
 +  }
 +  // 2) Browser-initiated requests (omnibox, sync, component updates) pass.
@@ -95,7 +101,9 @@ index 0000000000000000000000000000000000000000..ddfd3cbd3f7775caa1cac3ae40ae600d
 +  }
 +  // 4) Third-party request to a known ad/tracker host: blocked.
 +  return HostInList(
-+      host, base::span(kAegisBlockDomains, kAegisBlockDomainsCount));
++      host,
++      UNSAFE_BUFFERS(
++          base::span(kAegisBlockDomains, kAegisBlockDomainsCount)));
 +}
 +
 +}  // namespace aegis
