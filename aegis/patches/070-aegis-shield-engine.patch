@@ -15,10 +15,10 @@ index 3603695..3ce3e63 100644
      "network_context.h",
 diff --git a/services/network/aegis_shield.cc b/services/network/aegis_shield.cc
 new file mode 100644
-index 0000000..7d7b149
+index 0000000000000000000000000000000000000000..ddfd3cbd3f7775caa1cac3ae40ae600d8e6b6f38
 --- /dev/null
 +++ b/services/network/aegis_shield.cc
-@@ -0,0 +1,75 @@
+@@ -0,0 +1,80 @@
 +// Copyright 2026 The Aegis Browser Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -26,35 +26,36 @@ index 0000000..7d7b149
 +#include "services/network/aegis_shield.h"
 +
 +#include <algorithm>
-+#include <cstring>
++#include <string>
++#include <string_view>
 +
++#include "base/containers/span.h"
 +#include "services/network/aegis_shield_blocklist.h"
 +
 +namespace aegis {
 +namespace {
 +
-+// Binary search in a sorted, NUL-terminated domain array.
-+const char* const* FindExact(const char* const* list,
-+                             size_t size,
-+                             const std::string& host) {
-+  const char* const* end = list + size;
-+  const char* const* it =
-+      std::lower_bound(list, end, host,
-+                       [](const char* entry, const std::string& value) {
-+                         return std::strcmp(entry, value.c_str()) < 0;
-+                       });
-+  if (it != end && host == *it) {
-+    return it;
-+  }
-+  return nullptr;
++// Binary search in a sorted array of NUL-terminated domain names.
++// Iterators + string_view only: the unsafe-buffers plugin forbids raw
++// pointer arithmetic and <cstring> calls on Chromium code paths.
++bool EntryExists(base::span<const char* const> entries,
++                 const std::string& host) {
++  auto it = std::lower_bound(
++      entries.begin(), entries.end(), host,
++      [](const char* entry, const std::string& value) {
++        return std::string_view(entry) < std::string_view(value);
++      });
++  return it != entries.end() &&
++         std::string_view(*it) == std::string_view(host);
 +}
 +
 +// True when |host| equals a list entry or is a subdomain of one, i.e.
 +// when any dot-suffix of |host| is in the list.
-+bool HostInList(const std::string& host, const char* const* list, size_t size) {
++bool HostInList(const std::string& host,
++                base::span<const char* const> entries) {
 +  std::string candidate = host;
 +  while (!candidate.empty()) {
-+    if (FindExact(list, size, candidate) != nullptr) {
++    if (EntryExists(entries, candidate)) {
 +      return true;
 +    }
 +    size_t dot = candidate.find('.');
@@ -73,12 +74,15 @@ index 0000000..7d7b149
 +  if (!url.SchemeIsHTTPOrHTTPS()) {
 +    return false;
 +  }
-+  const std::string host = url.host();
++  // GURL::host() returns std::string_view; the string(string_view)
++  // constructor is explicit, so direct-initialise.
++  const std::string host(url.host());
 +  if (host.empty()) {
 +    return false;
 +  }
 +  // 1) The Aegis ecosystem / sync backend are never blocked.
-+  if (HostInList(host, kAegisAllowDomains, kAegisAllowDomainsCount)) {
++  if (HostInList(
++          host, base::span(kAegisAllowDomains, kAegisAllowDomainsCount))) {
 +    return false;
 +  }
 +  // 2) Browser-initiated requests (omnibox, sync, component updates) pass.
@@ -90,7 +94,8 @@ index 0000000..7d7b149
 +    return false;
 +  }
 +  // 4) Third-party request to a known ad/tracker host: blocked.
-+  return HostInList(host, kAegisBlockDomains, kAegisBlockDomainsCount);
++  return HostInList(
++      host, base::span(kAegisBlockDomains, kAegisBlockDomainsCount));
 +}
 +
 +}  // namespace aegis
