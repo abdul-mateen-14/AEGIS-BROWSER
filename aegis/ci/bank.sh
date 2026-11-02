@@ -91,7 +91,7 @@ DLEOF
   for G in $(echo "$GENLIST" | tac); do
     log "trying generation $G ..."
     rm -rf "$TMP/parts"; mkdir -p "$TMP/parts"
-    list_assets "$RID" | grep -E "^$G-(vol-[0-9]+\.${EXT}|sha256\.txt)$" | cut -f1 > "$TMP/names"
+    list_assets "$RID" | cut -f1 | grep -E "^$G-(vol-[0-9]+\.${EXT}|sha256\.txt)$" > "$TMP/names"
     [ -s "$TMP/names" ] || { log "gen $G has no parts, skipping"; continue; }
     export API GH_TOKEN TMP RID
     if ! xargs -P 4 -I{} bash "$TMP/dl_one.sh" {} < "$TMP/names"; then

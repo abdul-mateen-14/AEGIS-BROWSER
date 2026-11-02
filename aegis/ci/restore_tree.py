@@ -103,7 +103,14 @@ def main():
 
     print(f"aegis changed since bank: {bsha[:10]} -> {cur_sha[:10]} ({len(changed)} files)")
 
-    if any(p.startswith("aegis/ci/") for p in changed):
+    # bank.sh / restore_tree.py do not affect gn args, compiler flags or any
+    # compiled object - changing them must NOT drop the bank. Only the
+    # build-affecting ci files (gn args, atomic_cc wrapper) do.
+    ci_build_affecting = [
+        p for p in changed
+        if p.startswith("aegis/ci/") and os.path.basename(p) not in ("bank.sh", "restore_tree.py")
+    ]
+    if ci_build_affecting:
         print("gn args or compiler wrapper changed - dropping bank for safety")
         drop_tree(out)
         return
