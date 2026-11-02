@@ -16,14 +16,20 @@
 # Usage:
 #   bank.sh restore <flavor> <src_dir> <out_name>
 #       Download the newest bank generation, verify sha256 against the
-#       generation manifest, extract into <src_dir>/out/<out_name>,
-#       sanity-gate it, then NORMALIZE MTIMEs (gen wave first, then obj
-#       wave) so ninja trusts the restored outputs. The workflow applies
-#       patches AFTER this step, so patched/branded sources get a NEWER
-#       mtime than the banked objects and ninja recompiles exactly those
-#       targets - invalidation by mtime ordering, no dependency-graph
-#       surgery. Exit codes: 0 = no bank existed (legit seed run) or the
-#       bank restored cleanly; 1 = a bank EXISTS but could not be restored
+#       generation manifest, extract into <src_dir>/out/<out_name> and
+#       sanity-gate it. MTIME CONTRACT (ninja >= 1.12, build log v6): the
+#       v6 log records each output's mtime, so the restore must NOT touch
+#       the banked outputs (tar already preserved their banked mtimes,
+#       which is exactly what the log expects). Instead every freshly
+#       checked-out SOURCE file is stamped into the past, so banked
+#       outputs stay strictly newer than all sources. Patches and branding
+#       hooks run AFTER this step with current mtimes, so exactly the
+#       patched/branded targets (and their dependents) recompile.
+#       The previous design (touch gen, then obj) desynchronized every
+#       logged mtime from every file and pushed the next run into a
+#       near-full recompile; never do that to a v6 tree.
+#       Exit codes: 0 = no bank existed (legit seed run) or the bank
+#       restored cleanly; 1 = a bank EXISTS but could not be restored
 #       (loud RED - re-dispatch to retry instead of silently burning a
 #       multi-hour seed run).
 #
@@ -141,14 +147,30 @@ DLEOF
   fi
   [ -d "$OUT_DIR/obj" ] || { log "tree dropped - seed run"; exit 0; }
 
-  # mtime normalization: gen wave, then obj wave (obj strictly newer than
-  # gen and than all freshly-checked-out sources -> ninja treats restored
-  # outputs as up to date; patches applied afterwards re-dirty exactly the
-  # patched files).
-  find "$OUT_DIR/gen" -type f -print0 2>/dev/null | xargs -0 -r touch -m 2>/dev/null || true
-  sleep 2
-  find "$OUT_DIR/obj" -type f -print0 2>/dev/null | xargs -0 -r touch -m 2>/dev/null || true
-  touch "$OUT_DIR/.ninja_deps" "$OUT_DIR/.ninja_log" 2>/dev/null || true
+  # Informational: ninja >= 1.12 (build log v6, kOldestSupportedVersion=6)
+  # discards v5 logs wholesale ("build log version is too old; starting
+  # over") and a missing deps log forces a full recompile too. v5 logs are
+  # only produced by Siso-era or ancient ninja runs; a ninja-written bank
+  # always carries v6 + a real .ninja_deps. Warn loudly so a wasted cycle
+  # is never a mystery again.
+  if head -c 15 "$OUT_DIR/.ninja_log" 2>/dev/null | grep -q 'v5'; then
+    log "WARNING: banked .ninja_log is v5 (Siso-era?) - ninja >=1.12 will discard it and recompile the tree; banking stays safe, this run is just slow"
+  fi
+  if [ ! -s "$OUT_DIR/.ninja_deps" ]; then
+    log "WARNING: banked tree has no usable .ninja_deps - ninja will recompile every deps-tracked edge"
+  fi
+
+  # MTIME CONTRACT (see header): stamp freshly checked-out SOURCES into the
+  # past instead of touching banked outputs. out/ and .git are pruned (out
+  # holds the banked outputs; .git is huge and build-irrelevant). The fixed
+  # epoch predates every banked output (all written during real builds), so
+  # ordering becomes: sources(2020) < gen/obj(2026 bank) - exactly what
+  # ninja expects, with the v6 log's recorded mtimes left untouched.
+  SRC_EPOCH="${AEGIS_SRC_EPOCH:-1577836800}"   # 2020-01-01T00:00:00Z
+  find "$SRC_DIR" \( -path "$SRC_DIR/out" -o -path "$SRC_DIR/.git" \) -prune -o \
+      -type f -print0 2>/dev/null \
+    | xargs -0 -r touch -d "@$SRC_EPOCH" 2>/dev/null || true
+  log "src tree stamped @$SRC_EPOCH; banked outputs keep their banked mtimes (v6 contract)"
 
   EDGES=$(wc -l < "$OUT_DIR/.ninja_log" 2>/dev/null || echo 0)
   log "restored: $(du -sh "$OUT_DIR/obj" | cut -f1) obj, $(du -sh "$OUT_DIR/gen" 2>/dev/null | cut -f1) gen, ~$EDGES banked edges"
