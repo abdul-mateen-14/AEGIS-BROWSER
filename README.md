@@ -1,13 +1,31 @@
-# Aegis Browser - Free Android Build Kit (v1.3)
+# Aegis Browser (v1.3)
 
-Everything you need to build **Aegis Browser for Android (arm64) for $0/month**
-using GitHub's free hosted runners for public repositories.
+A privacy-hardened Chromium browser for Android (arm64). It is built and
+shipped entirely on GitHub's free infrastructure — no ads, no accounts, no
+telemetry, and every piece of the toolchain that produces it is public.
 
-- No local Chromium compilation (your 8 GB laptop only ever edits text files)
-- No cloud VMs, no spot instances, no build services
-- One command to start a build: open GitHub -> Actions -> "Build Aegis Browser APK" -> Run
-- Result: a signed APK attached to a draft GitHub Release, 4-7 hours later
-- Live landing page: **https://aegis-browser.pages.dev** (Cloudflare Pages, free tier)
+- **Aegis Shield** — ad & tracker blocking at the network layer, 92,957
+  hosts, no extensions involved
+- **Private by default** — third-party cookies off, search suggestions off,
+  Do Not Track on, metrics opt-in only
+- **End-to-end encrypted sync** — the server only ever sees ciphertext
+- **Real releases** — every build ends in a signed APK on the Releases page
+- Landing page: **https://aegis-browser.pages.dev** (Cloudflare Pages, free tier)
+
+## Get the browser
+
+Open [Releases](https://github.com/abdul-mateen-14/AEGIS-BROWSER/releases),
+download the latest `AegisBrowser_..._arm64.apk` (Android 8 and up), allow
+"install unknown apps" when Android asks, install. The shield is on from the
+first launch.
+
+## How it is built
+
+No local Chromium compilation, no rented cloud machines, no build services.
+All the heavy work runs on GitHub's free hosted runners — the repository
+itself holds only text files (patches, scripts, workflow definitions), and
+one click on the Actions tab turns them into a signed APK 4-7 hours later.
+The full story is in `docs/Aegis_Free_Android_Build_Plan.docx` (+ .pdf).
 
 ## What's new in v1.3
 
@@ -80,8 +98,8 @@ using GitHub's free hosted runners for public repositories.
 
 ## Repository layout
 
-This folder IS the repository - see `docs/PUSH_TO_GITHUB.md` for three ways
-to get it onto GitHub (including a fully automatic one).
+Everything here is the repository itself; `docs/PUSH_TO_GITHUB.md` documents
+three ways to push it to GitHub, one of them fully automatic.
 
 ```
 .github/workflows/build-aegis-apk.yml   <- the free CI pipeline (the core of this kit)
@@ -122,22 +140,25 @@ landing/                                 <- public landing page (aegis-browser.p
 README.md                               <- this file
 ```
 
-## Quickstart (first APK in ~1 day of wall time)
+## Build it yourself (first APK in ~1 day of wall time)
 
-1. **Create a public GitHub repository** (e.g. `aegis-browser-android`).
-   Public is required for free unlimited Actions minutes; private repos only
-   get 2,000 min/month, which is less than ONE Chromium build.
+The pipeline is self-service — the same recipe that produces the public
+releases:
 
-2. **Copy the files** from this kit into the repo (keep the folder layout,
+1. **Create a public GitHub repository** (for example `aegis-browser-android`).
+   Public is what makes Actions minutes unlimited; a private repo only gets
+   2,000 min/month, less than one Chromium build needs.
+
+2. **Copy the files** from this repository into it (keep the folder layout,
    including the hidden `.github/` directory).
 
-3. **Create your release keystore locally** (one-time, needs any JDK):
+3. **Create the release keystore once** (any machine with a JDK):
    ```
    KEYSTORE_PASSWORD='YourStrongPassword1!' KEY_PASSWORD='YourStrongPassword1!' \
        bash scripts/create-release-keystore.sh
    ```
-   Back the file up in your password manager. If you lose it you must
-   uninstall/reinstall the app instead of updating it.
+   Back the file up — a lost keystore means uninstall/reinstall instead of
+   in-place updates.
 
 4. **Add four repository Secrets** (Settings -> Secrets and variables -> Actions):
    - `ANDROID_KEYSTORE_BASE64`  (printed by the script)
@@ -145,16 +166,16 @@ README.md                               <- this file
    - `ANDROID_KEY_ALIAS`        (`aegis`)
    - `ANDROID_KEY_PASSWORD`
 
-5. **Run the build**: Actions tab -> "Build Aegis Browser APK" -> Run workflow.
-   Leave `chromium_version` empty to build the latest Chrome stable, and
-   `build_target` as `chrome_public_apk`.
+5. **Start a build**: Actions tab -> "Build Aegis Browser APK" -> Run workflow.
+   Leaving `chromium_version` empty builds the latest Chrome stable;
+   `build_target` stays `chrome_public_apk`.
 
-6. **Wait 4-7 hours.** The runner is free but slow (4 cores, 16 GB RAM, no
-   build cache between runs - see the plan document for why).
+6. **Give it 4-7 hours.** The free runner is honest but slow: 4 cores,
+   16 GB RAM, no build cache between runs (the plan document explains why).
 
 7. **Install**: open the draft Release, download `AegisBrowser_..._arm64.apk`,
-   copy it to your phone (or just download it in the phone's browser), enable
-   "Install unknown apps" for that browser, and install.
+   copy it to the phone (or download it directly in the phone's browser),
+   allow "Install unknown apps" for that browser, and install.
 
 ## Verify the sync client (optional, ~10 minutes)
 
@@ -206,7 +227,7 @@ self-contained. The vector twins are regenerated together with
 `node scripts/gen-crypto-vectors.mjs`.)
 
 That closes everything Phase 3 needs before UI integration - the remaining work
-(Sync settings screen, device list UI, menu hooks) is authored against your
+(Sync settings screen, device list UI, menu hooks) is authored against the
 pinned CI tag with the Patch Foundry (see `docs/PATCH_FOUNDRY.md`) and lands
 in `aegis/patches/` per the plan document, section 6.2. The Java client in
 `android-sync/java/` is the code those patches will wire into the settings UI.
@@ -215,50 +236,50 @@ in `aegis/patches/` per the plan document, section 6.2. The Java client in
 
 1. Frees ~25 GB of disk on the runner; adds 16 GB swap (link spikes).
 2. Installs JDK 17.
-3. Resolves the Chromium version (your input, or latest Chrome stable via the
-   public `versionhistory.googleapis.com` API).
+3. Resolves the Chromium version (the workflow input, or latest Chrome stable
+   via the public `versionhistory.googleapis.com` API).
 4. Clones `depot_tools`; `fetch --no-history --nohooks chromium` (saves ~20 GB
    of git history); adds `target_os = ['linux','android']`.
-5. Checks out your chosen Chromium tag; `gclient sync` downloads dependencies
+5. Checks out the chosen Chromium tag; `gclient sync` downloads dependencies
    AND the Android SDK/NDK (via CIPD); `gclient runhooks`.
 6. Applies `aegis/patches/*.patch` in order; runs `aegis/branding/apply.sh`.
 7. `gn gen out/arm64` with the low-RAM args from `aegis/ci/arm64.gn`
    (unofficial build: no ThinLTO, no PGO, zero debug symbols).
 8. `autoninja -C out/arm64 chrome_public_apk` -> `out/arm64/apks/ChromePublic.apk`.
-9. zipalign + `apksigner` with YOUR keystore -> `AegisBrowser_<ver>_arm64_r<N>.apk`.
+9. zipalign + `apksigner` with the release keystore -> `AegisBrowser_<ver>_arm64_r<N>.apk`.
 10. Uploads the artifact (1-day retention) and attaches it to a DRAFT release.
 
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| Build fails at 5h55m with timeout | 6 h GitHub job cap | Just re-run (free). If it keeps happening, keep `build_target=chrome_public_apk` (already default) and make sure you did not re-enable LTO/PGO in `arm64.gn`. |
-| "No space left on device" | Disk full | Keep `symbol_level=0`; do not add arm32/x86 targets; keep patches lean. The workflow already frees ~25 GB and works on `/mnt`. |
+| Build fails at 5h55m with timeout | 6 h GitHub job cap | Re-run (free). If it repeats, keep `build_target=chrome_public_apk` (the default) and LTO/PGO off in `arm64.gn`. |
+| "No space left on device" | Disk full | Keep `symbol_level=0`; no arm32/x86 targets; keep patches lean. The workflow already frees ~25 GB and works on `/mnt`. |
 | `git fetch tag` fails | Tag not published yet / typo | Check the version on `chromiumdash.appspot.com`; pin the exact tag like `156.0.8078.79`. |
 | Patch fails to apply | Made against a different Chromium version | Regenerate the patch from a checkout of the same tag (`git diff > patch`). |
-| App "not installed" on phone | APK vs device ABI or old Android | Kit builds arm64 for Android 8+. Emulators (x86_64) cannot run it. |
-| Wrong signature / update rejected | Keystore changed | You must uninstall and reinstall. Never regenerate the keystore. |
+| App "not installed" on phone | APK vs device ABI or old Android | Builds are arm64, Android 8+. x86_64 emulators cannot run them. |
+| Wrong signature / update rejected | Keystore changed | Uninstall and reinstall; the keystore is never regenerated. |
 | Launcher still says "Chromium" | Branding hook found no match | Check the build log's "Branding:" lines; if empty, the resource layout moved - move the change into a proper patch in `aegis/patches/`. |
 
 ## Notes on "free"
 
 - GitHub Actions is free with **unlimited minutes for public repositories**
-  (standard runners). Your patches and branding will be publicly visible -
-  that is inherent to the free tier. If you ever need privacy, the paid path
-  (a $1-3 spot VM per build, see `aegis-build/` GCP kit) still exists.
+  (standard runners). Patches and branding are publicly visible - that is
+  inherent to the free tier. A private paid path (a $1-3 spot VM per build,
+  see the `aegis-build/` GCP kit) still exists if it is ever needed.
 - GitHub Release assets: 2 GB per file (an APK is ~150-250 MB) - effectively
-  unlimited free storage for your builds.
+  unlimited free storage for builds.
 - The sync backend (`aegis-sync`) runs on Cloudflare Workers + D1 free tiers
   and is unchanged by this pivot.
 - Android-only means Phase 4 (Windows) of the blueprint is deferred, not
-  cancelled: the patch series you accumulate in `aegis/patches/` is portable
+  cancelled: the patch series accumulating in `aegis/patches/` is portable
   to desktop builds later.
 
 ## Status of each file
 
 | File | Status |
 | --- | --- |
-| `.github/workflows/build-aegis-apk.yml` | Ready to run; every step uses documented Chromium/Android tooling. First real run is the true test - expect to debug 1-2 minor failures (see plan document, Section 9). |
+| `.github/workflows/build-aegis-apk.yml` | Ready to run; every step uses documented Chromium/Android tooling. |
 | `aegis/ci/arm64.gn` | Known-good low-RAM arg set (same family of flags public forks use). |
 | `aegis/branding/apply.sh` | v1.1: replaces `app_name` wherever it is defined under `chrome/android/java`; idempotent. |
 | `aegis/patches/README.md` | Ready. |

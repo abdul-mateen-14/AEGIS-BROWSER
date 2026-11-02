@@ -289,7 +289,7 @@
     <svg class="mark" viewBox="0 0 108 108" aria-hidden="true"><path fill="#FFFFFF" fill-rule="evenodd" d="M53.91,23.99 L 23.00,83.92 L 68.98,83.92 L 56.58,57.92 L 62.52,46.21 L 80.95,83.92 L 84.83,83.92 L 63.04,41.64 L 48.49,70.49 L 36.35,70.49 L 56.93,30.19 Z M26.10,82.29 L 31.18,72.21 L 61.49,72.21 L 66.40,82.29 Z"/></svg>
     <span class="caption">Privacy-hardened Chromium for Android</span>
     <h1>Your ultimate digital shield.</h1>
-    <p class="lede">Aegis is Chromium, rebuilt with privacy as the default — ad and tracker blocking at the network layer, third-party cookies off, end-to-end encrypted sync through your own infrastructure. Every patch is public. Every build is free.</p>
+    <p class="lede">Aegis is Chromium, rebuilt with privacy switched on by default — ad and tracker blocking at the network layer, third-party cookies off, end-to-end encrypted sync where the server only ever sees ciphertext. Every patch is public. Every build is free.</p>
     <div class="hero-ctas">
       <a class="btn btn-solid" href="#download">Download for Android</a>
       <a class="btn btn-ghost" href="https://github.com/abdul-mateen-14/AEGIS-BROWSER" target="_blank" rel="noopener">View source</a>
@@ -336,7 +336,7 @@
       <div class="card">
         <svg viewBox="0 0 24 24" fill="none" stroke="#9E9EA4" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M5.8 5.8 L18.2 18.2"/></svg>
         <h3>Private by default</h3>
-        <p>Third-party cookies blocked, search suggestions off, Do Not Track on, metrics opt-in only. A ground-truthed patch series against Chromium 156.0.8078.79.</p>
+        <p>Third-party cookies blocked, search suggestions off, Do Not Track on, metrics opt-in only. Set in the source code, not behind hidden flags.</p>
         <span class="tag">Shipped · v1.2.1</span>
       </div>
       <div class="card">
@@ -348,13 +348,13 @@
       <div class="card">
         <svg viewBox="0 0 24 24" fill="none" stroke="#9E9EA4" stroke-width="1.5" aria-hidden="true"><rect x="5" y="10" width="14" height="10"/><path d="M8 10 V7 a4 4 0 0 1 8 0 V10"/></svg>
         <h3>Sync that trusts no one</h3>
-        <p>Bookmarks and settings sync end-to-end encrypted through your own Cloudflare Worker. AES-256-GCM with a 600,000-iteration KDF — the server only ever sees ciphertext.</p>
+        <p>Bookmarks and settings travel end-to-end encrypted: AES-256-GCM with a 600,000-iteration key derivation, and the sync server only ever handles ciphertext.</p>
         <span class="tag">Backend live · UI in build</span>
       </div>
       <div class="card">
         <svg viewBox="0 0 24 24" fill="none" stroke="#9E9EA4" stroke-width="1.5" aria-hidden="true"><rect x="4" y="4" width="7" height="7"/><rect x="13" y="4" width="7" height="7"/><rect x="4" y="13" width="7" height="7"/><rect x="13" y="13" width="7" height="7"/></svg>
         <h3>The ecosystem, built in</h3>
-        <p>Settings ends with an Aegis section: CoreX, OS, AEGIS SOC and the full product catalog, one tap away. Your tools travel with your browser.</p>
+        <p>Settings ends with an Aegis section — CoreX, OS, AEGIS SOC and the full product catalog, one tap away.</p>
         <span class="tag">Shipped · v1.3</span>
       </div>
       <div class="card">
@@ -366,7 +366,7 @@
       <div class="card">
         <svg viewBox="0 0 24 24" fill="none" stroke="#9E9EA4" stroke-width="1.5" aria-hidden="true"><path d="M9 7 L4 12 L9 17"/><path d="M15 7 L20 12 L15 17"/></svg>
         <h3>Open source, free forever</h3>
-        <p>Every patch, workflow and script is public on GitHub. Builds run on GitHub's free runners and releases cost nothing. $0 a month, by construction.</p>
+        <p>Every patch, workflow and script is public on GitHub. Builds run on GitHub's free runners, releases cost nothing, and there is nothing to sell — no ads, no accounts.</p>
         <span class="tag">Always</span>
       </div>
     </div>
@@ -419,16 +419,16 @@
     </div>
     <div class="dl-wrap">
       <div>
-        <p class="lede" style="margin-bottom:30px">The APK is attached to a draft release after every build, signed with the project's own key. arm64, Android 8 and up.</p>
+        <p class="lede" style="margin-bottom:30px">Every build produces a signed APK, published to the project's releases. arm64, Android 8 and up.</p>
         <a class="btn btn-solid" href="https://github.com/abdul-mateen-14/AEGIS-BROWSER/releases" target="_blank" rel="noopener">Open GitHub Releases ↗</a>
-        <p class="dl-note">v1.3.0 build in flight — Releases always carries the latest signed build.<br>Prefer to verify everything yourself? The full build pipeline is one click in the <a href="https://github.com/abdul-mateen-14/AEGIS-BROWSER/actions" target="_blank" rel="noopener" style="text-decoration:underline;text-underline-offset:3px">Actions tab</a>.</p>
+        <p class="dl-note">Releases always carries the latest signed build.<br>Nothing here is a black box — the complete pipeline, patches included, is public in the <a href="https://github.com/abdul-mateen-14/AEGIS-BROWSER" target="_blank" rel="noopener" style="text-decoration:underline;text-underline-offset:3px">repository</a>.</p>
       </div>
       <div class="steps">
         <div class="step">
           <b>01</b>
           <div>
             <h4>Download the APK</h4>
-            <p>Grab <span style="color:var(--smoke2)">AegisBrowser_…_arm64.apk</span> from the latest GitHub release, on your phone or your desktop.</p>
+            <p>The latest release carries <span style="color:var(--smoke2)">AegisBrowser_…_arm64.apk</span> — fetch it on a desktop or straight on the phone.</p>
           </div>
         </div>
         <div class="step">
@@ -442,7 +442,7 @@
           <b>03</b>
           <div>
             <h4>Install and browse</h4>
-            <p>The shield-A appears in your launcher. Open it and the network-level blocking is already on.</p>
+            <p>A new icon with the shield-A appears among the apps. The network-level blocking is on from the first launch.</p>
           </div>
         </div>
       </div>
