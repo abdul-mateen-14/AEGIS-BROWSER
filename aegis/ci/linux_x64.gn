@@ -11,11 +11,14 @@
 #   disable_fieldtrial_testing_config : no experiment configs; predictable.
 #   ffmpeg_branding="Chrome" + proprietary_codecs=true : H.264/AAC etc. as
 #                               shipped in Chrome and every public fork.
-#   cc_wrapper = "/usr/bin/ccache" : route every compile through ccache so
-#                               objects are banked across runs (see the
-#                               workflow's "Restore/Save compiler cache"
-#                               steps). Required to converge the multi-hour
-#                               compile over several 6 h-capped runs.
+#   cc_wrapper = atomic_cc    : every compile writes its output atomically
+#                               (tmp + rename), so a time-capped build can
+#                               never leave a partial .o in the tree that a
+#                               resumed ninja run would trust. (ccache is NOT
+#                               usable here: Chromium 156 compiles all C++
+#                               with C++20 modules (-fmodules), which ccache
+#                               cannot cache - the resume instead banks the
+#                               whole ninja build tree between runs.)
 #
 # A desktop Linux build is LIGHTER than the Android APK build (no Java
 # targets, no APK packaging).
@@ -33,4 +36,4 @@ chrome_pgo_phase = 0
 disable_fieldtrial_testing_config = true
 ffmpeg_branding = "Chrome"
 proprietary_codecs = true
-cc_wrapper = "/usr/bin/ccache"
+cc_wrapper = "/usr/local/bin/aegis_atomic_cc"

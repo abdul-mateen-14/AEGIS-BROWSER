@@ -11,12 +11,28 @@ name: Build Aegis Browser Linux x64 (free GitHub-hosted runner)
 #   6. Builds `chrome` + the proper `stable_deb` package with low-RAM gn args
 #   7. Publishes .deb + portable .zip to a draft GitHub Release
 #
-# Full compile on the free 4-core runner is ~8-12 h vs the 6 h job cap, so
-# builds are RESUMABLE via a persistent ccache (actions/cache): every run
-# banks its compiled objects even when it hits the cap, and the next run
-# restores them and continues. Expect 2-3 runs for the first full build,
-# then 1-2 h incremental rebuilds. The watchdog cron re-dispatches
-# automatically when a run reaches the time cap.
+# HOW RESUME WORKS (the 6 h job cap vs a ~12-15 h full compile):
+#
+#   Chromium 156 compiles ALL C++ with C++20 modules (-fmodules), which
+#   ccache cannot cache — so instead of a compiler cache, each run compiles
+#   a bounded ~240 min ninja slice and then banks the ENTIRE ninja build
+#   tree (obj/ + gen/ + .ninja_log + .ninja_deps) to a private draft
+#   release (aegis-tree-linux) in <2 GiB chunks. The next run restores the
+#   tree and ninja continues EXACTLY where the slice stopped — finished
+#   objects are never recompiled. The bank is deterministic and safe:
+#
+#   - cc_wrapper (aegis/ci/atomic_cc.c) writes every compile output via
+#     tmp + atomic rename, so a killed compile can never leave a partial .o
+#   - source mtimes are normalized to a fixed epoch, keeping ninja's deps
+#     log valid across runners
+#   - aegis/ci/restore_tree.py validates the bank against the banked
+#     aegis commit: a fix commit surgically invalidates only the outputs
+#     that depend on the patched files; gn/branding changes drop the bank
+#   - final link outputs are deleted before banking, forcing a clean relink
+#   - a manifest.done asset is uploaded last; partial banks are never used
+#
+# Expect 3-5 runs to converge the first full build; the watchdog cron
+# re-dispatches automatically whenever a run ends with AEGIS_BANKED.
 
 on:
   workflow_dispatch:
@@ -33,9 +49,9 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-24.04          # pinned: 'ubuntu-latest' is migrating to 26.04 during Oct-Nov 2026
-    timeout-minutes: 350           # GitHub hard cap is 360 for hosted runners
+    timeout-minutes: 352           # GitHub hard cap is 360 for hosted runners
     permissions:
-      contents: write              # needed to create the draft release
+      contents: write              # needed for draft releases (artifacts + build-tree bank)
     env:
       # /mnt is root-owned on hosted runners; keep the workspace in home.
       WORK: /home/runner/aegis-work
@@ -55,21 +71,15 @@ jobs:
           docker-images: true
           swap-storage: false
 
-      - name: Install ccache and add 16 GB swap
+      - name: Install zstd, build the atomic compiler wrapper, add 16 GB swap
         run: |
           set -e
           sudo apt-get update -qq
-          sudo apt-get install -y -qq ccache > /dev/null
-          # Persistent compiler cache: banks compiled objects across runs so a
-          # multi-hour compile can converge over several 6 h-capped runs.
-          ccache --set-config=cache_dir=/home/runner/.cache/aegis-ccache
-          ccache --set-config=max_size=4G
-          ccache --set-config=compression=true
-          ccache --set-config=compiler_check=content
-          ccache --set-config=hash_dir=false
-          ccache --set-config=depend_mode=true
-          ccache --set-config=sloppiness=file_stat_matches,include_file_ctime,include_file_mtime,pch_defines,no_system_headers,time_macros
-          ccache --show-config | grep -E 'cache_dir|max_size|depend_mode' || true
+          sudo apt-get install -y -qq zstd > /dev/null
+          gcc -O2 -o /usr/local/bin/aegis_atomic_cc "$GITHUB_WORKSPACE/aegis/ci/atomic_cc.c"
+          printf 'int main(void){return 0;}\n' > /tmp/hi.c
+          /usr/local/bin/aegis_atomic_cc gcc -o /tmp/hi /tmp/hi.c && /tmp/hi \
+            && echo "atomic compiler wrapper OK"
           sudo fallocate -l 16G /mnt/swapfile
           sudo chmod 600 /mnt/swapfile
           sudo mkswap /mnt/swapfile > /dev/null
@@ -118,15 +128,6 @@ jobs:
           cd "$WORK"
           gclient runhooks -j 4
 
-      - name: Restore compiler cache (ccache)
-        uses: actions/cache/restore@v4
-        with:
-          path: /home/runner/.cache/aegis-ccache
-          key: aegis-ccache-linux-x64-${{ env.VERSION }}-${{ github.run_id }}
-          restore-keys: |
-            aegis-ccache-linux-x64-${{ env.VERSION }}-
-            aegis-ccache-linux-x64-
-
       - name: Apply Aegis patches (aegis/patches/*.patch)
         run: |
           set -e
@@ -153,6 +154,14 @@ jobs:
             bash "$GITHUB_WORKSPACE/aegis/branding/apply.sh" "$WORK/src" || true
           fi
 
+      - name: Normalize source mtimes (keeps the ninja deps log valid across runs)
+        run: |
+          set -e
+          cd "$WORK"
+          echo "Setting every source file to a fixed epoch so restored objects stay fresh"
+          find src \( -name .git -prune \) -o \( -path src/out -prune \) -o -type f -print0 \
+            | xargs -0 -r -P 4 touch -d @1600000000 --
+
       - name: Generate build files (low-RAM gn args)
         run: |
           set -e
@@ -160,23 +169,113 @@ jobs:
           gn gen out/linux_x64 "--args=$(cat "$GITHUB_WORKSPACE/aegis/ci/linux_x64.gn")"
           gn args out/linux_x64 --list --short > /dev/null
 
-      - name: Build chrome + stable deb (made resumable by ccache)
+      - name: Restore banked build tree (resume point of a previous run)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BANK_TAG: aegis-tree-linux
         run: |
           set -e
-          cd "$WORK/src"
-          ccache --zero-stats || true
-          autoninja -C out/linux_x64 chrome chrome/installer/linux:stable_deb
-          ccache --show-stats || true
+          SRC="$WORK/src"
+          if ! gh api "repos/$GITHUB_REPOSITORY/releases/tags/$BANK_TAG" > /tmp/rel.json 2>/dev/null; then
+            echo "No build tree banked yet - compiling from scratch."
+            exit 0
+          fi
+          if ! jq -e '.assets[] | select(.name=="manifest.done")' /tmp/rel.json > /dev/null; then
+            echo "::warning::bank exists but is incomplete (no manifest.done) - compiling from scratch."
+            exit 0
+          fi
+          sudo mkdir -p /mnt/chunks && sudo chown -R runner:runner /mnt/chunks
+          jq -r '.assets[] | select(.name != "manifest.done") | [.url, .name] | @tsv' /tmp/rel.json > /mnt/chunks/urls.tsv
+          echo "Downloading $(wc -l < /mnt/chunks/urls.tsv) bank chunks..."
+          while IFS=$'\t' read -r url name; do
+            curl -sL --retry 3 -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/octet-stream" -o "/mnt/chunks/$name" "$url" &
+          done < /mnt/chunks/urls.tsv
+          wait
+          echo "Extracting build tree (obj + gen + ninja logs)..."
+          cat /mnt/chunks/*.part-* | zstd -q -d -c | tar -x -C "$SRC"
+          echo "Restored: $(du -sh "$SRC/out/linux_x64" | cut -f1)"
+          python3 "$GITHUB_WORKSPACE/aegis/ci/restore_tree.py" "$SRC" linux_x64 "$GITHUB_WORKSPACE" "$VERSION"
+          rm -rf /mnt/chunks
 
-      - name: Save compiler cache (also runs when the build hits the time cap)
-        if: always()
-        continue-on-error: true
-        uses: actions/cache/save@v4
-        with:
-          path: /home/runner/.cache/aegis-ccache
-          key: aegis-ccache-linux-x64-${{ env.VERSION }}-${{ github.run_id }}
+      - name: Build chrome + stable deb (240 min ninja slice)
+        id: build
+        timeout-minutes: 252
+        run: |
+          cd "$WORK/src"
+          set +e
+          set +o pipefail
+          timeout 240m autoninja -C out/linux_x64 chrome chrome/installer/linux:stable_deb 2>&1 | tee /tmp/ninja_live.log
+          code=${PIPESTATUS[0]}
+          set -e
+          set -o pipefail
+          if [ "$code" -eq 124 ]; then
+            PCT=$(grep -oE '\[[0-9]+/[0-9]+\]' /tmp/ninja_live.log | tail -1 || true)
+            echo "bank=true" >> "$GITHUB_OUTPUT"
+            echo "progress=${PCT:-n/a}" >> "$GITHUB_OUTPUT"
+            echo "Ninja slice ended at the time bank. Progress: ${PCT:-n/a} - banking build tree."
+            exit 0
+          fi
+          if [ "$code" -ne 0 ]; then
+            echo "::group::last 60 log lines"; tail -60 /tmp/ninja_live.log || true; echo "::endgroup::"
+            exit "$code"
+          fi
+          echo "bank=false" >> "$GITHUB_OUTPUT"
+          echo "Ninja finished the whole target inside this slice."
+
+      - name: Bank build tree to draft release (resume point for the next run)
+        if: steps.build.outputs.bank == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ODIR: out/linux_x64
+          BANK_TAG: aegis-tree-linux
+        run: |
+          set -e
+          SRC="$WORK/src"
+          cd "$SRC"
+          # force a clean relink of final outputs on resume (partial-link safety)
+          rm -f "$ODIR"/chrome "$ODIR"/chrome_sandbox "$ODIR"/chrome_crashpad_handler "$ODIR"/*.deb
+          find "$ODIR" -name '*.aegis-tmp-*' -delete || true
+          AEG_SHA=$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)
+          echo "$VERSION $AEG_SHA" > "$ODIR/.aegis_head"
+          sudo mkdir -p /mnt/bank && sudo chown -R runner:runner /mnt/bank
+          echo "Archiving build tree (obj + gen + ninja logs)..."
+          tar -C "$SRC" -cf - "$ODIR/obj" "$ODIR/gen" "$ODIR/.ninja_deps" "$ODIR/.ninja_log" "$ODIR/.aegis_head" \
+            | zstd -q -T0 -9 -o /mnt/bank/tree.tar.zst
+          split -b 1900M -d /mnt/bank/tree.tar.zst /mnt/bank/tree.tar.zst.part-
+          echo "tree archive: $(du -sh /mnt/bank/tree.tar.zst | cut -f1) in $(ls /mnt/bank | grep -c part-) chunks"
+          if ! gh api "repos/$GITHUB_REPOSITORY/releases/tags/$BANK_TAG" > /tmp/rel.json 2>/dev/null; then
+            gh release create "$BANK_TAG" --draft \
+              --title "Aegis build tree bank (linux x64)" \
+              --notes "Internal ninja build-tree chunks used to resume time-capped builds. Not a release."
+            gh api "repos/$GITHUB_REPOSITORY/releases/tags/$BANK_TAG" > /tmp/rel.json
+          fi
+          jq -r '.assets[].id' /tmp/rel.json | while read -r aid; do
+            [ -n "$aid" ] && gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$aid" > /dev/null || true
+          done
+          UP=$(jq -r '.upload_url' /tmp/rel.json | sed 's/{.*}//')
+          NCH=0
+          for f in /mnt/bank/*.part-*; do
+            N=$(basename "$f"); NCH=$((NCH+1))
+            curl -s --retry 3 -X POST -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Content-Type: application/octet-stream" --data-binary @"$f" "$UP?name=$N" -o /tmp/up.json
+            python3 -c "import json,sys; d=json.load(open('/tmp/up.json')); sys.exit(0 if d.get('state')=='uploaded' else 1)" \
+              || { echo "::error::chunk upload failed: $N"; cat /tmp/up.json; exit 1; }
+            rm -f "$f"
+          done
+          curl -s --retry 3 -X POST -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Content-Type: application/octet-stream" --data-binary "" "$UP?name=manifest.done" -o /tmp/up.json
+          echo "Banked $NCH chunks to draft release $BANK_TAG - next dispatch resumes from here."
+          rm -rf /mnt/bank
+
+      - name: Bank signal (red on purpose so the watchdog re-dispatches)
+        if: steps.build.outputs.bank == 'true'
+        run: |
+          echo "::error::AEGIS_BANKED ${{ steps.build.outputs.progress }} - build tree archived to draft release aegis-tree-linux; dispatch this workflow again to resume"
+          exit 1
 
       - name: Collect artifacts (.deb + portable .zip)
+        if: steps.build.outputs.bank != 'true'
         run: |
           set -e
           cd "$WORK/src/out/linux_x64"
@@ -196,6 +295,7 @@ jobs:
           ls -la "$GITHUB_WORKSPACE" | grep -E 'Aegis.*linux' || true
 
       - name: Upload artifacts (kept 1 day, just in case)
+        if: steps.build.outputs.bank != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: aegis-linux-x64-${{ github.run_number }}
@@ -205,6 +305,7 @@ jobs:
           retention-days: 1
 
       - name: Attach artifacts to a draft GitHub Release
+        if: steps.build.outputs.bank != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -216,6 +317,8 @@ jobs:
             "$GITHUB_WORKSPACE/${{ env.DEB_NAME }}" \
             "$GITHUB_WORKSPACE/${{ env.ZIP_NAME }}"
           echo "Draft release created: $TAG"
+          # the bank is no longer needed once a real build exists
+          gh release delete aegis-tree-linux --yes || true
 
       - name: Build summary
         if: always()
@@ -228,6 +331,7 @@ jobs:
             echo "| Chromium | ${VERSION:-n/a} |"
             echo "| Target | chrome + chrome/installer/linux:stable_deb (linux x64) |"
             echo "| Runner | ubuntu-24.04 hosted (4 vCPU / 16 GB) |"
+            echo "| Ninja progress | ${{ steps.build.outputs.progress || 'complete' }} |"
             echo "| Deb | ${{ env.DEB_NAME || 'not produced' }} |"
             echo "| Zip | ${{ env.ZIP_NAME || 'not produced' }} |"
           } >> "$GITHUB_STEP_SUMMARY"
