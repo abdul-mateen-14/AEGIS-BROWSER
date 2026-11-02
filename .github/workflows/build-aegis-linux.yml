@@ -129,12 +129,13 @@ jobs:
       - name: Restore banked build tree (draft-release volumes)
         id: restore
         timeout-minutes: 30
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
           bash "$GITHUB_WORKSPACE/aegis/ci/bank.sh" restore linux "$WORK/src" "$OUT"
+        # no continue-on-error: a bank that exists but fails to restore must
+        # RED the run (re-dispatch retries it), never silently seed-rebuild.
 
       - name: Apply Aegis patches (aegis/patches/*.patch)
         run: |
@@ -211,11 +212,12 @@ jobs:
       - name: Bank the build tree (cap reached or error - next run resumes)
         if: env.BUILD_DONE != '1'
         timeout-minutes: 35
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           bash "$GITHUB_WORKSPACE/aegis/ci/bank.sh" save linux "$WORK/src" "$OUT"
+        # no continue-on-error: a failed bank must RED the run (previous
+        # generation stays intact) instead of ending GREEN with no bank.
 
       - name: Fail loudly on a real build error (compile/link failure)
         if: env.BUILD_REASON == 'error'

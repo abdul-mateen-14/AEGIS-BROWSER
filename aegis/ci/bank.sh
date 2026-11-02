@@ -22,7 +22,10 @@
 #       patches AFTER this step, so patched/branded sources get a NEWER
 #       mtime than the banked objects and ninja recompiles exactly those
 #       targets - invalidation by mtime ordering, no dependency-graph
-#       surgery. NEVER exits nonzero: no bank == seed run, not a failure.
+#       surgery. Exit codes: 0 = no bank existed (legit seed run) or the
+#       bank restored cleanly; 1 = a bank EXISTS but could not be restored
+#       (loud RED - re-dispatch to retry instead of silently burning a
+#       multi-hour seed run).
 #
 #   bank.sh save <flavor> <src_dir> <out_name>
 #       Stream obj/gen/.ninja_log/.ninja_deps/.aegis_head/args.gn into
@@ -51,8 +54,16 @@ die()  { echo "[bank] ERROR: $*" >&2; }
 if command -v zstd >/dev/null 2>&1; then EXT="tar.zst"; else EXT="tar.gz"; fi
 
 find_release_id() {
-  gh api "$API/releases?per_page=100" --jq \
-    ".[] | select(.draft and .tag_name==\"$RELEASE_TAG\") | .id" 2>/dev/null | head -1
+  # 3 attempts: a transient API failure here must not look like "no bank"
+  # and silently trigger a multi-hour seed rebuild.
+  local id=""
+  for t in 1 2 3; do
+    id=$(gh api "$API/releases?per_page=100" --jq \
+      ".[] | select(.draft and .tag_name==\"$RELEASE_TAG\") | .id" 2>/dev/null | head -1)
+    [ -n "$id" ] && break
+    sleep 5
+  done
+  printf '%s' "$id"
 }
 
 list_assets() { # prints "name<TAB>size" lines
@@ -115,8 +126,8 @@ DLEOF
   done
 
   if [ -z "$RESTORED" ] || [ ! -d "$OUT_DIR/obj" ]; then
-    log "no usable bank restored - seed run"
-    exit 0
+    die "bank exists for '$RELEASE_TAG' (gens: $(echo "$GENLIST" | tr '\n' ' ')) but nothing usable restored - failing loudly (re-dispatch to retry the restore)"
+    exit 1
   fi
 
   # sanity gate: banked for a different Chromium tag -> drop it (the toolchain
@@ -124,8 +135,8 @@ DLEOF
   if [ -f "$OUT_DIR/.aegis_head" ] && [ -n "${WANT_CHROMIUM_TAG:-}" ]; then
     read -r BANKED_TAG _ < "$OUT_DIR/.aegis_head"
     if [ "$BANKED_TAG" != "$WANT_CHROMIUM_TAG" ]; then
-      log "bank is for Chromium $BANKED_TAG, building $WANT_CHROMIUM_TAG -> dropping banked tree"
-      rm -rf "$OUT_DIR/obj" "$OUT_DIR/gen" "$OUT_DIR/.ninja_log" "$OUT_DIR/.ninja_deps"
+      die "bank is for Chromium $BANKED_TAG but we are building $WANT_CHROMIUM_TAG - re-dispatch with the banked version or knowingly accept a seed rebuild"
+      exit 1
     fi
   fi
   [ -d "$OUT_DIR/obj" ] || { log "tree dropped - seed run"; exit 0; }
