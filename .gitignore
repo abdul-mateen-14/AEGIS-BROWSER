@@ -25,3 +25,4 @@ local.properties
 *.swp
 .DS_Store
 Thumbs.db
+__pycache__/

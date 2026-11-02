@@ -7,34 +7,30 @@ name: Build Aegis Browser APK (free GitHub-hosted runner)
 #   1. Frees disk space and adds swap on the runner
 #   2. Fetches Chromium source WITHOUT git history (saves ~20 GB)
 #   3. Checks out a specific Chromium stable tag
-#   4. Applies your Aegis patches from aegis/patches/ (if any)
-#   5. Builds chrome_public_apk for arm64 with low-RAM gn args (no LTO/PGO)
-#   6. Signs it with YOUR release keystore (from repo Secrets)
-#   7. Publishes the APK to a draft GitHub Release
+#   4. Restores the banked build tree from the previous run (if any)
+#   5. Applies your Aegis patches from aegis/patches/ (if any)
+#   6. Builds chrome_public_apk for arm64 with low-RAM gn args (no LTO/PGO)
+#   7. Signs it with YOUR release keystore (from repo Secrets)
+#   8. Publishes the APK to a draft GitHub Release
 #
-# HOW RESUME WORKS (the 6 h job cap vs a ~14-18 h full compile):
-#
-#   Chromium 156 compiles ALL C++ with C++20 modules (-fmodules), which
-#   ccache cannot cache — so instead of a compiler cache, each run compiles
-#   a bounded ~240 min ninja slice and then banks the ENTIRE ninja build
-#   tree (obj/ + gen/ + .ninja_log + .ninja_deps) to a private draft
-#   release (aegis-tree-android) in <2 GiB chunks. The next run restores
-#   the tree and ninja continues EXACTLY where the slice stopped — finished
-#   objects are never recompiled. The bank is deterministic and safe:
-#
-#   - cc_wrapper (aegis/ci/atomic_cc.c) writes every compile output via
-#     tmp + atomic rename, so a killed compile can never leave a partial .o
-#   - source mtimes are normalized to a fixed epoch, keeping ninja's deps
-#     log valid across runners
-#   - aegis/ci/restore_tree.py validates the bank against the banked
-#     aegis commit: a fix commit surgically invalidates only the outputs
-#     that depend on the patched files; gn/branding changes drop the bank
-#   - final link outputs (.so/.apk) are deleted before banking, forcing a
-#     clean relink
-#   - a manifest.done asset is uploaded last; partial banks are never used
-#
-# Expect 4-6 runs to converge the first full build; the watchdog cron
-# re-dispatches automatically whenever a run ends with AEGIS_BANKED.
+# RESUMABILITY - build-tree banking (aegis/ci/bank.sh), NOT ccache:
+# Chromium 156 compiles all C++ with C++20 modules (clang PCM) and ccache
+# cannot cache module compilation units, so the old ccache design banked
+# almost nothing (37 MB). Instead, when a run approaches the 6 h cap it
+# stops ninja GRACEFULLY (SIGINT), streams out/<dir>/obj + gen +
+# .ninja_log + .ninja_deps into zstd volumes and uploads them as assets of
+# a DRAFT release (no actions/cache -> the 10 GB repo cache limit and its
+# eviction policy never apply; only the 2 GiB per-file limit does, hence
+# the split). The next run downloads, sha256-verifies and extracts the
+# bank, normalizes mtimes (obj must be newer than gen and sources), and
+# ninja continues incrementally. Every compile goes through the atomic
+# cc wrapper (aegis/ci/atomic_cc.c) so a killed compiler never leaves a
+# half-written object for ninja to trust. Patches are applied AFTER the
+# mtime normalization, so any patched source is strictly newer than the
+# banked objects and recompiles - invalidation by mtime ordering.
+# Expect 3-4 runs for the first full build (~10% of each window is spent
+# moving the bank), then fast incremental rebuilds. The watchdog cron
+# re-dispatches automatically.
 
 on:
   workflow_dispatch:
@@ -55,17 +51,21 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-24.04          # pinned: 'ubuntu-latest' is migrating to 26.04 during Oct-Nov 2026
-    timeout-minutes: 352           # GitHub hard cap is 360 for hosted runners
+    timeout-minutes: 350           # GitHub hard cap is 360 for hosted runners
     permissions:
-      contents: write              # needed for draft releases (APK + build-tree bank)
+      contents: write              # needed to create the draft release(s)
     env:
       # /mnt is root-owned on hosted runners (plain mkdir fails with
       # "Permission denied"), so keep the workspace under the runner's home.
       # Same physical disk (~145 GB, >100 GB free after the cleanup step).
       WORK: /home/runner/aegis-work
+      OUT: arm64
 
     steps:
-      - name: Checkout this repository (workflow + patches + branding)
+      - name: Start the job clock (budget math for the build step)
+        run: echo "JOB_START=$(date +%s)" >> "$GITHUB_ENV"
+
+      - name: Checkout this repository (workflow + patches + ci scripts)
         uses: actions/checkout@v4
 
       - name: Free up disk space (~25 GB)
@@ -79,15 +79,18 @@ jobs:
           docker-images: true
           swap-storage: false
 
-      - name: Install JDK 17 + zstd, build the atomic compiler wrapper, add 16 GB swap
+      - name: Install JDK 17, atomic cc wrapper, and add 16 GB swap
         run: |
           set -e
           sudo apt-get update -qq
-          sudo apt-get install -y -qq openjdk-17-jdk zstd > /dev/null
-          gcc -O2 -o /usr/local/bin/aegis_atomic_cc "$GITHUB_WORKSPACE/aegis/ci/atomic_cc.c"
-          printf 'int main(void){return 0;}\n' > /tmp/hi.c
-          /usr/local/bin/aegis_atomic_cc gcc -o /tmp/hi /tmp/hi.c && /tmp/hi \
-            && echo "atomic compiler wrapper OK"
+          sudo apt-get install -y -qq openjdk-17-jdk > /dev/null
+          # Atomic-output compile wrapper: every compiler -o target is written
+          # to a temp file and renamed on success only. A build killed at the
+          # cap (or stopped for banking) never leaves half-written objects.
+          sudo gcc -O2 -o /usr/local/bin/aegis_atomic_cc \
+            "$GITHUB_WORKSPACE/aegis/ci/atomic_cc.c"
+          /usr/local/bin/aegis_atomic_cc echo "atomic wrapper: $(date)" >/dev/null \
+            && echo "wrapper smoke test OK"
           sudo fallocate -l 16G /mnt/swapfile
           sudo chmod 600 /mnt/swapfile
           sudo mkswap /mnt/swapfile > /dev/null
@@ -105,6 +108,7 @@ jobs:
               | python3 -c "import json,sys; print(json.load(sys.stdin)['versions'][0]['version'])")
           fi
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "WANT_CHROMIUM_TAG=$VERSION" >> "$GITHUB_ENV"
           echo "Building Chromium $VERSION for arm64"
 
       - name: Install depot_tools
@@ -137,6 +141,16 @@ jobs:
           cd "$WORK"
           gclient runhooks -j 4
 
+      - name: Restore banked build tree (draft-release volumes)
+        id: restore
+        timeout-minutes: 30
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          bash "$GITHUB_WORKSPACE/aegis/ci/bank.sh" restore android "$WORK/src" "$OUT"
+
       - name: Apply Aegis patches (aegis/patches/*.patch)
         run: |
           set -e
@@ -161,129 +175,70 @@ jobs:
             echo "No branding hook - APK will keep Chromium package identity."
           fi
 
-      - name: Normalize source mtimes (keeps the ninja deps log valid across runs)
-        run: |
-          set -e
-          cd "$WORK"
-          echo "Setting every source file to a fixed epoch so restored objects stay fresh"
-          find src \( -name .git -prune \) -o \( -path src/out -prune \) -o -type f -print0 \
-            | xargs -0 -r -P 4 touch -d @1600000000 --
-
       - name: Generate build files (low-RAM gn args)
         run: |
           set -e
           cd "$WORK/src"
-          gn gen out/arm64 "--args=$(cat "$GITHUB_WORKSPACE/aegis/ci/arm64.gn")"
-          gn args out/arm64 --list --short > /dev/null
+          gn gen "out/$OUT" "--args=$(cat "$GITHUB_WORKSPACE/aegis/ci/arm64.gn")"
+          gn args "out/$OUT" --list --short > /dev/null
+          # mark which Chromium tag + Aegis overlay this tree was built from
+          AEGIS_SHA=$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)
+          echo "$VERSION $AEGIS_SHA" > "out/$OUT/.aegis_head"
+          echo "AEGIS_HEAD_SHA=$AEGIS_SHA" >> "$GITHUB_ENV"
 
-      - name: Restore banked build tree (resume point of a previous run)
-        env:
-          GH_TOKEN: ${{ github.token }}
-          BANK_TAG: aegis-tree-android
+      - name: Surgically invalidate outputs of changed patches
         run: |
-          set -e
-          SRC="$WORK/src"
-          if ! gh api "repos/$GITHUB_REPOSITORY/releases/tags/$BANK_TAG" > /tmp/rel.json 2>/dev/null; then
-            echo "No build tree banked yet - compiling from scratch."
-            exit 0
-          fi
-          if ! jq -e '.assets[] | select(.name=="manifest.done")' /tmp/rel.json > /dev/null; then
-            echo "::warning::bank exists but is incomplete (no manifest.done) - compiling from scratch."
-            exit 0
-          fi
-          sudo mkdir -p /mnt/chunks && sudo chown -R runner:runner /mnt/chunks
-          jq -r '.assets[] | select(.name != "manifest.done") | [.url, .name] | @tsv' /tmp/rel.json > /mnt/chunks/urls.tsv
-          echo "Downloading $(wc -l < /mnt/chunks/urls.tsv) bank chunks..."
-          while IFS=$'\t' read -r url name; do
-            curl -sL --retry 3 -H "Authorization: Bearer $GH_TOKEN" \
-              -H "Accept: application/octet-stream" -o "/mnt/chunks/$name" "$url" &
-          done < /mnt/chunks/urls.tsv
-          wait
-          echo "Extracting build tree (obj + gen + ninja logs)..."
-          cat /mnt/chunks/*.part-* | zstd -q -d -c | tar -x -C "$SRC"
-          echo "Restored: $(du -sh "$SRC/out/arm64" | cut -f1)"
-          python3 "$GITHUB_WORKSPACE/aegis/ci/restore_tree.py" "$SRC" arm64 "$GITHUB_WORKSPACE" "$VERSION"
-          rm -rf /mnt/chunks
+          # restore_tree.py compares the bank's .aegis_head (chromium tag +
+          # aegis overlay sha) with the current values: tag mismatch or
+          # ci/branding changes drop the bank; patch changes map to the
+          # chromium files they touch via `ninja -t deps` and delete ONLY
+          # the outputs that depend on them. Runs after gn gen because it
+          # needs build.ninja. Always exits 0.
+          python3 "$GITHUB_WORKSPACE/aegis/ci/restore_tree.py" \
+            "$WORK/src" "$OUT" "$GITHUB_WORKSPACE" "$VERSION"
 
-      - name: Build (240 min ninja slice)
-        id: build
-        timeout-minutes: 252
+      - name: Build with a time budget (graceful SIGINT stop for banking)
         run: |
-          cd "$WORK/src"
           set +e
-          set +o pipefail
-          timeout 240m autoninja -C out/arm64 "${{ github.event.inputs.build_target }}" 2>&1 | tee /tmp/ninja_live.log
-          code=${PIPESTATUS[0]}
-          set -e
-          set -o pipefail
-          if [ "$code" -eq 124 ]; then
-            PCT=$(grep -oE '\[[0-9]+/[0-9]+\]' /tmp/ninja_live.log | tail -1 || true)
-            echo "bank=true" >> "$GITHUB_OUTPUT"
-            echo "progress=${PCT:-n/a}" >> "$GITHUB_OUTPUT"
-            echo "Ninja slice ended at the time bank. Progress: ${PCT:-n/a} - banking build tree."
-            exit 0
+          cd "$WORK/src"
+          NOW=$(date +%s)
+          ELAPSED=$(( NOW - ${JOB_START:-NOW} ))
+          BUDGET=$(( 350*60 - ELAPSED - 35*60 ))     # 35 min reserve: bank + summary
+          [ "$BUDGET" -gt $(( 295*60 )) ] && BUDGET=$(( 295*60 ))
+          [ "$BUDGET" -lt $(( 60*60 )) ]  && BUDGET=$(( 60*60 ))
+          echo "Build budget: $(( BUDGET / 60 )) min (elapsed $(( ELAPSED / 60 )) min)"
+          timeout --preserve-status -s INT -k 120 "${BUDGET}s" \
+            autoninja -C "out/$OUT" "${{ github.event.inputs.build_target }}"
+          RC=$?
+          DUR=$(( $(date +%s) - NOW ))
+          echo "ninja rc=$RC after $(( DUR / 60 )) min"
+          if [ "$RC" -eq 0 ]; then
+            echo "BUILD_DONE=1" >> "$GITHUB_ENV"
+          elif [ "$DUR" -ge $(( BUDGET - 45 )) ]; then
+            echo "BUILD_REASON=cap" >> "$GITHUB_ENV"
+          else
+            echo "BUILD_REASON=error" >> "$GITHUB_ENV"
           fi
-          if [ "$code" -ne 0 ]; then
-            echo "::group::last 60 log lines"; tail -60 /tmp/ninja_live.log || true; echo "::endgroup::"
-            exit "$code"
-          fi
-          echo "bank=false" >> "$GITHUB_OUTPUT"
-          echo "Ninja finished the whole target inside this slice."
+          echo "NINJA_EDGES=$(wc -l < "out/$OUT/.ninja_log" 2>/dev/null || echo 0)" >> "$GITHUB_ENV"
 
-      - name: Bank build tree to draft release (resume point for the next run)
-        if: steps.build.outputs.bank == 'true'
+      - name: Bank the build tree (cap reached or error - next run resumes)
+        if: env.BUILD_DONE != '1'
+        timeout-minutes: 35
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-          ODIR: out/arm64
-          BANK_TAG: aegis-tree-android
         run: |
-          set -e
-          SRC="$WORK/src"
-          cd "$SRC"
-          # force a clean relink of final outputs on resume (partial-link safety)
-          rm -rf "$ODIR/apks" "$ODIR/lib.unstripped"
-          rm -f "$ODIR"/*.so "$ODIR"/*.so.TOC "$ODIR"/*.apk "$ODIR"/*.aar
-          find "$ODIR" -name '*.aegis-tmp-*' -delete || true
-          AEG_SHA=$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)
-          echo "$VERSION $AEG_SHA" > "$ODIR/.aegis_head"
-          sudo mkdir -p /mnt/bank && sudo chown -R runner:runner /mnt/bank
-          echo "Archiving build tree (obj + gen + ninja logs)..."
-          tar -C "$SRC" -cf - "$ODIR/obj" "$ODIR/gen" "$ODIR/.ninja_deps" "$ODIR/.ninja_log" "$ODIR/.aegis_head" \
-            | zstd -q -T0 -9 -o /mnt/bank/tree.tar.zst
-          split -b 1900M -d /mnt/bank/tree.tar.zst /mnt/bank/tree.tar.zst.part-
-          echo "tree archive: $(du -sh /mnt/bank/tree.tar.zst | cut -f1) in $(ls /mnt/bank | grep -c part-) chunks"
-          if ! gh api "repos/$GITHUB_REPOSITORY/releases/tags/$BANK_TAG" > /tmp/rel.json 2>/dev/null; then
-            gh release create "$BANK_TAG" --draft \
-              --title "Aegis build tree bank (android arm64)" \
-              --notes "Internal ninja build-tree chunks used to resume time-capped builds. Not a release."
-            gh api "repos/$GITHUB_REPOSITORY/releases/tags/$BANK_TAG" > /tmp/rel.json
-          fi
-          jq -r '.assets[].id' /tmp/rel.json | while read -r aid; do
-            [ -n "$aid" ] && gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$aid" > /dev/null || true
-          done
-          UP=$(jq -r '.upload_url' /tmp/rel.json | sed 's/{.*}//')
-          NCH=0
-          for f in /mnt/bank/*.part-*; do
-            N=$(basename "$f"); NCH=$((NCH+1))
-            curl -s --retry 3 -X POST -H "Authorization: Bearer $GH_TOKEN" \
-              -H "Content-Type: application/octet-stream" --data-binary @"$f" "$UP?name=$N" -o /tmp/up.json
-            python3 -c "import json,sys; d=json.load(open('/tmp/up.json')); sys.exit(0 if d.get('state')=='uploaded' else 1)" \
-              || { echo "::error::chunk upload failed: $N"; cat /tmp/up.json; exit 1; }
-            rm -f "$f"
-          done
-          curl -s --retry 3 -X POST -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Content-Type: application/octet-stream" --data-binary "" "$UP?name=manifest.done" -o /tmp/up.json
-          echo "Banked $NCH chunks to draft release $BANK_TAG - next dispatch resumes from here."
-          rm -rf /mnt/bank
+          bash "$GITHUB_WORKSPACE/aegis/ci/bank.sh" save android "$WORK/src" "$OUT"
 
-      - name: Bank signal (red on purpose so the watchdog re-dispatches)
-        if: steps.build.outputs.bank == 'true'
+      - name: Fail loudly on a real build error (compile/link failure)
+        if: env.BUILD_REASON == 'error'
         run: |
-          echo "::error::AEGIS_BANKED ${{ steps.build.outputs.progress }} - build tree archived to draft release aegis-tree-android; dispatch this workflow again to resume"
+          echo "::error::Build stopped early for a non-cap reason (compile error or crash)."
+          echo "::error::The build tree was banked; fix the error and re-dispatch."
           exit 1
 
       - name: Sign APK with the release keystore
-        if: steps.build.outputs.bank != 'true'
+        if: env.BUILD_DONE == '1'
         env:
           KS_B64:    ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KS_ALIAS:  ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -292,21 +247,21 @@ jobs:
         run: |
           set -e
           cd "$WORK/src"
-          APK_IN="out/arm64/apks/ChromePublic.apk"
+          APK_IN="out/$OUT/apks/ChromePublic.apk"
           test -f "$APK_IN" || { echo "::error::$APK_IN not found"; exit 1; }
           echo "$KS_B64" | base64 -d > /tmp/aegis.keystore
           ZIPALIGN=$(ls -1 third_party/android_sdk/public/build-tools/*/zipalign  | sort | tail -1)
           APKSIGNER=$(ls -1 third_party/android_sdk/public/build-tools/*/apksigner | sort | tail -1)
           "$ZIPALIGN" -f -p 4 "$APK_IN" /tmp/aegis-aligned.apk
-          OUT="AegisBrowser_${VERSION}_arm64_r${GITHUB_RUN_NUMBER}.apk"
+          OUT_FILE="AegisBrowser_${VERSION}_arm64_r${GITHUB_RUN_NUMBER}.apk"
           "$APKSIGNER" sign --ks /tmp/aegis.keystore --ks-key-alias "$KS_ALIAS" \
-            --ks-pass "env:KS_PASS" --key-pass "env:KEY_PASS" --out "$OUT" /tmp/aegis-aligned.apk
-          "$APKSIGNER" verify --print-certs "$OUT"
-          cp "$OUT" "$GITHUB_WORKSPACE/"
-          echo "APK_NAME=$OUT" >> "$GITHUB_ENV"
+            --ks-pass "env:KS_PASS" --key-pass "env:KEY_PASS" --out "$OUT_FILE" /tmp/aegis-aligned.apk
+          "$APKSIGNER" verify --print-certs "$OUT_FILE"
+          cp "$OUT_FILE" "$GITHUB_WORKSPACE/"
+          echo "APK_NAME=$OUT_FILE" >> "$GITHUB_ENV"
 
       - name: Upload APK artifact (kept 1 day, just in case)
-        if: steps.build.outputs.bank != 'true'
+        if: env.BUILD_DONE == '1'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.APK_NAME }}
@@ -314,20 +269,17 @@ jobs:
           retention-days: 1
 
       - name: Attach APK to a draft GitHub Release
-        if: steps.build.outputs.bank != 'true'
+        if: env.BUILD_DONE == '1'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          cd "$WORK/src"
           TAG="build-${VERSION}-r${GITHUB_RUN_NUMBER}"
           gh release create "$TAG" --draft \
             --title "Aegis Browser - Chromium ${VERSION} (arm64)" \
             --notes "Automated free build from GitHub Actions. Chromium ${VERSION}, target_cpu=arm64, unofficial build (no LTO/PGO). Sideload: enable 'Install unknown apps', then install the APK." \
             "$GITHUB_WORKSPACE/${{ env.APK_NAME }}"
           echo "Draft release created: $TAG"
-          # the bank is no longer needed once a real build exists
-          gh release delete aegis-tree-android --yes || true
 
       - name: Build summary
         if: always()
@@ -340,6 +292,7 @@ jobs:
             echo "| Chromium | ${VERSION:-n/a} |"
             echo "| Target | ${{ github.event.inputs.build_target }} (arm64) |"
             echo "| Runner | ubuntu-24.04 hosted (4 vCPU / 16 GB) |"
-            echo "| Ninja progress | ${{ steps.build.outputs.progress || 'complete' }} |"
-            echo "| APK | ${{ env.APK_NAME || 'not produced' }} |"
+            echo "| Outcome | ${BUILD_DONE:+APK built}${BUILD_REASON:+stopped early ($BUILD_REASON), tree banked} |"
+            echo "| Ninja edges logged | ${NINJA_EDGES:-n/a} |"
+            echo "| APK | ${APK_NAME:-not produced} |"
           } >> "$GITHUB_STEP_SUMMARY"

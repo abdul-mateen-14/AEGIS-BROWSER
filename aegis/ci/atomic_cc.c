@@ -1,16 +1,25 @@
 /*
- * Aegis atomic-output compiler wrapper (GN `cc_wrapper`).
+ * atomic_cc.c - Aegis CI compile wrapper (GN cc_wrapper).
  *
- * Why: the free CI banks the ninja build tree between runs (the 6 h job cap
- * kills the build mid-compile). When ninja/clang are killed, a half-written
- * .o could remain in the tree; ninja would then consider it up to date on
- * resume and link corrupt objects. This wrapper redirects -o to a temporary
- * file and atomically renames it into place ONLY on compiler success, so
- * every object in the tree is guaranteed complete.
+ * Makes every compiler/tool output atomic: the real command runs with its
+ * -o target redirected to a private temp file next to the real output, and
+ * only renames the temp onto the real name if the command exits 0. A build
+ * killed at the 6 h cap (or stopped by ninja SIGINT during graceful banking)
+ * therefore never leaves a half-written .o / .pcm behind for the next run's
+ * ninja to trust.
  *
- * Usage (GN prepends it before the compiler):
- *   aegis_atomic_cc clang++ ... -o obj/foo.o ...
+ * Semantics:
+ *   - no -o found                -> exec the command unchanged
+ *   - -o under /dev or "-"       -> exec unchanged (rename would break them)
+ *   - otherwise                  -> -o <out> becomes -o <out>.aegis-tmp-<pid>
+ *
+ * Exit code, stdout and stderr pass through unchanged. Because the temp
+ * lives in the same directory as the output, rename(2) is atomic on the
+ * same filesystem.
+ *
+ * Build:  cc -O2 -o aegis_atomic_cc atomic_cc.c
  */
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,49 +27,66 @@
 #include <sys/wait.h>
 
 int main(int argc, char **argv) {
-    if (argc < 2) return 2;                 /* no compiler given */
+    if (argc < 2)
+        return 2;
 
-    int n = argc - 1;                       /* child argv: compiler + flags */
-    char **child = malloc((n + 1) * sizeof(char *));
-    if (!child) return 126;
-    for (int i = 0; i < n; i++) child[i] = argv[i + 1];
-    child[n] = NULL;
+    /* Find the last -o and the argument that follows it. */
+    int last_o = -1;
+    for (int i = 1; i < argc - 1; i++)
+        if (strcmp(argv[i], "-o") == 0)
+            last_o = i + 1;
 
-    /* locate the LAST -o <path> pair (compile commands have exactly one) */
-    int oi = -1;
-    for (int i = 0; i < n - 1; i++)
-        if (strcmp(child[i], "-o") == 0) oi = i + 1;
-    if (oi < 0 || child[oi] == NULL || child[oi][0] == '\0') {
-        execvp(child[0], child);            /* non-compiling invocation */
-        perror("aegis_atomic_cc: execvp");
+    if (last_o < 0) {
+        execvp(argv[1], &argv[1]);
+        fprintf(stderr, "aegis_atomic_cc: execvp %s: %s\n", argv[1], strerror(errno));
         return 127;
     }
 
-    char *out = child[oi];
-    size_t len = strlen(out) + 48;
-    char *tmp = malloc(len);
-    if (!tmp) return 126;
-    snprintf(tmp, len, "%s.aegis-tmp-%d", out, (int)getpid());
-    child[oi] = tmp;
+    const char *out = argv[last_o];
+    if (out[0] == '-' || strncmp(out, "/dev/", 5) == 0) {
+        /* "-o -" or "-o /dev/null" style probes: pass through untouched. */
+        execvp(argv[1], &argv[1]);
+        fprintf(stderr, "aegis_atomic_cc: execvp %s: %s\n", argv[1], strerror(errno));
+        return 127;
+    }
+
+    char tmp[4096];
+    int n = snprintf(tmp, sizeof(tmp), "%s.aegis-tmp-%ld", out, (long)getpid());
+    if (n <= 0 || (size_t)n >= sizeof(tmp)) {
+        fprintf(stderr, "aegis_atomic_cc: output path too long: %s\n", out);
+        return 2;
+    }
+
+    argv[last_o] = tmp; /* child compiles into the temp file */
 
     pid_t pid = fork();
-    if (pid < 0) { perror("aegis_atomic_cc: fork"); return 126; }
+    if (pid < 0) {
+        perror("aegis_atomic_cc: fork");
+        return 2;
+    }
     if (pid == 0) {
-        execvp(child[0], child);
-        perror("aegis_atomic_cc: execvp");
+        execvp(argv[1], &argv[1]);
+        fprintf(stderr, "aegis_atomic_cc: execvp %s: %s\n", argv[1], strerror(errno));
         _exit(127);
     }
-    int st = 0;
-    if (waitpid(pid, &st, 0) < 0) return 126;
-    int code = WIFEXITED(st) ? WEXITSTATUS(st) : 1;
 
-    if (code == 0) {
-        if (rename(tmp, out) != 0) {        /* same dir -> atomic */
-            perror("aegis_atomic_cc: rename");
-            code = 1;
-        }
-    } else {
-        unlink(tmp);                        /* never leave partial output */
+    int st = 0;
+    if (waitpid(pid, &st, 0) < 0) {
+        unlink(tmp);
+        perror("aegis_atomic_cc: waitpid");
+        return 2;
     }
-    return code;
+
+    if (WIFEXITED(st) && WEXITSTATUS(st) == 0) {
+        if (rename(tmp, out) != 0) {
+            unlink(tmp);
+            fprintf(stderr, "aegis_atomic_cc: rename %s -> %s: %s\n",
+                    tmp, out, strerror(errno));
+            return 2;
+        }
+        return 0; /* output appeared atomically, complete */
+    }
+
+    unlink(tmp); /* killed or failed: leave NO output behind */
+    return WIFEXITED(st) ? WEXITSTATUS(st) : 128 + WTERMSIG(st);
 }

@@ -166,6 +166,15 @@ if [ "$CMD" = save ]; then
     log "disk tight (${AVAIL_MB} MB free < ${OBJ_MB}+${GEN_MB} MB) - banking obj only (gen is regenerable)"
     TARGETS="obj"
   fi
+  # Link-tool outputs are NOT covered by the atomic cc wrapper (cc_wrapper
+  # wraps compile tools only): a killed link can leave a half-written .so /
+  # binary that ninja would trust on resume. Delete them before banking -
+  # relinking on the next run costs minutes. Archives inside obj/ are safe:
+  # GN's alink rule rm -f's its output before ar runs.
+  find "$OUT_DIR" -path "$OUT_DIR/obj" -prune -o -path "$OUT_DIR/gen" -prune -o \
+    -type f \( -name '*.so' -o -name '*.so.*' -o -name '*.apk' -o -name '*.crx' -o -perm -u+x \) \
+    -print -delete | wc -l | xargs -I{} echo "[bank] deleted {} link outputs (relit on resume)"
+
   rm -rf "$TMP"; mkdir -p "$TMP"
   TARLIST=""
   for t in $TARGETS; do TARLIST="$TARLIST $OUT_NAME/$t"; done
@@ -224,12 +233,16 @@ UPEOF
   fi
   log "all $i volumes + manifest uploaded and size-verified"
 
-  # two-generation retention: remove every other generation
-  list_assets "$RID" | cut -f1 | grep -E '^[0-9]+-(vol-|sha256)' | while read -r a; do
-    case "$a" in "$GEN"-*) continue ;; esac
-    aid=$(gh api "$API/releases/$RID/assets?per_page=100" --jq ".[] | select(.name==\"$a\") | .id")
-    gh api -X DELETE "$API/releases/assets/$aid" >/dev/null 2>&1 || true
-    log "deleted old-gen asset $a"
+  # retention: keep the TWO newest generations (the newest plus the previous
+  # one as fallback if the newest ever proves bad), delete anything older.
+  OLDGENS=$(list_assets "$RID" | cut -f1 | grep -E '^[0-9]+-(vol-|sha256)' | cut -d- -f1 | sort -un | head -n -2)
+  for OG in $OLDGENS; do
+    [ "$OG" = "$GEN" ] && continue
+    list_assets "$RID" | cut -f1 | grep -E "^$OG-" | while read -r a; do
+      aid=$(gh api "$API/releases/$RID/assets?per_page=100" --jq ".[] | select(.name==\"$a\") | .id")
+      gh api -X DELETE "$API/releases/assets/$aid" >/dev/null 2>&1 || true
+      log "deleted old-gen asset $a"
+    done
   done
   rm -rf "$TMP"
   echo "AEGIS-BANK flavor=$FLAVOR gen=$GEN vols=$i bytes=$BYTES edges=$EDGES"

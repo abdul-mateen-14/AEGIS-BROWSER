@@ -18,14 +18,18 @@
 #   disable_fieldtrial_testing_config : no experiment configs; predictable.
 #   ffmpeg_branding="Chrome" + proprietary_codecs=true : H.264/AAC etc., as
 #                               shipped in Chrome and every public fork.
-#   cc_wrapper = atomic_cc    : every compile writes its output atomically
-#                               (tmp + rename), so a time-capped build can
-#                               never leave a partial .o in the tree that a
-#                               resumed ninja run would trust. (ccache is NOT
-#                               usable here: Chromium 156 compiles all C++
-#                               with C++20 modules (-fmodules), which ccache
-#                               cannot cache - the resume instead banks the
-#                               whole ninja build tree between runs.)
+#   cc_wrapper = "/usr/local/bin/aegis_atomic_cc" : atomic-output compile
+#                               wrapper (aegis/ci/atomic_cc.c). NOTE: ccache
+#                               is useless here - Chromium 156 compiles all
+#                               C++ with C++20 modules (clang PCM), which
+#                               ccache cannot cache (it passes module units
+#                               straight through). The wrapper instead makes
+#                               every -o output atomic (temp file + rename on
+#                               success), so a run killed at the 6 h cap never
+#                               leaves a half-written .o/.pcm for the next
+#                               run's ninja to trust. That is what makes the
+#                               build-tree bank (draft-release volumes, see
+#                               aegis/ci/bank.sh) safe to restore.
 #
 # If you later build on a machine with 32 GB+ RAM, flip is_official_build
 # to true and drop the use_thin_lto / chrome_pgo_phase lines for a
