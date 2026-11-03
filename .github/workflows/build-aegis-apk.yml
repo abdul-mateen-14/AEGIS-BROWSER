@@ -128,15 +128,35 @@ jobs:
           # googlesource.com intermittently returns HTTP 500 mid-clone; a single
           # flake used to kill the entire run. Retry each phase with backoff.
           # Once .gclient exists, gclient sync resumes a partial fetch.
+          # googlesource garbage-collected pinned child-DEPS objects: webpagereplay's
+          # clang-format script @9f796802 now returns HTTP 400 'expected
+          # acknowledgments'/'expected packfile' on EVERY fetch variant (v2, v0,
+          # HTTP/1.1) and 404s on the web object page - the object is gone
+          # server-side, so no retry can ever fix it (it killed APK #15 with the
+          # retry code in place). Write .gclient BY HAND (instead of `fetch
+          # chromium`) with a custom_deps override pointing that dep at a live
+          # revision of the same mirror. It is a formatting tool; the build never
+          # compiles it.
+          if [ ! -f .gclient ]; then
+            cat > .gclient <<'AEGIS_GCLIENT'
+          solutions = [
+            {
+              "name": "src",
+              "url": "https://chromium.googlesource.com/chromium/src.git",
+              "managed": False,
+              "custom_deps": {
+                "src/third_party/webpagereplay/third_party/clang-format/script": "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/clang/tools/clang-format.git@47dce8466cd71943f64df3860e608957d6e20007"
+              },
+              "custom_vars": {},
+              "safesync_url": ""
+            }
+          ]
+          AEGIS_GCLIENT
+          fi
           ok=0
           for i in 1 2 3 4 5 6; do
-            if [ -f .gclient ]; then
-              echo ">>> resuming chromium source sync (attempt $i/6)"
-              gclient sync -D --no-history -j 4 && ok=1 && break
-            else
-              echo ">>> fetching chromium source (attempt $i/6)"
-              fetch --no-history --nohooks chromium && ok=1 && break
-            fi
+            echo ">>> syncing chromium source (attempt $i/6)"
+            gclient sync --nohooks --no-history -j 4 && ok=1 && break
             echo "::warning::source fetch failed (attempt $i/6) - upstream flake, backing off"
             sleep $((i * 30))
           done
