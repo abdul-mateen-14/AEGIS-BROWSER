@@ -109,14 +109,8 @@ jobs:
               local tail_txt
               tail_txt=$(gh run view "$run_id" -R "$REPO" --log-failed 2>/dev/null | tail -30 || echo "(log tail unavailable)")
               open_or_comment_issue "Aegis $name build needs a fix" \
-                "Run: $GITHUB_SERVER_URL/$REPO/actions/runs/$run_id failed with a compile/link error.
-
-<details><summary>failed log tail</summary>
-
-\`\`\`
-$tail_txt
-\`\`\`
-</details>"
+                "$(printf 'Run: %s/actions/runs/%s failed with a compile/link error.\n\n<details><summary>failed log tail</summary>\n\n```\n%s\n```\n</details>' \
+                  "$GITHUB_SERVER_URL/$REPO" "$run_id" "$tail_txt")"
               return 0
             fi
 
