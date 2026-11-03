@@ -1,0 +1,142 @@
+name: Aegis build watchdog (auto re-dispatch)
+
+# Runs ON GITHUB INFRA (no external dependency). Every 20 minutes:
+#   * build still queued/in_progress      -> do nothing
+#   * build GREEN + artifact release      -> do nothing (build DONE)
+#   * build GREEN + banked this run       -> re-dispatch (cap-bank cycle)
+#   * build GREEN, did NOT bank, no artifact -> open/update an issue (seed anomaly)
+#   * build RED  + "Fail loudly" step ran -> real compile error: open/update an
+#                                            issue with the failed-log tail, no dispatch
+#   * build RED  + infra flake            -> re-dispatch, unless >=5 failures in the
+#                                            last 8 runs of that workflow (then issue)
+# Dispatches always pin chromium_version so the bank tag gate never drops a bank.
+# Never dispatches when a queued/in_progress run of that workflow already exists.
+
+on:
+  schedule:
+    - cron: '*/20 * * * *'
+  workflow_dispatch: {}
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+
+concurrency:
+  group: aegis-watchdog
+  cancel-in-progress: false
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PIN: '156.0.8078.79'   # must match the tag recorded in the banks (.aegis_head)
+    steps:
+      - name: Watchdog pass
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          REPO="${GITHUB_REPOSITORY}"
+
+          dispatch() { # workflow
+            gh api -X POST "/repos/$REPO/actions/workflows/$1/dispatches" \
+              --input - <<<"$(jq -n --arg ref main --arg v "$PIN" \
+                '{ref:$ref, inputs:{chromium_version:$v}}')" \
+              && echo "  -> DISPATCHED ($1 @ $PIN)"
+          }
+
+          newest_gen() { # banking tag  (gens are assets named <run_id>-vol-*)
+            gh api "/repos/$REPO/releases?per_page=100" --jq \
+              ".[] | select(.draft and .tag_name==\"$1\") | .assets[].name" 2>/dev/null \
+              | grep -E '^[0-9]+-vol-' | cut -d- -f1 | sort -un | tail -1 || true
+          }
+
+          artifact_of() { # art_prefix run_num art_ext -> asset name or empty
+            gh api "/repos/$REPO/releases?per_page=100" --jq \
+              ".[] | select(.draft) | select((.tag_name|test(\"^$1.*-r$2$\"))) | .assets[].name" 2>/dev/null \
+              | grep -E "$3$" | head -1 || true
+          }
+
+          open_or_comment_issue() { # title body
+            local n
+            n=$(gh issue list -R "$REPO" --state open --search "$1 in:title" --json number --jq '.[0].number' 2>/dev/null || true)
+            if [ -n "$n" ]; then
+              gh issue comment -R "$REPO" "$n" --body "$2" >/dev/null && echo "  -> issue #$n updated"
+            else
+              gh issue create -R "$REPO" --title "$1" --body "$2" >/dev/null && echo "  -> issue created"
+            fi
+          }
+
+          flavor() { # name workflow art_prefix art_ext banking_tag
+            local name="$1" wf="$2" pfx="$3" ext="$4" btag="$5"
+            echo "== $name ($wf)"
+            local j status conclusion run_num run_id
+            j=$(gh api "/repos/$REPO/actions/workflows/$wf/runs?per_page=1")
+            status=$(jq -r '.workflow_runs[0].status' <<<"$j")
+            conclusion=$(jq -r '.workflow_runs[0].conclusion // ""' <<<"$j")
+            run_num=$(jq -r '.workflow_runs[0].run_number' <<<"$j")
+            run_id=$(jq -r '.workflow_runs[0].id' <<<"$j")
+            echo "  latest run #$run_num ($run_id): $status/$conclusion"
+
+            if [ "$status" != "completed" ]; then echo "  active - skip"; return 0; fi
+
+            local art
+            art=$(artifact_of "$pfx" "$run_num" "$ext")
+            if [ -n "$art" ]; then echo "  DONE - artifact: $art"; return 0; fi
+
+            if [ "$conclusion" = "success" ]; then
+              # GREEN without artifact: ok only if this run banked (newest banking gen == run id)
+              local gen; gen=$(newest_gen "$btag")
+              if [ "$gen" = "$run_id" ]; then
+                echo "  cap-banked (gen $gen) - re-dispatch"
+                dispatch "$wf"
+              else
+                echo "  GREEN, no artifact, did NOT bank this run (gen=$gen) - anomaly"
+                open_or_comment_issue "Aegis $name build anomaly: GREEN but nothing banked" \
+                  "Run: $GITHUB_SERVER_URL/$REPO/actions/runs/$run_id ended GREEN with no artifact and no new bank generation (newest gen=$gen). Not re-dispatching automatically - needs a human look."
+              fi
+              return 0
+            fi
+
+            # RED run: distinguish real compile error from infra flake
+            local loud
+            loud=$(gh api "/repos/$REPO/actions/runs/$run_id/jobs" --jq \
+              '[.jobs[0].steps[] | select(.name | startswith("Fail loudly"))][0].conclusion // "absent"')
+            if [ "$loud" = "failure" ]; then
+              echo "  REAL BUILD ERROR - not re-dispatching"
+              local tail_txt
+              tail_txt=$(gh run view "$run_id" -R "$REPO" --log-failed 2>/dev/null | tail -30 || echo "(log tail unavailable)")
+              open_or_comment_issue "Aegis $name build needs a fix" \
+                "Run: $GITHUB_SERVER_URL/$REPO/actions/runs/$run_id failed with a compile/link error.
+
+<details><summary>failed log tail</summary>
+
+\`\`\`
+$tail_txt
+\`\`\`
+</details>"
+              return 0
+            fi
+
+            # infra failure: guarded re-dispatch
+            local fails
+            fails=$(gh api "/repos/$REPO/actions/workflows/$wf/runs?per_page=8" --jq \
+              '[.workflow_runs[] | select(.conclusion=="failure")] | length')
+            echo "  infra failure (recent failures: $fails/8)"
+            if [ "$fails" -ge 5 ]; then
+              open_or_comment_issue "Aegis $name build keeps failing (infra)" \
+                "Run: $GITHUB_SERVER_URL/$REPO/actions/runs/$run_id - $fails of the last 8 runs failed (non-compile). Auto re-dispatch paused, needs a human look."
+              return 0
+            fi
+            dispatch "$wf"
+          }
+
+          flavor "APK"    "build-aegis-apk.yml"   "build-" ".apk" "banking-android"
+          flavor "Linux"  "build-aegis-linux.yml" "linux-" ".deb" "banking-linux"
+
+          {
+            echo "## Watchdog pass $(date -u '+%Y-%m-%d %H:%M UTC')"
+            echo "- see job log for per-flavor decisions"
+          } >> "$GITHUB_STEP_SUMMARY"
