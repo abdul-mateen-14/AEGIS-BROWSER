@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aegis Browser — Desktop UI Mockups (Linux · Windows)</title>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   AEGIS DESKTOP · liquid-glass glassbar · zero-chrome browsing
+   Baseline window 1440×900 · scale via --ws
+   ============================================================ */
+:root{
+  --ws:.42;                     /* window scale per context */
+  --f-head:'Montserrat','Inter',sans-serif;
+  --f-ui:'Inter','Montserrat',sans-serif;
+  --f-mono:'JetBrains Mono',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#101013;font-family:var(--f-ui)}
+body{padding:0}
+
+/* ---------------- plate / explorer scaffolding ---------------- */
+.plate{display:none;padding:34px 40px 30px}
+.plate-canvas{background:#101013;border-radius:20px;padding:30px 36px 26px;
+  --tx:#F4F4F5;--tx2:#A1A1AA;--tx3:#63636B;--hair:rgba(255,255,255,.10);
+  --g-tint:rgba(16,16,18,.52);--g-brd:rgba(255,255,255,.14);--g-hi:rgba(255,255,255,.10);
+  --g-sh:0 12px 40px rgba(0,0,0,.45);--g-blur:28px;--g-sat:1.6;--g-bri:1.06;color:#eceef0}
+body.plate-mode .plate{display:block}
+body.plate-mode .plate:not(.plate-on){display:none}
+body.plate-mode .explorer{display:none}
+.plate-head{display:flex;align-items:baseline;gap:16px;margin:2px 6px 18px}
+.plate-no{font-family:var(--f-head);font-weight:800;font-size:13px;letter-spacing:2.5px;color:#7d838c}
+.plate-title{font-family:var(--f-head);font-weight:600;font-size:16px;letter-spacing:.4px;color:#eceef0}
+.plate-sub{font-size:12px;color:#8b9097;margin-left:auto;letter-spacing:.3px}
+.plate-row{display:flex;gap:30px;align-items:flex-start;justify-content:center}
+.plate-note{margin:16px 6px 0;font-size:11.5px;color:#787d85;letter-spacing:.25px;display:flex;gap:26px;justify-content:center}
+.plate-note b{color:#a9adb4;font-weight:600}
+.win-caption{margin-top:10px;text-align:center;font-family:var(--f-head);font-size:11px;font-weight:600;letter-spacing:1.6px;text-transform:uppercase;color:#8b9097}
+.win-caption span{color:#5c6169;font-weight:400;text-transform:none;letter-spacing:.2px}
+
+/* ---------------- the window ---------------- */
+.winbox{width:calc(1440px * var(--ws));height:calc(900px * var(--ws));position:relative;flex:0 0 auto}
+.win{width:1440px;height:900px;transform:scale(var(--ws));transform-origin:top left;
+  position:absolute;top:0;left:0;border-radius:10px;overflow:hidden;
+  --bg:#0A0A0B;--sur:#141416;--sur2:#1d1d21;--tx:#F4F4F5;--tx2:#A1A1AA;--tx3:#63636B;
+  --hair:rgba(255,255,255,.10);--ink:#08080a;--paper:#f6f6f7;
+  --g-tint:rgba(16,16,18,.52);--g-brd:rgba(255,255,255,.14);--g-hi:rgba(255,255,255,.10);
+  --g-sh:0 12px 40px rgba(0,0,0,.45);--g-blur:28px;--g-sat:1.6;--g-bri:1.06;
+  --scr:rgba(5,5,7,.46);--card:#141416;--cardbrd:rgba(255,255,255,.09);
+  background:var(--bg);color:var(--tx);font-family:var(--f-ui);
+  box-shadow:0 0 0 1px rgba(255,255,255,.085),0 30px 80px rgba(0,0,0,.55);
+}
+.win.theme-light{
+  --bg:#F6F6F7;--sur:#FFFFFF;--sur2:#ececee;--tx:#101013;--tx2:#52525B;--tx3:#8E8E96;
+  --hair:rgba(10,10,12,.09);--ink:#101013;
+  --g-tint:rgba(255,255,255,.62);--g-brd:rgba(10,10,12,.12);--g-hi:rgba(255,255,255,.55);
+  --g-sh:0 12px 34px rgba(16,18,24,.16);--g-sat:1.4;--g-bri:1;
+  --scr:rgba(12,13,16,.28);--card:#FFFFFF;--cardbrd:rgba(10,10,12,.08);
+  box-shadow:0 0 0 1px rgba(10,10,12,.10),0 30px 70px rgba(10,10,14,.24);
+}
+.win.plat-gnome{border-radius:13px}
+
+/* ---------------- page layer ---------------- */
+.page{position:absolute;inset:0;background:var(--bg);z-index:0}
+.pad-top{position:absolute;top:0;left:0;right:0;height:64px;pointer-events:none}
+
+/* home */
+.mode-home .home{display:block}
+.home{display:none;position:absolute;inset:0;z-index:1}
+.home-clock{position:absolute;top:150px;left:0;right:0;text-align:center;
+  font-family:var(--f-head);font-weight:300;font-size:96px;letter-spacing:2px;color:var(--tx)}
+.home-date{position:absolute;top:266px;left:0;right:0;text-align:center;
+  font-family:var(--f-head);font-weight:500;font-size:14px;letter-spacing:4.5px;text-transform:uppercase;color:var(--tx3)}
+.home-search{position:absolute;top:378px;left:50%;transform:translateX(-50%);width:640px;height:56px;
+  border-radius:28px;display:flex;align-items:center;padding:0 20px;gap:14px;
+  background:var(--g-tint);backdrop-filter:blur(var(--g-blur)) saturate(var(--g-sat)) brightness(var(--g-bri));
+  -webkit-backdrop-filter:blur(var(--g-blur)) saturate(var(--g-sat)) brightness(var(--g-bri));
+  border:1px solid var(--g-brd);box-shadow:var(--g-sh),inset 0 1px 0 var(--g-hi)}
+.home-search svg{width:20px;height:20px;stroke:var(--tx2)}
+.home-search .ph{font-size:15.5px;color:var(--tx2);flex:1}
+.home-search .kbd{font-family:var(--f-mono);font-size:11.5px;color:var(--tx3);border:1px solid var(--hair);border-radius:6px;padding:3px 8px}
+.chips{position:absolute;top:462px;left:0;right:0;display:flex;justify-content:center;gap:10px}
+.chip{font-family:var(--f-head);font-size:11.5px;font-weight:600;letter-spacing:.6px;color:var(--tx2);
+  border:1px solid var(--hair);border-radius:999px;padding:8px 16px}
+.chip.on{background:var(--tx);color:var(--bg);border-color:transparent}
+.tiles{position:absolute;top:560px;left:50%;transform:translateX(-50%);display:grid;
+  grid-template-columns:repeat(8,116px);gap:14px}
+.tile{height:96px;border-radius:18px;background:var(--card);border:1px solid var(--cardbrd);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px}
+.tile .fav{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+  font-family:var(--f-head);font-weight:700;font-size:15px;color:#e8e9eb;background:#2a2a2f}
+.theme-light .tile .fav{background:#e3e3e6;color:#3f4045}
+.tile .lb{font-size:11px;color:var(--tx2);letter-spacing:.2px}
+.home-foot{position:absolute;bottom:30px;left:0;right:0;text-align:center;font-size:12px;color:var(--tx3);letter-spacing:.4px}
+.home-foot b{color:var(--tx2);font-weight:600}
+
+/* article */
+.mode-browse .article{display:block}
+.article{display:none;position:absolute;top:0;left:50%;transform:translateX(-50%);width:860px;padding:104px 0 60px;z-index:1}
+.art-kicker{font-family:var(--f-head);font-size:11px;font-weight:700;letter-spacing:2.6px;color:var(--tx3);text-transform:uppercase}
+.art-title{font-family:var(--f-head);font-weight:700;font-size:40px;line-height:1.18;color:var(--tx);margin:14px 0 10px;letter-spacing:-.3px}
+.art-byline{font-size:13px;color:var(--tx2);margin-bottom:26px}
+.art-byline b{color:var(--tx);font-weight:600}
+.art-img{width:860px;height:216px;border-radius:18px;margin:6px 0 10px;position:relative;overflow:hidden;
+  background:linear-gradient(118deg,#39434f 0%,#4d5a68 38%,#28303a 72%,#1b2129 100%)}
+.art-img::after{content:"";position:absolute;inset:0;background:
+  radial-gradient(420px 180px at 78% 18%,rgba(255,255,255,.16),transparent 60%),
+  radial-gradient(300px 160px at 12% 86%,rgba(255,255,255,.07),transparent 55%)}
+.art-cap{font-size:11.5px;color:var(--tx3);margin-bottom:26px}
+.art-h{font-family:var(--f-head);font-size:19px;font-weight:700;color:var(--tx);margin:26px 0 10px}
+.art-p{font-size:15.5px;line-height:1.72;color:var(--tx2);margin-bottom:14px}
+.art-p b{color:var(--tx);font-weight:600}
+.art-quote{margin:24px 0;padding:18px 24px;border-left:3px solid var(--tx3);
+  font-family:var(--f-head);font-weight:500;font-size:18px;line-height:1.5;color:var(--tx)}
+
+/* ---------------- glass chrome ---------------- */
+.glass{background:var(--g-tint);
+  backdrop-filter:blur(var(--g-blur)) saturate(var(--g-sat)) brightness(var(--g-bri));
+  -webkit-backdrop-filter:blur(var(--g-blur)) saturate(var(--g-sat)) brightness(var(--g-bri));
+  border:1px solid var(--g-brd);box-shadow:var(--g-sh),inset 0 1px 0 var(--g-hi)}
+
+/* glassbar — three states */
+.glassbar{position:absolute;top:12px;left:50%;transform:translateX(-50%);height:44px;
+  border-radius:22px;display:flex;align-items:center;padding:0 6px 0 6px;gap:6px;z-index:40;
+  transition:width .24s cubic-bezier(.2,0,0,1),opacity .2s ease,width .36s cubic-bezier(.3,0,.1,1);
+  width:640px}
+.win.st-strip .glassbar{width:1040px}
+.win.st-rail .glassbar{opacity:0;pointer-events:none;transform:translateX(-50%) translateY(-8px)}
+.win.st-rail .gb-cap{opacity:.38;transition-delay:.15s}
+
+/* trust segment */
+.trust{display:flex;align-items:center;gap:8px;height:34px;padding:0 14px 0 10px;border-radius:17px;flex:0 0 auto}
+.win.st-strip .trust{background:rgba(127,127,127,.10)}
+.trust svg{width:17px;height:17px;flex:0 0 auto}
+.trust .dom{font-family:var(--f-head);font-size:13px;font-weight:600;color:var(--tx);letter-spacing:.2px}
+.trust .sep{width:1px;height:16px;background:var(--hair);margin:0 4px}
+.trust .ttl{font-size:12.5px;color:var(--tx2);white-space:nowrap}
+.trust-bad .dom{color:var(--tx)}
+.trust-load .dom{color:var(--tx2)}
+
+/* mini favicon tabs (capsule) + full tabs (strip) */
+.mtabs{display:flex;align-items:center;gap:5px;padding:0 4px}
+.mt{width:26px;height:26px;border-radius:8px;background:transparent;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.mt .fav{width:20px;height:20px;border-radius:6px;display:flex;align-items:center;justify-content:center;
+  font-family:var(--f-head);font-weight:700;font-size:10px;color:#e8e9eb;background:#2e2e34;opacity:.85}
+.theme-light .mt .fav{background:#e2e2e6;color:#3f4045}
+.win.st-capsule .mt-a{display:none}
+.tabs-full{display:none;align-items:center;gap:6px;padding:0 4px;min-width:0}
+.win.st-strip .tabs-full{display:flex}
+.win.st-strip .mtabs{display:none}
+.tf{display:flex;align-items:center;gap:8px;height:32px;padding:0 10px 0 8px;border-radius:16px;flex:0 1 auto;min-width:0}
+.tf .fav{width:18px;height:18px;border-radius:5.5px;display:flex;align-items:center;justify-content:center;
+  font-family:var(--f-head);font-weight:700;font-size:9px;color:#e8e9eb;background:#2e2e34;flex:0 0 auto}
+.theme-light .tf .fav{background:#e2e2e6;color:#3f4045}
+.tf .t{font-size:12px;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:128px}
+.tf.on{background:rgba(127,127,127,.14)}
+.tf.on .t{color:var(--tx);font-weight:500}
+.tf .x{width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--tx3);font-size:11px;flex:0 0 auto}
+.tf-more{display:none;font-family:var(--f-head);font-size:11px;font-weight:700;color:var(--tx2);
+  border:1px solid var(--hair);border-radius:999px;padding:7px 11px;flex:0 0 auto}
+.win.st-strip .tf-more{display:inline-block}
+.win.st-capsule .tf-more{display:none}
+.count-chip{display:inline-flex;align-items:center;font-family:var(--f-head);font-size:11px;font-weight:700;color:var(--tx2);
+  border:1px solid var(--hair);border-radius:999px;padding:6px 10px}
+.win.st-strip .count-chip{display:none}
+
+/* right actions */
+.gb-sp{flex:1}
+.act{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:0 0 auto;color:var(--tx2)}
+.act svg{width:18px;height:18px}
+.act.hi{color:var(--tx)}
+.gb-div{width:1px;height:20px;background:var(--hair);margin:0 4px;flex:0 0 auto}
+
+/* caption buttons */
+.capt{display:flex;align-items:center;height:34px;border-radius:17px;flex:0 0 auto;overflow:hidden}
+.capt .cb{width:42px;height:34px;display:flex;align-items:center;justify-content:center;color:var(--tx2)}
+.capt .cb svg{width:14px;height:14px}
+.capt .cb.cl{color:var(--tx)}
+.win.plat-gnome .capt-win{display:none}
+.capt-gnome{display:none;width:30px;height:30px;border-radius:50%;align-items:center;justify-content:center;flex:0 0 auto;color:var(--tx2);border:1px solid var(--hair)}
+.capt-gnome svg{width:13px;height:13px}
+.win.plat-gnome .capt-gnome{display:flex}
+
+/* edge rail (collapsed) */
+.rail{position:absolute;left:0;top:50%;transform:translateY(-50%);width:6px;height:160px;z-index:40;
+  border-radius:0 4px 4px 0;border-left:none;opacity:0;transition:opacity .2s ease,width .12s ease-out}
+.win.st-rail .rail{opacity:1}
+.rail:hover{width:10px}
+/* corner caption cluster in rail state */
+.gb-cap{position:absolute;top:12px;right:14px;height:30px;display:flex;gap:8px;align-items:center;z-index:40;
+  border-radius:15px;padding:0 8px;opacity:1;transition:opacity .2s ease}
+.win.plat-win .gb-cap .cc{width:26px;height:22px;display:flex;align-items:center;justify-content:center;color:var(--tx2)}
+.win.plat-gnome .gb-cap .cc.c-min,.win.plat-gnome .gb-cap .cc.c-max{display:none}
+.win.plat-win.st-capsule .gb-cap,.win.plat-win.st-strip .gb-cap{display:none}
+.win.plat-gnome.st-capsule .gb-cap,.win.plat-gnome.st-strip .gb-cap{display:none}
+
+/* loading hairline */
+.loadbar{position:absolute;top:54px;left:50%;transform:translateX(-50%);width:180px;height:2px;border-radius:2px;
+  background:linear-gradient(90deg,transparent,var(--tx2),transparent);opacity:0;z-index:41}
+.win.trust-load .loadbar{opacity:.9;animation:load 1.6s linear infinite}
+@keyframes load{0%{margin-left:-90px}100%{margin-left:90px}}
+
+/* ---------------- overlays ---------------- */
+.scrim{position:absolute;inset:0;z-index:50;background:var(--scr);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);
+  opacity:0;pointer-events:none;transition:opacity .25s ease}
+.ov-tabs .scrim,.ov-menu .scrim,.ov-omni .scrim{opacity:1}
+.sheet{position:absolute;z-index:60;background:var(--g-tint);
+  backdrop-filter:blur(var(--g-blur)) saturate(var(--g-sat)) brightness(var(--g-bri));
+  -webkit-backdrop-filter:blur(var(--g-blur)) saturate(var(--g-sat)) brightness(var(--g-bri));
+  border:1px solid var(--g-brd);box-shadow:var(--g-sh),inset 0 1px 0 var(--g-hi);
+  border-radius:22px;display:none}
+.ov-tabs .sh-tabs,.ov-menu .sh-menu,.ov-omni .sh-omni{display:block}
+.sh-tabs{top:68px;left:36px;right:36px;bottom:32px;padding:22px 24px}
+.sh-head{display:flex;align-items:center;gap:14px;margin-bottom:16px}
+.sh-title{font-family:var(--f-head);font-size:16px;font-weight:700;color:var(--tx)}
+.sh-count{font-family:var(--f-head);font-size:11px;font-weight:700;color:var(--tx2);border:1px solid var(--hair);border-radius:999px;padding:5px 10px}
+.sh-field{margin-left:auto;display:flex;align-items:center;gap:10px;width:300px;height:36px;border-radius:18px;
+  border:1px solid var(--hair);padding:0 14px;color:var(--tx3);font-size:13px}
+.sh-field svg{width:15px;height:15px}
+.sh-esc{font-family:var(--f-mono);font-size:10.5px;color:var(--tx3);border:1px solid var(--hair);border-radius:6px;padding:3px 7px}
+.tgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.tcard{height:150px;border-radius:16px;background:var(--card);border:1px solid var(--cardbrd);padding:14px;position:relative;overflow:hidden}
+.tcard .cv{position:absolute;left:14px;right:14px;top:14px;bottom:44px;border-radius:10px;background:var(--sur2)}
+.tcard .cl{position:absolute;left:14px;right:14px;bottom:12px;display:flex;align-items:center;gap:8px}
+.tcard .fav{width:20px;height:20px;border-radius:6px;display:flex;align-items:center;justify-content:center;
+  font-family:var(--f-head);font-weight:700;font-size:9px;color:#e8e9eb;background:#2e2e34;flex:0 0 auto}
+.theme-light .tcard .fav{background:#e2e2e6;color:#3f4045}
+.tcard .nm{font-size:12px;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tcard.on{border:1.5px solid var(--tx3)}
+.tcard.on .nm{color:var(--tx);font-weight:600}
+.tcard.pv{background:var(--bg)}
+.tcard.pv .cv{background:repeating-linear-gradient(45deg,#17171b 0 8px,#101014 8px 16px)}
+.theme-light .tcard.pv .cv{background:repeating-linear-gradient(45deg,#2a2a30 0 8px,#17171b 8px 16px)}
+.tcard.pv .nm{color:var(--tx2)}
+.tcard.new{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--tx2);
+  background:transparent;border:1.5px dashed var(--hair)}
+.tcard.new svg{width:22px;height:22px}
+.tcard.new .nm{color:var(--tx2)}
+
+.sh-menu{top:66px;right:26px;width:312px;padding:16px 14px 12px}
+.mn-dom{display:flex;align-items:center;gap:10px;padding:6px 8px 14px;border-bottom:1px solid var(--hair);margin-bottom:12px}
+.mn-dom .fav{width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+  font-family:var(--f-head);font-weight:700;font-size:11px;color:#e8e9eb;background:#2e2e34}
+.theme-light .mn-dom .fav{background:#e2e2e6;color:#3f4045}
+.mn-dom .d{font-family:var(--f-head);font-size:13.5px;font-weight:600;color:var(--tx)}
+.mn-dom .s{font-size:11px;color:var(--tx3)}
+.mn-block{margin-left:auto;display:flex;align-items:center;gap:6px;font-family:var(--f-head);font-size:10.5px;font-weight:700;
+  color:var(--tx);border:1px solid var(--g-brd);background:rgba(127,127,127,.12);border-radius:999px;padding:6px 10px}
+.mn-block svg{width:13px;height:13px}
+.mn-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.mn-it{display:flex;align-items:center;gap:10px;height:42px;border-radius:12px;padding:0 10px;color:var(--tx2);font-size:13px}
+.mn-it svg{width:17px;height:17px;flex:0 0 auto}
+.mn-it.wide{grid-column:1 / -1}
+.mn-it.kb::after{content:attr(data-k);margin-left:auto;font-family:var(--f-mono);font-size:10px;color:var(--tx3)}
+
+.sh-omni{top:64px;left:50%;transform:translateX(-50%);width:760px;padding:14px 14px 12px}
+.om-in{display:flex;align-items:center;gap:12px;height:52px;border-radius:16px;padding:0 16px;
+  background:rgba(127,127,127,.10);border:1px solid var(--g-brd)}
+.om-in svg{width:19px;height:19px;color:var(--tx2)}
+.om-in .q{font-size:16px;color:var(--tx)}
+.om-in .caret{width:1.5px;height:20px;background:var(--tx);animation:blink 1.1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.om-chips{display:flex;gap:8px;margin:12px 4px 14px}
+.om-grp{padding:4px 8px}
+.om-lab{font-family:var(--f-head);font-size:10px;font-weight:700;letter-spacing:1.8px;text-transform:uppercase;color:var(--tx3);margin:0 0 6px 2px}
+.om-it{display:flex;align-items:center;gap:12px;height:40px;border-radius:12px;padding:0 10px}
+.om-it svg{width:16px;height:16px;color:var(--tx3);flex:0 0 auto}
+.om-it .t{font-size:13.5px;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.om-it .t b{color:var(--tx);font-weight:600}
+.om-it .k{margin-left:auto;font-family:var(--f-mono);font-size:10.5px;color:var(--tx3)}
+.om-ft{display:flex;justify-content:space-between;align-items:center;padding:10px 10px 4px;border-top:1px solid var(--hair);margin-top:8px}
+.om-ft .hint{font-size:11px;color:var(--tx3)}
+
+/* ============================================================ */
+/* EXPLORER                                                       */
+/* ============================================================ */
+.explorer{min-height:100vh;padding:26px 34px 40px}
+.ex-head{display:flex;align-items:center;gap:22px;margin-bottom:20px}
+.wordmark{display:flex;align-items:center;gap:12px}
+.wordmark svg{width:26px;height:26px;color:#e8e9eb}
+.wordmark .wm{font-family:var(--f-head);font-weight:800;font-size:17px;letter-spacing:3px;color:#eceef0}
+.wordmark .wm span{color:#8b9097;font-weight:500}
+.ex-title{font-family:var(--f-head);font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#8b9097}
+.tgl{display:flex;align-items:center;gap:8px}
+.tgl .lb{font-family:var(--f-head);font-size:10px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:#6d727a}
+.tg{display:flex;border:1px solid #2c2c31;border-radius:999px;overflow:hidden}
+.tg button{appearance:none;border:0;background:transparent;color:#9aa0a8;font-family:var(--f-head);
+  font-size:11px;font-weight:600;letter-spacing:.4px;padding:7px 13px;cursor:pointer}
+.tg button.on{background:#e8e9eb;color:#101013}
+.ex-stage{display:flex;gap:26px;align-items:flex-start;justify-content:center;flex-wrap:wrap}
+.ex-side{width:300px;display:flex;flex-direction:column;gap:14px}
+.spec{border:1px solid #26262b;border-radius:14px;padding:14px 16px;background:#141417}
+.spec .h{font-family:var(--f-head);font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#6d727a;margin-bottom:9px}
+.spec .r{display:flex;justify-content:space-between;font-size:12px;color:#9aa0a8;padding:4.5px 0;border-bottom:1px dashed #232328}
+.spec .r:last-child{border-bottom:none}
+.spec .r b{color:#dcdde0;font-weight:600;font-family:var(--f-mono);font-size:11.5px}
+.ex-hint{font-size:11.5px;color:#5f646c;line-height:1.7}
+.ex-hint code{font-family:var(--f-mono);font-size:10.5px;color:#9aa0a8}
+.ex-win{--ws:.62}
+</style>
+</head>
+<body>
+<!-- ================= EXPLORER ================= -->
+<div class="explorer">
+  <div class="ex-head">
+    <div class="wordmark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 2.6l7.4 2.9v5.3c0 4.6-3.1 7.9-7.4 9.8-4.3-1.9-7.4-5.2-7.4-9.8V5.5L12 2.6z"/><path d="M9.4 15.4L12 8.6l2.6 6.8"/><path d="M10.3 13.2h3.4"/></svg>
+      <div class="wm">AEGIS <span>DESKTOP</span></div>
+    </div>
+    <div class="ex-title">Liquid-glass glassbar · Linux &amp; Windows</div>
+    <div class="tgl"><span class="lb">Platform</span>
+      <div class="tg" id="tg-plat"><button data-v="plat-win" class="on">Windows 11</button><button data-v="plat-gnome">GNOME</button></div></div>
+    <div class="tgl"><span class="lb">Theme</span>
+      <div class="tg" id="tg-theme"><button data-v="theme-dark" class="on">Dark</button><button data-v="theme-light">Light</button></div></div>
+    <div class="tgl"><span class="lb">Chrome</span>
+      <div class="tg" id="tg-st"><button data-v="st-rail">Rail</button><button data-v="st-capsule" class="on">Capsule</button><button data-v="st-strip">Strip</button></div></div>
+    <div class="tgl"><span class="lb">Page</span>
+      <div class="tg" id="tg-mode"><button data-v="mode-home">Home</button><button data-v="mode-browse" class="on">Article</button></div></div>
+    <div class="tgl"><span class="lb">Overlay</span>
+      <div class="tg" id="tg-ov"><button data-v="ov-none" class="on">—</button><button data-v="ov-tabs">Tabs</button><button data-v="ov-menu">Menu</button><button data-v="ov-omni">Omnibox</button></div></div>
+  </div>
+  <div class="ex-stage">
+    <div class="winbox ex-win"><div class="win theme-dark plat-win mode-browse st-capsule ov-none trust-ok"
+      data-dom="aegis.dev" data-title="The Quiet Web" id="exwin"></div></div>
+    <div class="ex-side">
+      <div class="spec"><div class="h">Live state</div>
+        <div class="r">platform<b id="ro-plat">Windows 11</b></div>
+        <div class="r">theme<b id="ro-theme">dark</b></div>
+        <div class="r">chrome<b id="ro-st">capsule · 640×44</b></div>
+        <div class="r">overlay<b id="ro-ov">none</b></div>
+        <div class="r">page<b id="ro-mode">article</b></div>
+      </div>
+      <div class="spec"><div class="h">Geometry — 1440×900 baseline</div>
+        <div class="r">capsule<b>640 × 44 · r22</b></div>
+        <div class="r">strip (hover)<b>1040 × 44 · r22</b></div>
+        <div class="r">edge rail<b>6 × 160 · left</b></div>
+        <div class="r">rail hit area<b>32 × 192</b></div>
+        <div class="r">chrome coverage<b>2.17 % vs ≈9.8 %</b></div>
+        <div class="r">glass<b>blur 28 · sat 1.6 · tint 52 %</b></div>
+      </div>
+      <div class="spec"><div class="h">Shortcuts</div>
+        <div class="r">focus omnibox<b>Ctrl+L</b></div>
+        <div class="r">tab grid<b>Ctrl+Shift+A</b></div>
+        <div class="r">toggle rail<b>Ctrl+\</b></div>
+        <div class="r">fullscreen<b>F11</b></div>
+        <div class="r">dismiss overlay<b>Esc</b></div>
+      </div>
+      <div class="ex-hint">Hover the capsule to feel the strip expand; hover the rail in <code>Rail</code> state to feel the swell. Print plates for the proposal PDF render at <code>?plate=1</code> … <code>?plate=6</code>.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= PLATE 1 · CORE DARK ================= -->
+<div class="plate" data-n="1"><div class="plate-canvas">
+  <div class="plate-head"><span class="plate-no">PLATE 01</span><span class="plate-title">Core experience — dark theme</span>
+    <span class="plate-sub">Windows 11 frame · 1440×900 · home, browsing, rail</span></div>
+  <div class="plate-row">
+    <div><div class="winbox" style="--ws:.42"><div class="win theme-dark plat-win mode-home st-capsule ov-none trust-ok" data-dom="aegis.dev"></div></div>
+      <div class="win-caption">New-tab home <span>· command omnibox</span></div></div>
+    <div><div class="winbox" style="--ws:.42"><div class="win theme-dark plat-win mode-browse st-capsule ov-none trust-ok" data-dom="aegis.dev" data-title="The Quiet Web"></div></div>
+      <div class="win-caption">Browsing <span>· glassbar capsule</span></div></div>
+    <div><div class="winbox" style="--ws:.42"><div class="win theme-dark plat-win mode-browse st-rail ov-none trust-ok" data-dom="aegis.dev"></div></div>
+      <div class="win-caption">Reading <span>· collapsed to edge rail</span></div></div>
+  </div>
+  <div class="plate-note"><span><b>2.17 %</b> of the viewport is chrome — a conventional tab strip + toolbar spends <b>9.8 %</b>.</span><span>The rail is <b>6 × 160</b> with a <b>32 × 192</b> hit area.</span></div>
+</div></div>
+
+<!-- ================= PLATE 2 · CORE LIGHT ================= -->
+<div class="plate" data-n="2"><div class="plate-canvas">
+  <div class="plate-head"><span class="plate-no">PLATE 02</span><span class="plate-title">Core experience — light theme</span>
+    <span class="plate-sub">identical geometry · frosted-paper glass</span></div>
+  <div class="plate-row">
+    <div><div class="winbox" style="--ws:.42"><div class="win theme-light plat-win mode-home st-capsule ov-none trust-ok" data-dom="aegis.dev"></div></div>
+      <div class="win-caption">New-tab home <span>· light</span></div></div>
+    <div><div class="winbox" style="--ws:.42"><div class="win theme-light plat-win mode-browse st-capsule ov-none trust-ok" data-dom="aegis.dev" data-title="The Quiet Web"></div></div>
+      <div class="win-caption">Browsing <span>· light</span></div></div>
+    <div><div class="winbox" style="--ws:.42"><div class="win theme-light plat-win mode-browse st-rail ov-none trust-ok" data-dom="aegis.dev"></div></div>
+      <div class="win-caption">Reading <span>· rail, light</span></div></div>
+  </div>
+  <div class="plate-note"><span>Same five-layer recipe, paper tint 62 % — themes are a token swap, not a redesign.</span></div>
+</div></div>
+
+<!-- ================= PLATE 3 · ANATOMY ================= -->
+<div class="plate" data-n="3"><div class="plate-canvas">
+  <div class="plate-head"><span class="plate-no">PLATE 03</span><span class="plate-title">Glassbar anatomy &amp; states</span>
+    <span class="plate-sub">1.15× capsule · 2.4× rail · trust line · glass stack</span></div>
+  <div class="plate-row" style="align-items:flex-start;justify-content:center;gap:44px">
+    <div style="width:1340px;flex:0 0 auto">
+      <div style="position:relative;width:900px;height:206px;margin:26px 0 8px">
+        <div style="position:absolute;left:52px;top:24px;width:736px;height:50px;border-radius:25px;transform:scale(1.15);transform-origin:top left"
+             class="glass" >
+          <div style="display:flex;align-items:center;height:50px;padding:0 7px;gap:7px">
+            <div style="display:flex;align-items:center;gap:8px;height:38px;padding:0 16px 0 11px;border-radius:19px;background:rgba(127,127,127,.10)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#F4F4F5" stroke-width="1.7" style="width:19px;height:19px"><path d="M12 2.6l7.4 2.9v5.3c0 4.6-3.1 7.9-7.4 9.8-4.3-1.9-7.4-5.2-7.4-9.8V5.5L12 2.6z"/><path d="M9.4 15.4L12 8.6l2.6 6.8"/><path d="M10.3 13.2h3.4"/></svg>
+              <span style="font-family:var(--f-head);font-size:14.5px;font-weight:600;color:#F4F4F5">aegis.dev</span>
+              <span style="width:1px;height:18px;background:rgba(255,255,255,.14);margin:0 3px"></span>
+              <span style="font-size:13.5px;color:#A1A1AA">The Quiet Web</span>
+            </div>
+            <div style="display:flex;gap:6px">
+              <div class="mt"><div class="fav">G</div></div><div class="mt"><div class="fav">W</div></div><div class="mt"><div class="fav">S</div></div>
+              <span style="font-family:var(--f-head);font-size:11px;font-weight:700;color:#A1A1AA;border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:7px 11px">+8</span>
+            </div>
+            <div style="flex:1"></div>
+            <div class="act hi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div>
+            <div class="act"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg></div>
+            <div style="width:1px;height:22px;background:rgba(255,255,255,.14);margin:0 5px"></div>
+            <div class="capt" style="background:transparent;border:none;box-shadow:none">
+              <div class="cb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14"/></svg></div>
+              <div class="cb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5.5" y="5.5" width="13" height="13" rx="1.5"/></svg></div>
+              <div class="cb cl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></div>
+            </div>
+          </div>
+        </div>
+        <div style="position:absolute;left:52px;top:196px;width:828px;height:1px;background:#3a3a41"></div>
+        <div style="position:absolute;left:52px;top:200px;font-family:var(--f-mono);font-size:11px;color:#8b9097">640 dp</div>
+        <div style="position:absolute;right:-8px;top:24px;width:1px;height:63px;background:#3a3a41"></div>
+        <div style="position:absolute;right:-46px;top:44px;font-family:var(--f-mono);font-size:11px;color:#8b9097">44 dp</div>
+        <div style="position:absolute;left:30px;top:8px;font-family:var(--f-mono);font-size:11px;color:#8b9097">r = 22</div>
+        <div style="position:absolute;left:52px;top:-14px;font-family:var(--f-mono);font-size:11px;color:#6d727a">top 12 dp · floats over page · drag region = whole top band</div>
+      </div>
+      <div style="display:flex;gap:16px;margin-top:38px;justify-content:flex-start">
+        <div style="text-align:center">
+          <div class="glass" style="width:424px;height:35px;border-radius:18px;display:flex;align-items:center;gap:9px;padding:0 14px">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#F4F4F5" stroke-width="1.7" style="width:15px;height:15px"><path d="M12 2.6l7.4 2.9v5.3c0 4.6-3.1 7.9-7.4 9.8-4.3-1.9-7.4-5.2-7.4-9.8V5.5L12 2.6z"/><path d="M9.4 15.4L12 8.6l2.6 6.8"/></svg>
+            <span style="font-family:var(--f-head);font-size:11.5px;font-weight:600;color:#F4F4F5">aegis.dev</span>
+            <span style="margin-left:auto;font-size:10.5px;color:#6d727a">secure</span></div>
+          <div style="margin-top:8px;font-family:var(--f-mono);font-size:10.5px;color:#8b9097">TLS + 14 blocked</div>
+        </div>
+        <div style="text-align:center">
+          <div class="glass" style="width:424px;height:35px;border-radius:18px;display:flex;align-items:center;gap:9px;padding:0 14px;position:relative;overflow:hidden">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#A1A1AA" stroke-width="1.7" style="width:15px;height:15px"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
+            <span style="font-family:var(--f-head);font-size:11.5px;font-weight:600;color:#A1A1AA">loading aegis.dev</span>
+            <span style="position:absolute;left:0;bottom:0;height:2px;width:190px;border-radius:2px;background:linear-gradient(90deg,transparent,#F4F4F5,transparent)"></span></div>
+          <div style="margin-top:8px;font-family:var(--f-mono);font-size:10.5px;color:#8b9097">hairline progress on the radius</div>
+        </div>
+        <div style="text-align:center">
+          <div class="glass" style="width:424px;height:35px;border-radius:18px;display:flex;align-items:center;gap:9px;padding:0 14px">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#F4F4F5" stroke-width="1.7" style="width:15px;height:15px"><path d="M12 2.6l7.4 2.9v5.3c0 4.6-3.1 7.9-7.4 9.8-4.3-1.9-7.4-5.2-7.4-9.8V5.5L12 2.6z"/><path d="M7 10h10M7 14h6"/></svg>
+            <span style="font-family:var(--f-head);font-size:11.5px;font-weight:600;color:#F4F4F5">not encrypted</span>
+            <span style="margin-left:auto;font-size:10.5px;color:#6d727a">http</span></div>
+          <div style="margin-top:8px;font-family:var(--f-mono);font-size:10.5px;color:#8b9097">explicit, never hidden</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:14px;margin-top:34px;justify-content:center">
+        <div class="spec" style="width:236px;background:#141417;border-color:#26262b"><div class="h">Glass stack — top down</div>
+          <div class="r">1 · tint<b>ink @ 52 %</b></div><div class="r">2 · backdrop blur<b>28 px · sat 1.6</b></div>
+          <div class="r">3 · hairline<b>1 dp · white @ 14 %</b></div><div class="r">4 · top highlight<b>1 dp @ 10 %</b></div>
+          <div class="r">5 · shadow<b>0 12 40 · 45 %</b></div><div class="r">beneath · live page<b>always live</b></div></div>
+        <div class="spec" style="width:236px;background:#141417;border-color:#26262b"><div class="h">Capsule segments</div>
+          <div class="r">trust segment<b>~300 dp flex</b></div><div class="r">mini tabs<b>26 dp favicons</b></div>
+          <div class="r">overflow chip<b>“+N” pill</b></div><div class="r">actions<b>+ · ⋮ · 34 dp</b></div>
+          <div class="r">caption cluster<b>126 × 34</b></div><div class="r">gaps<b>6 dp · padding 7</b></div></div>
+      </div>
+    </div>
+    <div style="flex:.62;display:flex;flex-direction:column;align-items:center">
+      <div style="position:relative;width:190px;height:432px;margin-top:20px">
+        <div class="glass" style="position:absolute;left:52px;top:0;width:15px;height:400px;border-radius:0 8px 8px 0;border-left:none"></div>
+        <div style="position:absolute;left:18px;top:-6px;width:82px;height:412px;border:1.5px dashed #565b63;border-radius:8px"></div>
+        <div style="position:absolute;left:-14px;top:168px;font-family:var(--f-mono);font-size:10.5px;color:#8b9097">192</div>
+        <div style="position:absolute;right:-30px;top:186px;font-family:var(--f-mono);font-size:10.5px;color:#8b9097">32</div>
+      </div>
+      <div style="margin-top:10px;font-family:var(--f-mono);font-size:11px;color:#8b9097">edge rail @ 2.4×</div>
+      <div style="margin-top:6px;font-size:11px;color:#6d727a;text-align:center;line-height:1.7;width:230px">visual 6 × 160 · hit area 32 × 192<br>hover swell to 10 dp · 120 ms</div>
+      <div style="margin-top:26px;display:flex;flex-direction:column;gap:8px;align-items:center">
+        <div style="display:flex;align-items:center;gap:10px"><div class="glass" style="width:14px;height:56px;border-radius:0 5px 5px 0;border-left:none"></div><span style="font-family:var(--f-mono);font-size:10.5px;color:#8b9097">rail</span></div>
+        <div style="color:#565b63">↓ hover · Ctrl+\</div>
+        <div class="glass" style="width:210px;height:28px;border-radius:14px;display:flex;align-items:center;padding:0 8px;gap:5px"><span class="fav" style="width:15px;height:15px;border-radius:4.5px;background:#2e2e34;color:#e8e9eb;font-family:var(--f-head);font-weight:700;font-size:7.5px;display:flex;align-items:center;justify-content:center">A</span><span style="font-family:var(--f-head);font-size:9.5px;font-weight:600;color:#F4F4F5">aegis.dev</span><span style="flex:1"></span><span style="font-family:var(--f-mono);font-size:8.5px;color:#6d727a">+8 · ⋮</span></div>
+        <div style="color:#565b63">↓ hover capsule · Ctrl+L</div>
+        <div class="glass" style="width:300px;height:28px;border-radius:14px;display:flex;align-items:center;padding:0 7px;gap:4px">
+          <span style="font-family:var(--f-head);font-size:9px;font-weight:600;color:#F4F4F5;background:rgba(127,127,127,.14);border-radius:10px;padding:4px 8px">● aegis.dev</span>
+          <span style="font-size:9px;color:#A1A1AA">GitLab</span><span style="font-size:9px;color:#A1A1AA">Wikipedia</span><span style="font-size:9px;color:#A1A1AA">Signal</span>
+          <span style="font-family:var(--f-head);font-size:8.5px;font-weight:700;color:#A1A1AA;border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:3px 6px">+8</span>
+          <span style="flex:1"></span><span style="font-family:var(--f-mono);font-size:8.5px;color:#6d727a">+ ⋮ ▢</span></div>
+        <div style="font-family:var(--f-mono);font-size:10.5px;color:#8b9097">strip · 1040 × 44</div>
+      </div>
+    </div>
+  </div>
+</div></div>
+
+<!-- ================= PLATE 4 · OVERLAYS DARK ================= -->
+<div class="plate" data-n="4"><div class="plate-canvas">
+  <div class="plate-head"><span class="plate-no">PLATE 04</span><span class="plate-title">Overlays — dark theme</span>
+    <span class="plate-sub">tab grid · menu · command omnibox — one glass sheet, three contents</span></div>
+  <div class="plate-row">
+    <div><div class="winbox" style="--ws:.42"><div class="win theme-dark plat-win mode-browse st-capsule ov-tabs trust-ok" data-dom="aegis.dev"></div></div>
+      <div class="win-caption">Tab grid <span>· Ctrl+Shift+A</span></div></div>
+    <div><div class="winbox" style="--ws:.42"><div class="win theme-dark plat-win mode-browse st-capsule ov-menu trust-ok" data-dom="aegis.dev"></div></div>
+      <div class="win-caption">Menu <span>· ⋮ or Alt+E</span></div></div>
+    <div><div class="winbox" style="--ws:.42"><div class="win theme-dark plat-win mode-browse st-capsule ov-omni trust-ok" data-dom="aegis.dev"></div></div>
+      <div class="win-caption">Command omnibox <span>· Ctrl+L</span></div></div>
+  </div>
+  <div class="plate-note"><span>Scrim is <b>2 px blur + 46 % ink</b> — the page stays legible behind every sheet.</span><span>Sheets dismiss with <b>Esc</b> or a click on the page.</span></div>
+</div></div>
+
+<!-- ================= PLATE 5 · OVERLAYS LIGHT ================= -->
+<div class="plate" data-n="5"><div class="plate-canvas">
+  <div class="plate-head"><span class="plate-no">PLATE 05</span><span class="plate-title">Overlays — light theme</span>
+    <span class="plate-sub">same sheets in frosted paper · private cards stay inverted</span></div>
+  <div class="plate-row">
+    <div><div class="winbox" style="--ws:.42"><div class="win theme-light plat-win mode-browse st-capsule ov-tabs trust-ok" data-dom="aegis.dev"></div></div>
+      <div class="win-caption">Tab grid <span>· light</span></div></div>
+    <div><div class="winbox" style="--ws:.42"><div class="win theme-light plat-win mode-browse st-capsule ov-menu trust-ok" data-dom="aegis.dev"></div></div>
+      <div class="win-caption">Menu <span>· light</span></div></div>
+    <div><div class="winbox" style="--ws:.42"><div class="win theme-light plat-win mode-browse st-capsule ov-omni trust-ok" data-dom="aegis.dev"></div></div>
+      <div class="win-caption">Command omnibox <span>· light</span></div></div>
+  </div>
+  <div class="plate-note"><span>Private-window cards render inverted in <b>both</b> themes.</span><span>Scrim wash 28 % in light.</span></div>
+</div></div>
+
+<!-- ================= PLATE 6 · PLATFORM + MOTION ================= -->
+<div class="plate" data-n="6"><div class="plate-canvas">
+  <div class="plate-head"><span class="plate-no">PLATE 06</span><span class="plate-title">Platform frames &amp; motion</span>
+    <span class="plate-sub">GNOME · Windows 11 · blur capability · timing map</span></div>
+  <div class="plate-row" style="align-items:stretch;gap:40px">
+    <div>
+      <div class="winbox" style="--ws:.365"><div class="win theme-light plat-gnome mode-browse st-capsule ov-none trust-ok" data-dom="aegis.dev" data-title="The Quiet Web"></div></div>
+      <div class="win-caption">GNOME / Wayland <span>· CSD close only</span></div>
+      <div style="margin-top:12px;display:flex;flex-direction:column;gap:7px;width:526px">
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#9aa0a8;border:1px solid #26262b;border-radius:10px;padding:8px 12px"><span style="font-family:var(--f-head);font-weight:600">KDE Plasma</span><span>blur protocol ✓ true backdrop</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#9aa0a8;border:1px solid #26262b;border-radius:10px;padding:8px 12px"><span style="font-family:var(--f-head);font-weight:600">GNOME</span><span>no protocol → Frost tint 88 % + noise</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#9aa0a8;border:1px solid #26262b;border-radius:10px;padding:8px 12px"><span style="font-family:var(--f-head);font-weight:600">X11, no compositor</span><span>solid tint · hairline kept</span></div>
+      </div>
+    </div>
+    <div>
+      <div class="winbox" style="--ws:.365"><div class="win theme-dark plat-win mode-browse st-capsule ov-none trust-ok" data-dom="aegis.dev" data-title="The Quiet Web"></div></div>
+      <div class="win-caption">Windows 11 <span>· min / max / close in-bar</span></div>
+      <div style="margin-top:12px;display:flex;flex-direction:column;gap:7px;width:526px">
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#9aa0a8;border:1px solid #26262b;border-radius:10px;padding:8px 12px"><span style="font-family:var(--f-head);font-weight:600">Windows 11</span><span>DWM acrylic · DirectComposition ✓</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#9aa0a8;border:1px solid #26262b;border-radius:10px;padding:8px 12px"><span style="font-family:var(--f-head);font-weight:600">Windows 10</span><span>legacy acrylic → translucency tier</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#9aa0a8;border:1px solid #26262b;border-radius:10px;padding:8px 12px"><span style="font-family:var(--f-head);font-weight:600">Reduce transparency</span><span>tint 94 % · blur off</span></div>
+      </div>
+    </div>
+    <div style="flex:1;display:flex;flex-direction:column;gap:14px">
+      <div class="spec" style="background:#141417;border-color:#26262b"><div class="h">Collapse curve — one material flowing left</div>
+        <svg viewBox="0 0 300 108" style="width:100%;margin-top:4px">
+          <rect x="8" y="8" width="284" height="76" rx="6" fill="none" stroke="#26262b"/>
+          <g stroke="#232328"><line x1="8" y1="34" x2="292" y2="34"/><line x1="8" y1="60" x2="292" y2="60"/><line x1="103" y1="8" x2="103" y2="84"/><line x1="198" y1="8" x2="198" y2="84"/></g>
+          <path d="M16 78 C 120 78 150 14 284 14" fill="none" stroke="#eceef0" stroke-width="2.2"/>
+          <circle cx="16" cy="78" r="3" fill="#eceef0"/><circle cx="284" cy="14" r="3" fill="#eceef0"/>
+          <text x="20" y="100" fill="#6d727a" font-size="9" font-family="JetBrains Mono">0 ms</text>
+          <text x="258" y="100" fill="#6d727a" font-size="9" font-family="JetBrains Mono">360 ms</text>
+          <text x="118" y="100" fill="#6d727a" font-size="9" font-family="JetBrains Mono">cubic(.3, 0, .1, 1)</text>
+        </svg></div>
+      <div class="spec" style="background:#141417;border-color:#26262b"><div class="h">Timing map</div>
+        <div class="r">hover → strip<b>240 ms</b></div><div class="r">strip → capsule<b>200 ms</b></div>
+        <div class="r">capsule → rail<b>360 ms</b></div><div class="r">rail swell on approach<b>120 ms</b></div>
+        <div class="r">sheet rise<b>300 ms</b></div><div class="r">peek after navigation<b>2.4 s</b></div></div>
+      <div class="spec" style="background:#141417;border-color:#26262b"><div class="h">Auto-hide triggers</div>
+        <div class="r">scroll down + 1.2 s pause<b>→ rail</b></div><div class="r">mouse leaves top band<b>→ capsule · 800 ms</b></div>
+        <div class="r">F11 / fullscreen video<b>→ rail, fades 4 s</b></div><div class="r">page text-field focus<b>stays hidden</b></div>
+        <div class="r">top-edge or left-edge hover<b>temporary peek</b></div><div class="r">Ctrl+\<b>manual toggle</b></div></div>
+    </div>
+  </div>
+</div></div>
+
+<script>
+/* ================= window builder ================= */
+const I = {
+  shield:'<path d="M12 2.6l7.4 2.9v5.3c0 4.6-3.1 7.9-7.4 9.8-4.3-1.9-7.4-5.2-7.4-9.8V5.5L12 2.6z"/><path d="M9.4 15.4L12 8.6l2.6 6.8"/><path d="M10.3 13.2h3.4"/>',
+  shield2:'<path d="M12 2.6l7.4 2.9v5.3c0 4.6-3.1 7.9-7.4 9.8-4.3-1.9-7.4-5.2-7.4-9.8V5.5L12 2.6z"/><path d="M7 10h10M7 14h6"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  dots:'<circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/>',
+  min:'<path d="M5 12h14"/>', max:'<rect x="5.5" y="5.5" width="13" height="13" rx="1.5"/>',
+  close:'<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>',
+  search:'<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/>',
+  clock:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  down:'<path d="M12 4v12m0 0l-5-5m5 5l5-5M5 20h14"/>',
+  book:'<path d="M6 3h12v18l-6-4-6 4V3z"/>',
+  find:'<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2M8.5 11h5"/>',
+  zoom:'<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2M8.5 11h5M11 8.5v5"/>',
+  desk:'<rect x="3" y="5" width="18" height="12" rx="2"/><path d="M9 21h6M12 17v4"/>',
+  ext:'<path d="M10 4h4v3a2 2 0 104 0h3v4h-3a2 2 0 100 4h3v4h-4v-3a2 2 0 10-4 0v3H6v-4h3a2 2 0 100-4H6V7h4V4z"/>',
+  gear:'<circle cx="12" cy="12" r="3.2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/>',
+  win:'<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M12 5v14M4 12h16"/>',
+  eyeoff:'<path d="M4 4l16 16M9.9 5.2A9.8 9.8 0 0112 5c5 0 8.6 3.6 10 7-.5 1.2-1.3 2.5-2.4 3.6M6.2 6.2C4.3 7.6 3 9.5 2 12c1.4 3.4 5 7 10 7 1.6 0 3.1-.4 4.4-1"/>',
+  globe:'<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.3 4 5.2 4 8.5s-1.4 6.2-4 8.5c-2.6-2.3-4-5.2-4-8.5s1.4-6.2 4-8.5z"/>',
+  hist:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2M12 3.5v2M20.5 12h-2"/>'
+};
+const sv=(p,w=17,fill=false)=>`<svg viewBox="0 0 24 24" fill="${fill?'currentColor':'none'}" stroke="${fill?'none':'currentColor'}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:${w}px;height:${w}px">${I[p]||''}</svg>`;
+
+const TABS=[['A','aegis.dev'],['G','GitLab'],['W','Wikipedia'],['S','Signal Blog'],['F','Figma'],['H','Hacker News']];
+
+const TILES=[['G','GitHub'],['W','Wikipedia'],['D','DuckDuckGo'],['M','Mail'],
+             ['N','News'],['S','Aegis Dev'],['R','Reader'],['+','Add']];
+function pageHome(){return `<div class="home">
+  <div class="home-clock">21:36</div><div class="home-date">Tuesday · November 3</div>
+  <div class="home-search">${sv('search',20)}<span class="ph">Search or type URL</span><span class="kbd">/</span></div>
+  <div class="chips"><span class="chip on">Aegis</span><span class="chip">DuckDuckGo</span><span class="chip">Startpage</span><span class="chip">Wikipedia</span></div>
+  <div class="tiles">${TILES.map(t=>`<div class="tile"><div class="fav">${t[0]}</div><div class="lb">${t[1]}</div></div>`).join('')}</div>
+  <div class="home-foot"><b>9,957</b> trackers blocked this week · shield up</div></div>`;}
+
+function pageBrowse(){return `<div class="article">
+  <div class="art-kicker">Privacy · 6 min read</div>
+  <div class="art-title">The Quiet Web</div>
+  <div class="art-byline"><b>aegis.dev/journal</b> — by A. Reyes · Nov 2026</div>
+  <div class="art-img"></div><div class="art-cap">Fig. 1 — pages a reader actually sees, before and after hardening.</div>
+  <div class="art-p">A page that loads in <b>180 ms</b> and shows nothing but its own text is not a luxury; it is what the web
+  looks like when nobody is skimming your attention on the way in. The average news site contacts <b>62 hosts</b> before
+  first paint. Remove them and the article simply… arrives.</div>
+  <div class="art-h">Chrome is a promise</div>
+  <div class="art-p">Every pixel of browser furniture is a pixel the site cannot have. Aegis treats that as a design
+  constraint, not a settings screen: the glass bar floats, the page fills, and the shield count is there when you
+  ask for it — <b>quiet by default</b>.</div>
+  <div class="art-quote">“The best interface is the one that gets out of the way and stays out.”</div>
+  <div class="art-p">What remains is a capsule of frosted glass with a domain inside it. Hover it and your tabs appear;
+  leave it alone and it thins to a line on the edge of the screen until you need it again.</div></div>`;}
+
+function glassbar(d){const dom=d.dom||'aegis.dev',ttl=d.title||'';
+  const trust=d.trust==='bad'
+    ?`<div class="trust">${sv('shield2',17)}<span class="dom">not encrypted</span></div>`
+    :`<div class="trust">${sv('shield',17)}<span class="dom">${dom}</span>${ttl?`<span class="sep"></span><span class="ttl">${ttl}</span>`:''}</div>`;
+  const mini=`<div class="mtabs">${TABS.slice(1,4).map(t=>`<div class="mt" title="${t[1]}"><div class="fav">${t[0]}</div></div>`).join('')}<span class="count-chip">+8</span></div>`;
+  const full=`<div class="tabs-full">${TABS.slice(0,5).map((t,i)=>`<div class="tf ${i===0?'on':''}"><div class="fav">${t[0]}</div><span class="t">${t[1]}</span>${i===0?'<span class="x">×</span>':''}</div>`).join('')}<span class="tf-more">+7</span></div>`;
+  const cap=`<div class="capt capt-win"><div class="cb">${sv('min',14)}</div><div class="cb">${sv('max',14)}</div><div class="cb cl">${sv('close',14)}</div></div><div class="capt-gnome">${sv('close',13)}</div>`;
+  return `<div class="glassbar glass">${trust}${mini}${full}<div class="gb-sp"></div>
+    <div class="act hi">${sv('plus',18)}</div><div class="act">${sv('dots',18)}</div>
+    <div class="gb-div"></div>${cap}</div>
+    <div class="gb-cap glass"><div class="cc c-min">${sv('min',13)}</div><div class="cc c-max">${sv('max',13)}</div><div class="cc c-cl">${sv('close',13)}</div></div>
+    <div class="rail glass"></div><div class="loadbar"></div>`;}
+
+const MENU_IT=[['win','New window',''],['eyeoff','New private window',''],['hist','History','Ctrl+H'],['down','Downloads','Ctrl+J'],['book','Bookmarks','Ctrl+Shift+O'],['find','Find in page','Ctrl+F'],['zoom','Zoom','100 %'],['ext','Extensions',''],['gear','Settings','Alt+E']];
+function menuSheet(){return `<div class="sh-menu sheet glass">
+  <div class="mn-dom"><div class="fav">A</div><div><div class="d">aegis.dev</div><div class="s">Connection secure</div></div>
+  <div class="mn-block">${sv('shield',13)}14 blocked</div></div>
+  <div class="mn-grid">${MENU_IT.map((m,i)=>`<div class="mn-it kb ${i>=8?'wide':''}" data-k="${m[2]}">${sv(m[0],17)}${m[1]}</div>`).join('')}</div></div>`;}
+
+function tabsSheet(){const cards=[
+  ['A','aegis.dev',1,0],['G','GitLab',0,0],['W','Wikipedia',0,0],['F','Figma',0,0],
+  ['H','Hacker News',0,0],['S','Signal Blog',0,0],['P','Private',0,1],['V','Private',0,1]
+ ].map(c=>`<div class="tcard ${c[2]?'on':''} ${c[3]?'pv':''}"><div class="cv"></div><div class="cl"><div class="fav">${c[0]}</div><span class="nm">${c[1]}</span></div></div>`).join('');
+ return `<div class="sh-tabs sheet glass"><div class="sh-head"><span class="sh-title">Tabs</span><span class="sh-count">12 tabs · 2 private</span>
+  <div class="sh-field">${sv('search',15)}Search tabs</div><span class="sh-esc">esc</span></div>
+  <div class="tgrid">${cards}<div class="tcard new">${sv('plus',22)}<span class="nm">New tab</span></div></div></div>`;}
+
+function omniSheet(){return `<div class="sh-omni sheet glass">
+  <div class="om-in">${sv('search',19)}<span class="q">aegis.dev/</span><span class="caret"></span>
+  <span class="sh-esc" style="margin-left:auto">esc</span></div>
+  <div class="om-chips"><span class="chip on">Aegis</span><span class="chip">DuckDuckGo</span><span class="chip">Startpage</span><span class="chip">Wikipedia</span></div>
+  <div class="om-grp"><div class="om-lab">History</div>
+    <div class="om-it">${sv('clock',16)}<span class="t"><b>aegis.dev</b>/journal/the-quiet-web</span><span class="k">↵</span></div>
+    <div class="om-it">${sv('clock',16)}<span class="t"><b>aegis.dev</b>/docs/glassbar</span></div></div>
+  <div class="om-grp"><div class="om-lab">Search</div>
+    <div class="om-it">${sv('globe',16)}<span class="t"><b>the quiet web</b> — DuckDuckGo</span><span class="k">Tab</span></div></div>
+  <div class="om-grp"><div class="om-lab">Actions</div>
+    <div class="om-it">${sv('eyeoff',16)}<span class="t">New private window</span><span class="k">Ctrl+Shift+N</span></div>
+    <div class="om-it">${sv('win',16)}<span class="t">Toggle glassbar rail</span><span class="k">Ctrl+\\</span></div></div>
+  <div class="om-ft"><span class="hint">↑↓ navigate · ↵ open</span><span class="hint">page stays live behind glass</span></div></div>`;}
+
+const KEEP=['theme-dark','theme-light','plat-win','plat-gnome','mode-home','mode-browse',
+            'st-rail','st-capsule','st-strip','ov-tabs','ov-menu','ov-omni','trust-load','trust-bad'];
+function buildWin(host){
+  const keep=KEEP.filter(c=>host.classList.contains(c));
+  host.className=['win',...keep].join(' ');
+  const d={dom:host.dataset.dom||'aegis.dev',title:host.dataset.title||'',
+           trust:keep.includes('trust-bad')?'bad':(keep.includes('trust-load')?'load':'ok'),
+           mode:keep.includes('mode-home')?'home':'browse'};
+  host.innerHTML=`<div class="page"></div>${d.mode==='home'?pageHome():pageBrowse()}
+    <div class="pad-top"></div>${glassbar(d)}
+    <div class="scrim"></div>${tabsSheet()}${menuSheet()}${omniSheet()}`;
+}
+document.querySelectorAll('div.win').forEach(buildWin);
+
+/* ================= explorer toggles ================= */
+const ex=document.getElementById('exwin');
+const RO={plat:['ro-plat',v=>v==='plat-win'?'Windows 11':'GNOME'],
+          theme:['ro-theme',v=>v.replace('theme-','')],
+          st:['ro-st',v=>({st:'rail', 'st-capsule':'capsule · 640×44','st-strip':'strip · 1040×44','st-rail':'rail · 6×160'}[v]||v.replace('st-',''))],
+          mode:['ro-mode',v=>v.replace('mode-','')],
+          ov:['ro-ov',v=>v==='ov-none'?'none':v.replace('ov-','')]};
+document.querySelectorAll('.tg').forEach(tg=>{
+  tg.addEventListener('click',e=>{
+    const b=e.target.closest('button');if(!b)return;
+    tg.querySelectorAll('button').forEach(x=>x.classList.remove('on'));b.classList.add('on');
+    const v=b.dataset.v;
+    ['plat-win','plat-gnome','theme-dark','theme-light','st-rail','st-capsule','st-strip','mode-home','mode-browse','ov-none','ov-tabs','ov-menu','ov-omni'].forEach(c=>ex.classList.remove(c));
+    if(v!=='ov-none')ex.classList.add(v);
+    if(v.startsWith('theme-')||v.startsWith('plat-'))ex.classList.add(v);
+    if(v.startsWith('st-'))ex.classList.add(v);
+    if(v.startsWith('mode-'))ex.classList.add(v);
+    const g=RO[Object.keys(RO).find(k=>tg.id==='tg-'+k)];
+    if(g)document.getElementById(g[0]).textContent=g[1](v);
+  });
+});
+
+/* ================= plate mode ================= */
+(function(){
+  const m=location.search.match(/plate=(\d)/);if(!m)return;
+  document.body.classList.add('plate-mode');
+  const keep=document.querySelector(`.plate[data-n="${m[1]}"]`);
+  document.querySelectorAll('.plate').forEach(p=>{if(p!==keep)p.remove();});
+  keep.classList.add('plate-on');
+  document.title=`Aegis Desktop — Plate ${m[1]}`;
+})();
+</script>
+
+</body>
+</html>
