@@ -125,13 +125,40 @@ jobs:
         run: |
           set -e
           cd "$WORK"
-          fetch --no-history --nohooks chromium
+          # googlesource.com intermittently returns HTTP 500 mid-clone; a single
+          # flake used to kill the entire run. Retry each phase with backoff.
+          # Once .gclient exists, gclient sync resumes a partial fetch.
+          ok=0
+          for i in 1 2 3 4 5 6; do
+            if [ -f .gclient ]; then
+              echo ">>> resuming chromium source sync (attempt $i/6)"
+              gclient sync -D --no-history -j 4 && ok=1 && break
+            else
+              echo ">>> fetching chromium source (attempt $i/6)"
+              fetch --no-history --nohooks chromium && ok=1 && break
+            fi
+            echo "::warning::source fetch failed (attempt $i/6) - upstream flake, backing off"
+            sleep $((i * 30))
+          done
+          [ "$ok" = 1 ] || { echo "::error::Chromium source fetch failed after 6 attempts"; exit 1; }
           echo "target_os = [ 'linux', 'android' ]" >> "$WORK/.gclient"
           cd "$WORK/src"
-          git fetch --depth=1 origin "refs/tags/${VERSION}:refs/tags/${VERSION}"
+          ok=0
+          for i in 1 2 3 4; do
+            git fetch --depth=1 origin "refs/tags/${VERSION}:refs/tags/${VERSION}" && ok=1 && break
+            echo "::warning::tag fetch failed (attempt $i/4) - retrying"
+            sleep 30
+          done
+          [ "$ok" = 1 ] || { echo "::error::tag fetch failed after 4 attempts"; exit 1; }
           git checkout --detach "refs/tags/${VERSION}"
           cd "$WORK"
-          gclient sync -D -j 4
+          ok=0
+          for i in 1 2 3 4; do
+            gclient sync -D -j 4 && ok=1 && break
+            echo "::warning::post-checkout sync failed (attempt $i/4) - retrying"
+            sleep 30
+          done
+          [ "$ok" = 1 ] || { echo "::error::gclient sync failed after 4 attempts"; exit 1; }
 
       - name: Install build dependencies + run hooks (downloads Android SDK/NDK)
         run: |
