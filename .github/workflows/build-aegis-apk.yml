@@ -145,7 +145,14 @@ jobs:
               "url": "https://chromium.googlesource.com/chromium/src.git",
               "managed": False,
               "custom_deps": {
-                "src/third_party/webpagereplay/third_party/clang-format/script": "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/clang/tools/clang-format.git@47dce8466cd71943f64df3860e608957d6e20007"
+                # googlesource GC'd the pinned objects below (object page 404 while
+                # the repos are alive; verified via a preflight of ALL 273 git deps
+                # of tag 156.0.8078.79 - these two are the only dead ones). gclient
+                # can NEVER fetch a missing object, so point them at live revs of
+                # the same repos (verified fetchable + content-checked).
+                "src/third_party/clang-format/script": "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/clang/tools/clang-format.git@47dce8466cd71943f64df3860e608957d6e20007",
+                "src/third_party/webpagereplay/third_party/clang-format/script": "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/clang/tools/clang-format.git@47dce8466cd71943f64df3860e608957d6e20007",
+                "src/third_party/search_engines_data/resources": "https://chromium.googlesource.com/external/search_engines_data.git@effde84e73491653b245b68ac65835ad2fc4e1de"
               },
               "custom_vars": {},
               "safesync_url": ""
