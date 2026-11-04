@@ -48,9 +48,18 @@ jobs:
           }
 
           newest_gen() { # banking tag  (gens are assets named <run_id>-vol-*)
-            gh api "/repos/$REPO/releases?per_page=100" --jq \
-              ".[] | select(.draft and .tag_name==\"$1\") | .assets[].name" 2>/dev/null \
-              | grep -E '^[0-9]+-vol-' | cut -d- -f1 | sort -un | tail -1 || true
+            # 3 attempts with backoff: a transient releases-API hiccup must not
+            # be read as "this run did not bank" (false-positive issues #1/#2)
+            local t i
+            for i in 1 2 3; do
+              t=$(gh api "/repos/$REPO/releases?per_page=100" --jq \
+                ".[] | select(.draft and .tag_name==\"$1\") | .assets[].name" 2>/dev/null \
+                | grep -E '^[0-9]+-vol-' | cut -d- -f1 | sort -un | tail -1 || true)
+              [ -n "$t" ] && { printf '%s' "$t"; return 0; }
+              sleep 20
+            done
+            printf '%s' ""
+            return 0
           }
 
           artifact_of() { # art_prefix run_num art_ext -> asset name or empty
@@ -92,10 +101,24 @@ jobs:
               if [ "$gen" = "$run_id" ]; then
                 echo "  cap-banked (gen $gen) - re-dispatch"
                 dispatch "$wf"
+              elif [ -z "$gen" ]; then
+                # releases listing unavailable even after retries: SKIP this
+                # pass entirely - next 20-min pass re-evaluates. Filing an
+                # anomaly here would be a guess, not a diagnosis.
+                echo "  releases API unavailable - skipping this pass"
               else
-                echo "  GREEN, no artifact, did NOT bank this run (gen=$gen) - anomaly"
-                open_or_comment_issue "Aegis $name build anomaly: GREEN but nothing banked" \
-                  "Run: $GITHUB_SERVER_URL/$REPO/actions/runs/$run_id ended GREEN with no artifact and no new bank generation (newest gen=$gen). Not re-dispatching automatically - needs a human look."
+                # genuine-looking miss: one 60s re-check (asset listing can lag
+                # the run flipping to completed) before declaring an anomaly
+                sleep 60
+                gen=$(newest_gen "$btag")
+                if [ "$gen" = "$run_id" ]; then
+                  echo "  cap-banked (gen $gen, confirmed on re-check) - re-dispatch"
+                  dispatch "$wf"
+                else
+                  echo "  GREEN, no artifact, did NOT bank this run (gen=$gen) - anomaly"
+                  open_or_comment_issue "Aegis $name build anomaly: GREEN but nothing banked" \
+                    "Run: $GITHUB_SERVER_URL/$REPO/actions/runs/$run_id ended GREEN with no artifact and no new bank generation (newest gen=$gen). Not re-dispatching automatically - needs a human look."
+                fi
               fi
               return 0
             fi
