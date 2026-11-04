@@ -245,8 +245,8 @@ jobs:
           cd "$WORK/src"
           NOW=$(date +%s)
           ELAPSED=$(( NOW - ${JOB_START:-NOW} ))
-          BUDGET=$(( 350*60 - ELAPSED - 35*60 ))     # 35 min reserve: bank + summary
-          [ "$BUDGET" -gt $(( 295*60 )) ] && BUDGET=$(( 295*60 ))
+          BUDGET=$(( 350*60 - ELAPSED - 20*60 ))     # 20 min reserve: stop+bank+summary (measured: bank ~2-5 min; 5375f94 retries worst case ~14 min)
+          [ "$BUDGET" -gt $(( 300*60 )) ] && BUDGET=$(( 300*60 ))
           [ "$BUDGET" -lt $(( 60*60 )) ]  && BUDGET=$(( 60*60 ))
           echo "Build budget: $(( BUDGET / 60 )) min (elapsed $(( ELAPSED / 60 )) min)"
           timeout --preserve-status -s INT -k 120 "${BUDGET}s" \
