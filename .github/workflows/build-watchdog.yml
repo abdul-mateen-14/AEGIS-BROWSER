@@ -78,6 +78,19 @@ jobs:
             fi
           }
 
+          stale_anomaly_close() { # flavor run_num gen
+            # if the newest run provably banked, a still-open 'nothing banked'
+            # issue is stale (e.g. a false positive) - close it with evidence
+            local an
+            an=$(gh issue list -R "$REPO" --state open \
+              --search "Aegis $1 build anomaly in:title" --json number --jq '.[0].number' 2>/dev/null || true)
+            if [ -n "$an" ]; then
+              gh issue close "$an" -R "$REPO" \
+                --comment "Stale: newest run #$2 banked gen=$3 (AEGIS-BANK confirmed) and the queue continues. Closing as resolved." \
+                >/dev/null 2>&1 && echo "  -> closed stale anomaly issue #$an"
+            fi
+          }
+
           flavor() { # name workflow art_prefix art_ext banking_tag
             local name="$1" wf="$2" pfx="$3" ext="$4" btag="$5"
             echo "== $name ($wf)"
@@ -101,6 +114,7 @@ jobs:
               if [ "$gen" = "$run_id" ]; then
                 echo "  cap-banked (gen $gen) - re-dispatch"
                 dispatch "$wf"
+                stale_anomaly_close "$name" "$run_num" "$gen"
               elif [ -z "$gen" ]; then
                 # releases listing unavailable even after retries: SKIP this
                 # pass entirely - next 20-min pass re-evaluates. Filing an
@@ -114,6 +128,7 @@ jobs:
                 if [ "$gen" = "$run_id" ]; then
                   echo "  cap-banked (gen $gen, confirmed on re-check) - re-dispatch"
                   dispatch "$wf"
+                  stale_anomaly_close "$name" "$run_num" "$gen"
                 else
                   echo "  GREEN, no artifact, did NOT bank this run (gen=$gen) - anomaly"
                   open_or_comment_issue "Aegis $name build anomaly: GREEN but nothing banked" \
