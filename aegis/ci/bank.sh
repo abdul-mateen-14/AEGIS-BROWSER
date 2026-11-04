@@ -53,7 +53,7 @@ API="https://api.github.com/repos/$REPO"
 UPLOADS="https://uploads.github.com/repos/$REPO"
 RELEASE_TAG="banking-$FLAVOR"
 TMP="${TMPDIR:-/tmp}/aegis-bank-$FLAVOR"
-PART_MB=1900            # < 2 GiB per-asset limit, with margin
+PART_MB=700              # < 2 GiB per-asset limit, with margin
 log() { echo "[bank] $*"; }
 die()  { echo "[bank] ERROR: $*" >&2; }
 
