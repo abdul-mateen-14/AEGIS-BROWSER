@@ -240,35 +240,57 @@ if [ "$CMD" = save ]; then
   cat > "$TMP/up_one.sh" <<'UPEOF'
 #!/usr/bin/env bash
 # internal helper: upload one file to release RID (env: API UPLOADS GH_TOKEN TMP RID)
+# Hardened after run 41782592027 lost its whole bank: 3 retries 5s apart all
+# landed inside a GitHub API blip (instant non-JSON responses). Now: 5 tries
+# with exponential backoff (~15s..150s = ~5 min of blip tolerance), the HTTP
+# status and response head are logged on failure, stale assets are purged
+# before every re-attempt, and every request has a hard timeout.
 set -u
 f="$1"; want=$(stat -c %s "$TMP/$f")
-for t in 1 2 3; do
-  if [ "$t" -gt 1 ]; then
-    old=$(gh api "$API/releases/$RID/assets?per_page=100" --jq ".[] | select(.name==\"$f\") | .id" 2>/dev/null)
-    [ -n "$old" ] && gh api -X DELETE "$API/releases/assets/$old" >/dev/null 2>&1
-  fi
-  got=$(curl -sS -X POST -H "Authorization: Bearer $GH_TOKEN" \
+try_up() {
+  old=$(gh api "$API/releases/$RID/assets?per_page=100" --jq ".[] | select(.name==\"$f\") | .id" 2>/dev/null)
+  [ -n "$old" ] && gh api -X DELETE "$API/releases/assets/$old" >/dev/null 2>&1
+  code=$(curl -sS -X POST -H "Authorization: Bearer $GH_TOKEN" \
       -H "Content-Type: application/octet-stream" --data-binary @"$TMP/$f" \
-      "$UPLOADS/releases/$RID/assets?name=$f" 2>/dev/null \
-    | python3 -c 'import json,sys
-try: print(json.load(sys.stdin).get("size",""))
-except Exception: print("")')
-  if [ -n "$got" ] && [ "$got" = "$want" ]; then exit 0; fi
-  echo "[up] verify failed for $f (try $t)" >&2; sleep 5
+      --max-time 1800 -o "$TMP/$f.resp" -w '%{http_code}' \
+      "$UPLOADS/releases/$RID/assets?name=$f" 2>"$TMP/$f.curlerr")
+  got=$(python3 -c 'import json,sys
+try: print(json.load(open(sys.argv[1])).get("size",""))
+except Exception: print("")' "$TMP/$f.resp" 2>/dev/null)
+  if [ -n "$got" ] && [ "$got" = "$want" ]; then
+    rm -f "$TMP/$f.resp" "$TMP/$f.curlerr"; return 0
+  fi
+  echo "[up] attempt failed for $f: http=${code:-none} got='${got:-none}' want=$want resp=$(head -c 160 "$TMP/$f.resp" 2>/dev/null | tr '\n' ' ') err=$(head -c 120 "$TMP/$f.curlerr" 2>/dev/null | tr '\n' ' ')" >&2
+  return 1
+}
+for t in 1 2 3 4 5; do
+  case $t in 2) sleep 15 ;; 3) sleep 45 ;; 4) sleep 90 ;; 5) sleep 150 ;; esac
+  if try_up; then echo "[up] $f uploaded, size-verified (try $t)" >&2; exit 0; fi
 done
 exit 1
 UPEOF
 
   export API UPLOADS GH_TOKEN TMP RID
-  if ! ls "$TMP" | grep -E '^[0-9]+-(vol-|sha256)' | xargs -P 4 -I{} bash "$TMP/up_one.sh" {}; then
-    die "some uploads failed - previous generation left intact"
-    rm -rf "$TMP"; exit 1
+  # Two full passes: correlated failures (API-wide blips) killed every part
+  # at once under -P 4; -P 2 plus a 120s cool-down and a second pass now
+  # rides out multi-minute incidents before the bank is declared lost.
+  up_pass() { ls "$TMP" | grep -E "^[0-9]+-(vol-[0-9]+\.${EXT}|sha256\.txt)$" | xargs -P 2 -I{} bash "$TMP/up_one.sh" {}; }
+  if ! up_pass; then
+    log "upload pass 1 failed - cooling down 120s, then one more pass"
+    sleep 120
+    if ! up_pass; then
+      die "some uploads failed - previous generation left intact"
+      rm -rf "$TMP"; exit 1
+    fi
   fi
   log "all $i volumes + manifest uploaded and size-verified"
 
   # retention: keep the TWO newest generations (the newest plus the previous
   # one as fallback if the newest ever proves bad), delete anything older.
-  OLDGENS=$(list_assets "$RID" | cut -f1 | grep -E '^[0-9]+-(vol-|sha256)' | cut -d- -f1 | sort -un | head -n -2)
+  # Volume-based on purpose: an orphan manifest (from a run whose volume
+  # upload failed) must never count as a generation - it could otherwise
+  # evict the previous-good gen while being unrestorable itself.
+  OLDGENS=$(list_assets "$RID" | cut -f1 | grep -E '^[0-9]+-vol-' | cut -d- -f1 | sort -un | head -n -2)
   for OG in $OLDGENS; do
     [ "$OG" = "$GEN" ] && continue
     list_assets "$RID" | cut -f1 | grep -E "^$OG-" | while read -r a; do
