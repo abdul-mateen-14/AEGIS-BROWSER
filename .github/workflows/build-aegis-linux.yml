@@ -262,8 +262,14 @@ jobs:
           # watchdog metric: pre-dyndep dirty-edge count of this run. Should
           # COLLAPSE from ~27k to a few hundred now that restamp.sh keeps
           # unchanged patch sets from re-dirtying the banked tree.
-          DIRTY=$(ninja -C "out/$OUT" -n chrome chrome/installer/linux:stable_deb 2>/dev/null | wc -l || true)
+          # If it does NOT collapse, ninja's own explanation of the first
+          # dirty edges is dumped below ([why-dirty]) so the exact cause is
+          # in the same log - no blind 6h re-run needed to diagnose it.
+          EXPL="$(mktemp)"
+          DIRTY=$(ninja -C "out/$OUT" -d explain -n chrome chrome/installer/linux:stable_deb 2>"$EXPL" | wc -l || true)
           echo "AEGIS-DIRTY out=$OUT edges=${DIRTY:-unknown}"
+          head -40 "$EXPL" 2>/dev/null | sed 's/^/[why-dirty] /' || true
+          rm -f "$EXPL"
           timeout --preserve-status -s INT -k 120 "${BUDGET}s" \
             autoninja -C "out/$OUT" chrome chrome/installer/linux:stable_deb
           RC=$?
