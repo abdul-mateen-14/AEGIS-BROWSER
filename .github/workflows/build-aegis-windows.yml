@@ -104,7 +104,8 @@ jobs:
       - name: Install Windows SDK 10.0.28000 (Chromium 156 pins this exact version)
         shell: pwsh
         run: |
-          $inc = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\Include\10.0.28000.0'
+          $root = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10'
+          $inc = Join-Path $root 'Include\10.0.28000.0'
           if (-not (Test-Path $inc)) {
             Write-Host "SDK 10.0.28000 not present - installing via winget (~10 min)"
             winget install -e --id Microsoft.WindowsSDK.10.0.28000 `
@@ -115,7 +116,37 @@ jobs:
             }
           }
           Write-Host "SDK 10.0.28000 present at $inc"
-          "WindowsSDKDir=$([System.IO.Path]::GetDirectoryName($inc))" >> $env:GITHUB_ENV
+          # vs_toolchain.py (gn gen -> copy_dlls) resolves WINDOWSSDKDIR and
+          # joins Debuggers\<cpu>\dbghelp.dll - so this MUST be the SDK ROOT,
+          # never the Include dir (run 42078250640: we exported the Include
+          # dir and gn gen died with "dbghelp.dll not found in ...\Include\
+          # Debuggers\x64"). Chromium 156 has no CHROME_HEADLESS escape in
+          # _CopyDebugger; dbghelp.dll is non-optional.
+          "WINDOWSSDKDIR=$root" >> $env:GITHUB_ENV
+          "WindowsSDKDir=$root" >> $env:GITHUB_ENV
+          # The winget SDK package does not install the "Debugging Tools for
+          # Windows" feature. Try adding it; if winget refuses (package
+          # already installed), seed the two DLLs from System32 - dbghelp is
+          # only used for local stack symbolization, and chrome falls back to
+          # the system copy at runtime anyway. Deterministic either way.
+          $dbgdir = Join-Path $root 'Debuggers\x64'
+          if (-not (Test-Path (Join-Path $dbgdir 'dbghelp.dll'))) {
+            Write-Host "Debugging Tools for Windows missing - adding Debuggers feature"
+            winget install -e --id Microsoft.WindowsSDK.10.0.28000 `
+              --custom "/features OptionId.WindowsDesktopDebuggers" `
+              --accept-package-agreements --accept-source-agreements --silent
+          }
+          if (-not (Test-Path (Join-Path $dbgdir 'dbghelp.dll'))) {
+            Write-Host "Debuggers feature unavailable - seeding dbghelp/dbgcore from System32"
+            New-Item -ItemType Directory -Force $dbgdir | Out-Null
+            Copy-Item 'C:\Windows\System32\dbghelp.dll' $dbgdir -Force
+            Copy-Item 'C:\Windows\System32\dbgcore.dll' $dbgdir -Force -ErrorAction SilentlyContinue
+          }
+          if (-not (Test-Path (Join-Path $dbgdir 'dbghelp.dll'))) {
+            Write-Host "::error::no dbghelp.dll under $dbgdir after all fallbacks"
+            exit 1
+          }
+          Write-Host "dbghelp.dll available at $dbgdir"
 
       - name: Install zstd (whole-tree bank compression)
         shell: pwsh
