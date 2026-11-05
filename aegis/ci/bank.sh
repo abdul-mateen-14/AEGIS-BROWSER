@@ -34,10 +34,17 @@
 #       multi-hour seed run).
 #
 #   bank.sh save <flavor> <src_dir> <out_name>
-#       Stream obj/gen/.ninja_log/.ninja_deps/.aegis_head/args.gn into
-#       volumes, upload to draft release "banking-<flavor>", verify sizes
-#       via the API, then delete other generations. Prints one
-#       machine-readable line:
+#       Stream the ENTIRE out/<dir> tree (obj, gen AND every out-root output
+#       class: lib.java/, clang_x64/ host tree, package.json, resources,
+#       .ninja_log, .ninja_deps, .aegis_head, args.gn) into volumes, upload
+#       to draft release "banking-<flavor>", verify sizes via the API, then
+#       delete other generations. Whole-tree banking matters because ninja
+#       tracks out-root outputs too: banking only obj+gen left lib.java/ and
+#       package.json missing on every restore, and [why-dirty] proved that
+#       re-dirtied 10-17k edges EVERY leg (android: the whole androidx/java
+#       tree via "lib.java/...filtered.jar doesn't exist"; linux: the
+#       devtools typescript chain via "output package.json doesn't exist")
+#       even with perfect mtimes. Prints one machine-readable line:
 #         AEGIS-BANK flavor=<f> gen=<run_id> vols=<n> bytes=<n> edges=<n>
 #
 # Env required: GH_TOKEN, GITHUB_REPOSITORY, GITHUB_RUN_ID.
@@ -198,11 +205,17 @@ if [ "$CMD" = save ]; then
 
   OBJ_MB=$(du -sm "$OUT_DIR/obj" | cut -f1)
   GEN_MB=$(du -sm "$OUT_DIR/gen" 2>/dev/null | cut -f1); GEN_MB="${GEN_MB:-0}"
+  TOTAL_MB=$(du -sm "$OUT_DIR" | cut -f1)
   AVAIL_MB=$(df -Pm "$OUT_DIR" | tail -1 | awk '{print $4}')
-  TARGETS="obj gen"
-  if [ "$AVAIL_MB" -lt $((OBJ_MB + GEN_MB)) ]; then
-    log "disk tight (${AVAIL_MB} MB free < ${OBJ_MB}+${GEN_MB} MB) - banking obj only (gen is regenerable)"
-    TARGETS="obj"
+  # Full tree by default; fall back to the old restricted list only when the
+  # disk cannot even hold the compressed parts (compressed is typically
+  # ~40% of the tree, so needing 2x TOTAL free is a conservative gate).
+  if [ "$AVAIL_MB" -lt $((TOTAL_MB * 2)) ]; then
+    log "disk tight (${AVAIL_MB} MB free < 2x tree ${TOTAL_MB} MB) - banking obj+gen+root files only"
+    TARPATHS=("$OUT_NAME/obj" "$OUT_NAME/gen" "$OUT_NAME/.ninja_log" \
+              "$OUT_NAME/.ninja_deps" "$OUT_NAME/.aegis_head" "$OUT_NAME/args.gn")
+  else
+    TARPATHS=("$OUT_NAME")
   fi
   # Link-tool outputs are NOT covered by the atomic cc wrapper (cc_wrapper
   # wraps compile tools only): a killed link can leave a half-written .so /
@@ -214,12 +227,8 @@ if [ "$CMD" = save ]; then
     -print -delete | wc -l | xargs -I{} echo "[bank] deleted {} link outputs (relit on resume)"
 
   rm -rf "$TMP"; mkdir -p "$TMP"
-  TARLIST=""
-  for t in $TARGETS; do TARLIST="$TARLIST $OUT_NAME/$t"; done
-  log "streaming $((OBJ_MB + GEN_MB)) MB into $EXT volumes ..."
-  ( cd "$SRC_DIR/out" && tar -cf - $TARLIST \
-      "$OUT_NAME/.ninja_log" "$OUT_NAME/.ninja_deps" \
-      "$OUT_NAME/.aegis_head" "$OUT_NAME/args.gn" 2>/dev/null ) \
+  log "streaming ${TOTAL_MB} MB out tree (obj ${OBJ_MB} + gen ${GEN_MB} + root extras $((TOTAL_MB - OBJ_MB - GEN_MB))) into $EXT volumes ..."
+  ( cd "$SRC_DIR/out" && tar -cf - "${TARPATHS[@]}" ) \
     | { if [ "$EXT" = tar.zst ]; then zstd -1 -T0; else gzip -1; fi; } \
     | split -b "${PART_MB}m" - "$TMP/$GEN-vol-000." \
     || { die "tar/zstd/split failed"; rm -rf "$TMP"; exit 1; }
