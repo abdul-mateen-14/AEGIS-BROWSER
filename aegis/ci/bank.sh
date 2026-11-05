@@ -7,7 +7,7 @@
 # 37 MB while ~40 GB of objects were compiled). So we bank the BUILD TREE
 # itself: out/<dir>/obj + gen + .ninja_log + .ninja_deps are streamed
 # (zstd level 1 - object files are incompressible, so no gzip waste),
-# split into <2 GiB volumes and uploaded as assets of a DRAFT release.
+# split into small volumes and uploaded as assets of a DRAFT release.
 # Draft release assets have no total storage quota and are invisible to
 # end users; only the 2 GiB per-file limit applies. Nothing goes through
 # actions/cache, so the 10 GB repo cache limit and its eviction policy
@@ -53,7 +53,12 @@ API="https://api.github.com/repos/$REPO"
 UPLOADS="https://uploads.github.com/repos/$REPO"
 RELEASE_TAG="banking-$FLAVOR"
 TMP="${TMPDIR:-/tmp}/aegis-bank-$FLAVOR"
-PART_MB=700              # < 2 GiB per-asset limit, with margin
+# 700 MB volumes (kept from 1c9fe89): short uploads, tiny retry blast radius.
+# Combined with the streaming upload (-T) below, runner RAM no longer scales
+# with volume size - the real root cause of run 41870785941's loss was curl
+# slurping the whole 1.16 GB body into RAM ("option --data-binary: out of
+# memory" on every retry), which a 700 MB volume only shrinks, never removes.
+PART_MB=700
 log() { echo "[bank] $*"; }
 die()  { echo "[bank] ERROR: $*" >&2; }
 
@@ -250,8 +255,15 @@ f="$1"; want=$(stat -c %s "$TMP/$f")
 try_up() {
   old=$(gh api "$API/releases/$RID/assets?per_page=100" --jq ".[] | select(.name==\"$f\") | .id" 2>/dev/null)
   [ -n "$old" ] && gh api -X DELETE "$API/releases/assets/$old" >/dev/null 2>&1
-  code=$(curl -sS -X POST -H "Authorization: Bearer $GH_TOKEN" \
-      -H "Content-Type: application/octet-stream" --data-binary @"$TMP/$f" \
+  # -T streams the body from disk with constant memory (~256K buffers);
+  # --data-binary slurps the WHOLE file into RAM and OOM'd the runner on the
+  # 1.16 GB Linux volume (run 41870785941: "curl: option --data-binary: out
+  # of memory" on every retry - volume never uploaded, run RED, progress
+  # lost). Streaming decouples runner RAM from volume size entirely (audit
+  # 2026-11-05); GitHub's asset-upload endpoint takes POST with a streamed
+  # body fine.
+  code=$(curl -sS -X POST -T "$TMP/$f" -H "Authorization: Bearer $GH_TOKEN" \
+      -H "Content-Type: application/octet-stream" \
       --max-time 1800 -o "$TMP/$f.resp" -w '%{http_code}' \
       "$UPLOADS/releases/$RID/assets?name=$f" 2>"$TMP/$f.curlerr")
   got=$(python3 -c 'import json,sys

@@ -217,6 +217,16 @@ jobs:
             bash "$GITHUB_WORKSPACE/aegis/branding/apply.sh" "$WORK/src" || true
           fi
 
+      - name: Re-stamp patched/branded sources to bank epoch (keep bank clean)
+        run: |
+          # git apply + branding rewrite files with CURRENT mtimes, which made
+          # every banked output of every patched file look stale every run
+          # (audit 2026-11-05: each run redid the FULL ~27k-edge set). Re-
+          # stamping to the bank epoch restores sources(epoch) < outputs(bank)
+          # so an unchanged patch set costs zero recompiles. restore_tree.py
+          # below still deletes dependents of genuinely-changed patches.
+          bash "$GITHUB_WORKSPACE/aegis/ci/restamp.sh" "$WORK/src"
+
       - name: Generate build files (low-RAM gn args)
         run: |
           set -e
@@ -249,6 +259,11 @@ jobs:
           [ "$BUDGET" -gt $(( 300*60 )) ] && BUDGET=$(( 300*60 ))
           [ "$BUDGET" -lt $(( 60*60 )) ]  && BUDGET=$(( 60*60 ))
           echo "Build budget: $(( BUDGET / 60 )) min (elapsed $(( ELAPSED / 60 )) min)"
+          # watchdog metric: pre-dyndep dirty-edge count of this run. Should
+          # COLLAPSE from ~27k to a few hundred now that restamp.sh keeps
+          # unchanged patch sets from re-dirtying the banked tree.
+          DIRTY=$(ninja -C "out/$OUT" -n chrome chrome/installer/linux:stable_deb 2>/dev/null | wc -l || true)
+          echo "AEGIS-DIRTY out=$OUT edges=${DIRTY:-unknown}"
           timeout --preserve-status -s INT -k 120 "${BUDGET}s" \
             autoninja -C "out/$OUT" chrome chrome/installer/linux:stable_deb
           RC=$?

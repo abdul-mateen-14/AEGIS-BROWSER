@@ -108,7 +108,8 @@ def main():
     # build-affecting ci files (gn args, atomic_cc wrapper) do.
     ci_build_affecting = [
         p for p in changed
-        if p.startswith("aegis/ci/") and os.path.basename(p) not in ("bank.sh", "restore_tree.py")
+        if p.startswith("aegis/ci/") and os.path.basename(p) not in (
+            "bank.sh", "restore_tree.py", "restamp.sh")
     ]
     if ci_build_affecting:
         print("gn args or compiler wrapper changed - dropping bank for safety")
