@@ -71,12 +71,18 @@ jobs:
         run: |
           Get-PSDrive -PSProvider FileSystem | Where-Object Free |
             Format-Table Name, @{n='FreeGB';e={[math]::Round($_.Free/1GB,1)}}
-          # windows-latest has a C:/D: split - build where more room is free
-          $best = Get-PSDrive -PSProvider FileSystem | Where-Object Free |
+          # windows-latest has a C:/D: split - build where more room is free.
+          # Single-letter drives only: the Temp PSDrive (same disk as C:) also
+          # matches, and "Temp:/..." is not a path bash can use.
+          $best = Get-PSDrive -PSProvider FileSystem |
+                    Where-Object { $_.Free -gt 0 -and $_.Name -match '^[A-Za-z]$' } |
                     Sort-Object Free -Descending | Select-Object -First 1
           $root = "$($best.Name):"
-          "WORK=$root\aegis-work"   >> $env:GITHUB_ENV
-          "TMPDIR=$root\aegis-work\bank-tmp" >> $env:GITHUB_ENV
+          # Forward slashes: $WORK is consumed by git-bash steps (mkdir/cd),
+          # which handle D:/path fine; D:\path single-quoted would need MSYS
+          # conversion at every use.
+          "WORK=$root/aegis-work"   >> $env:GITHUB_ENV
+          "TMPDIR=$root/aegis-work/bank-tmp" >> $env:GITHUB_ENV
           "Picked $root ({0:N1} GB free)" -f ($best.Free/1GB)
           # Defender real-time scanning of a chromium tree is a ~10-30% IO tax
           Add-MpPreference -ExclusionPath "$root\aegis-work"
@@ -87,8 +93,11 @@ jobs:
                          'C:\Program Files\MySQL','C:\PostgreSQL') {
             if (Test-Path $p) { Remove-Item -Recurse -Force $p -ErrorAction SilentlyContinue }
           }
-          Get-ChildItem "$env:RUNNER_TEMP" -ErrorAction SilentlyContinue |
-            Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          # NOTE: never wipe $env:RUNNER_TEMP here. GITHUB_ENV/GITHUB_PATH
+          # files (set_env_*) live directly under RUNNER_TEMP, and the runner
+          # applies them at STEP END - deleting them mid-step silently loses
+          # everything this step wrote (run #36: WORK/TMPDIR vanished, next
+          # step died with "mkdir: cannot create directory ''").
           Get-PSDrive -PSProvider FileSystem | Where-Object Free |
             Format-Table Name, @{n='FreeGB';e={[math]::Round($_.Free/1GB,1)}}
 
