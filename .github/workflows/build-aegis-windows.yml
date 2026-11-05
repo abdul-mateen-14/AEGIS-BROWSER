@@ -1,0 +1,384 @@
+name: Build Aegis Browser Windows x64 (free GitHub-hosted runner)
+
+# Windows flavor of build-aegis-linux.yml - same $0 model, same banking:
+#
+#   1. Picks the roomiest drive (windows-latest = Server 2025 with a C:/D:
+#      split), frees image dead weight, adds Defender exclusions
+#   2. Installs Windows SDK 10.0.28000 - Chromium 156 pins SDK_VERSION
+#      exactly (build/vs_toolchain.py) and the image ships only 10.0.26100
+#   3. Installs zstd, fetches Chromium WITHOUT git history, checks out the
+#      target tag
+#   4. Restores the banked build tree from the previous run (if any)
+#   5. Applies the SAME aegis/patches/*.patch series + desktop branding
+#   6. Builds `chrome` + `mini_installer` with ninja under a time budget;
+#      graceful SIGINT stop at the cap (no POSIX atomic-cc wrapper on win:
+#      aegis/ci/atomic_cc.c needs fork/execvp - ninja's
+#      log-only-completed-edges discipline covers half-written outputs)
+#   7. Banks the ENTIRE out tree with AEGIS_BANK_STREAM=1 (parts uploaded
+#      and deleted one-by-one, disk peak = one 700 MB volume - the windows
+#      runner disk cannot hold the whole compressed bank next to the tree)
+#   8. Publishes draft release windows-<ver>-r<N> with the mini_installer
+#      .exe + a portable .zip
+#
+# DEPOT_TOOLS_WIN_TOOLCHAIN=0: build with the runner's preinstalled VS2022
+# (VC143) instead of Google's licensed internal toolchain package.
+
+on:
+  workflow_dispatch:
+    inputs:
+      chromium_version:
+        description: 'Chromium version tag (empty = latest Chrome stable, e.g. 156.0.8078.79)'
+        required: false
+        default: ''
+
+concurrency:
+  group: aegis-windows-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 350           # GitHub hard cap is 360 for hosted runners
+    permissions:
+      contents: write              # needed to create the draft release(s)
+    env:
+      OUT: win_x64
+      DEPOT_TOOLS_WIN_TOOLCHAIN: '0'   # local VS2022 toolchain, not Google's
+      GYP_MSVS_VERSION: '2022'
+      AEGIS_BANK_STREAM: '1'           # stream bank volumes one-by-one
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Start the job clock (budget math for the build step)
+        run: echo "JOB_START=$(date +%s)" >> "$GITHUB_ENV"
+
+      - name: Checkout this repository (workflow + patches + ci scripts)
+        uses: actions/checkout@v4
+
+      - name: Normalize line endings (git-for-windows autocrlf safety)
+        run: |
+          set -e
+          git config --global core.autocrlf false
+          git config --global core.longpaths true
+          cd "$GITHUB_WORKSPACE"
+          find aegis -type f \( -name '*.sh' -o -name '*.py' -o -name '*.patch' -o -name '*.gn' \) \
+            -exec sed -i 's/\r$//' {} +
+
+      - name: Pick roomiest drive + free disk + Defender exclusions
+        shell: pwsh
+        run: |
+          Get-PSDrive -PSProvider FileSystem | Where-Object Free |
+            Format-Table Name, @{n='FreeGB';e={[math]::Round($_.Free/1GB,1)}}
+          # windows-latest has a C:/D: split - build where more room is free
+          $best = Get-PSDrive -PSProvider FileSystem | Where-Object Free |
+                    Sort-Object Free -Descending | Select-Object -First 1
+          $root = "$($best.Name):"
+          "WORK=$root\aegis-work"   >> $env:GITHUB_ENV
+          "TMPDIR=$root\aegis-work\bank-tmp" >> $env:GITHUB_ENV
+          "Picked $root ({0:N1} GB free)" -f ($best.Free/1GB)
+          # Defender real-time scanning of a chromium tree is a ~10-30% IO tax
+          Add-MpPreference -ExclusionPath "$root\aegis-work"
+          Add-MpPreference -ExclusionProcess 'clang-cl.exe','clang.exe','ninja.exe','lld-link.exe','zstd.exe','tar.exe'
+          # dead image weight (exists on windows-2025: docker + 3 DBs)
+          foreach ($p in 'C:\ProgramData\Docker','C:\Program Files\Docker',
+                         'C:\Program Files\PostgreSQL','C:\Program Files\MongoDB',
+                         'C:\Program Files\MySQL','C:\PostgreSQL') {
+            if (Test-Path $p) { Remove-Item -Recurse -Force $p -ErrorAction SilentlyContinue }
+          }
+          Get-ChildItem "$env:RUNNER_TEMP" -ErrorAction SilentlyContinue |
+            Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          Get-PSDrive -PSProvider FileSystem | Where-Object Free |
+            Format-Table Name, @{n='FreeGB';e={[math]::Round($_.Free/1GB,1)}}
+
+      - name: Install Windows SDK 10.0.28000 (Chromium 156 pins this exact version)
+        shell: pwsh
+        run: |
+          $inc = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\Include\10.0.28000.0'
+          if (-not (Test-Path $inc)) {
+            Write-Host "SDK 10.0.28000 not present - installing via winget (~10 min)"
+            winget install -e --id Microsoft.WindowsSDK.10.0.28000 `
+              --accept-package-agreements --accept-source-agreements --silent
+            if (-not (Test-Path $inc)) {
+              Write-Host "::error::SDK 10.0.28000.0 still missing after install"
+              exit 1
+            }
+          }
+          Write-Host "SDK 10.0.28000 present at $inc"
+          "WindowsSDKDir=$([System.IO.Path]::GetDirectoryName($inc))" >> $env:GITHUB_ENV
+
+      - name: Install zstd (whole-tree bank compression)
+        shell: pwsh
+        run: |
+          if (-not (Get-Command zstd -ErrorAction SilentlyContinue)) {
+            choco install zstd -y --no-progress
+          }
+          zstd --version
+
+      - name: Resolve Chromium version to build
+        run: |
+          set -e
+          if [ -n "${{ github.event.inputs.chromium_version }}" ]; then
+            VERSION="${{ github.event.inputs.chromium_version }}"
+          else
+            VERSION=$(curl -s "https://versionhistory.googleapis.com/v1/chrome/platforms/win/channels/stable/versions?pageSize=1" \
+              | python -c "import json,sys; print(json.load(sys.stdin)['versions'][0]['version'])")
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "WANT_CHROMIUM_TAG=$VERSION" >> "$GITHUB_ENV"
+          echo "Building Chromium $VERSION for Windows x64"
+
+      - name: Install depot_tools
+        run: |
+          set -e
+          mkdir -p "$WORK"
+          cd "$WORK"
+          git clone --depth=1 https://chromium.googlesource.com/chromium/tools/depot_tools.git
+          echo "$WORK/depot_tools" >> "$GITHUB_PATH"
+          git config --global user.email "aegis@build.local"
+          git config --global user.name  "Aegis Builder"
+
+      - name: Fetch Chromium source (no history) + checkout target tag
+        run: |
+          set -e
+          cd "$WORK"
+          # Same .gclient as the linux flavor (googlesource GC'd the pinned
+          # clang-format/webpagereplay objects; search_engines_data too) -
+          # identical custom_deps overrides pointing them at live revisions.
+          # depot_tools entry points are .bat on windows: run them through cmd.
+          if [ ! -f .gclient ]; then
+            cat > .gclient <<'AEGIS_GCLIENT'
+          solutions = [
+            {
+              "name": "src",
+              "url": "https://chromium.googlesource.com/chromium/src.git",
+              "managed": False,
+              "custom_deps": {
+                "src/third_party/clang-format/script": "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/clang/tools/clang-format.git@47dce8466cd71943f64df3860e608957d6e20007",
+                "src/third_party/webpagereplay/third_party/clang-format/script": "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/clang/tools/clang-format.git@47dce8466cd71943f64df3860e608957d6e20007",
+                "src/third_party/search_engines_data/resources": "https://chromium.googlesource.com/external/search_engines_data.git@effde84e73491653b245b68ac65835ad2fc4e1de"
+              },
+              "custom_vars": {},
+              "safesync_url": ""
+            }
+          ]
+          AEGIS_GCLIENT
+          fi
+          ok=0
+          for i in 1 2 3 4 5 6; do
+            echo ">>> syncing chromium source (attempt $i/6)"
+            cmd //c "gclient sync --nohooks --no-history -j 4" && ok=1 && break
+            echo "::warning::source fetch failed (attempt $i/6) - upstream flake, backing off"
+            sleep $((i * 30))
+          done
+          [ "$ok" = 1 ] || { echo "::error::Chromium source fetch failed after 6 attempts"; exit 1; }
+          cd "$WORK/src"
+          ok=0
+          for i in 1 2 3 4; do
+            git fetch --depth=1 origin "refs/tags/${VERSION}:refs/tags/${VERSION}" && ok=1 && break
+            echo "::warning::tag fetch failed (attempt $i/4) - retrying"
+            sleep 30
+          done
+          [ "$ok" = 1 ] || { echo "::error::tag fetch failed after 4 attempts"; exit 1; }
+          git checkout --detach "refs/tags/${VERSION}"
+          cd "$WORK"
+          ok=0
+          for i in 1 2 3 4; do
+            cmd //c "gclient sync -D -j 4" && ok=1 && break
+            echo "::warning::post-checkout sync failed (attempt $i/4) - retrying"
+            sleep 30
+          done
+          [ "$ok" = 1 ] || { echo "::error::gclient sync failed after 4 attempts"; exit 1; }
+
+      - name: Run hooks (clang-cl, ninja, gn for windows) + toolchain diagnostics
+        run: |
+          set -e
+          cd "$WORK"
+          cmd //c "gclient runhooks -j 4"
+          echo "--- ninja ---";  ls "$WORK/src/third_party/ninja" || true
+          echo "--- gn ---";     ls "$WORK/src/buildtools/win" || true
+          echo "--- SDKs ---";  ls "C:/Program Files (x86)/Windows Kits/10/Include" || true
+          echo "--- VS ---";    "C:/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe" -latest -property catalog_productDisplayVersion || true
+
+      - name: Restore banked build tree (draft-release volumes)
+        id: restore
+        timeout-minutes: 60
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          bash "$GITHUB_WORKSPACE/aegis/ci/bank.sh" restore windows "$WORK/src" "$OUT"
+        # no continue-on-error: a bank that exists but fails to restore must
+        # RED the run (re-dispatch retries it), never silently seed-rebuild.
+
+      - name: Apply Aegis patches (aegis/patches/*.patch)
+        run: |
+          set -e
+          shopt -s nullglob
+          patches=( "$GITHUB_WORKSPACE"/aegis/patches/*.patch )
+          if [ ${#patches[@]} -gt 0 ]; then
+            for p in $(printf '%s\n' "${patches[@]}" | sort); do
+              echo "Applying $(basename "$p")"
+              (cd "$WORK/src" && git apply --3way "$p" 2>/dev/null) \
+                || (cd "$WORK/src" && git apply "$p") \
+                || { echo "::error::Patch failed: $p"; exit 1; }
+            done
+          else
+            echo "No patches found - building vanilla Chromium with Aegis branding only."
+          fi
+
+      - name: Run branding hooks (desktop + android-noop)
+        run: |
+          set -e
+          bash "$GITHUB_WORKSPACE/aegis/branding/apply_desktop.sh" "$WORK/src"
+          if [ -f "$GITHUB_WORKSPACE/aegis/branding/apply.sh" ]; then
+            bash "$GITHUB_WORKSPACE/aegis/branding/apply.sh" "$WORK/src" || true
+          fi
+
+      - name: Re-stamp patched/branded sources to bank epoch (keep bank clean)
+        run: |
+          # Same mtime contract as the linux flavor: git apply + branding
+          # rewrite files with CURRENT mtimes; re-stamping to the bank epoch
+          # keeps an unchanged patch set free of recompiles.
+          bash "$GITHUB_WORKSPACE/aegis/ci/restamp.sh" "$WORK/src"
+
+      - name: Generate build files (low-RAM gn args)
+        run: |
+          set -e
+          cd "$WORK/src"
+          GN="$WORK/src/buildtools/win/gn.exe"
+          [ -x "$GN" ] || { echo "::error::gn.exe missing after hooks"; exit 1; }
+          "$GN" gen "out/$OUT" "--args=$(cat "$GITHUB_WORKSPACE/aegis/ci/win_x64.gn")"
+          # mark which Chromium tag + Aegis overlay this tree was built from
+          AEGIS_SHA=$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)
+          echo "$VERSION $AEGIS_SHA" > "out/$OUT/.aegis_head"
+          echo "AEGIS_HEAD_SHA=$AEGIS_SHA" >> "$GITHUB_ENV"
+
+      - name: Surgically invalidate outputs of changed patches
+        run: |
+          # Same gate as the linux flavor (tag mismatch / ci+branding changes
+          # drop the bank; patch changes map to chromium files via ninja -t
+          # deps). Always exits 0.
+          export PATH="$WORK/src/third_party/ninja:$PATH"
+          PY_BIN=$(command -v python3 || command -v python)
+          "$PY_BIN" "$GITHUB_WORKSPACE/aegis/ci/restore_tree.py" \
+            "$WORK/src" "$OUT" "$GITHUB_WORKSPACE" "$VERSION"
+
+      - name: Build chrome + mini_installer with a time budget (graceful INT stop)
+        run: |
+          set +e
+          export PATH="$WORK/src/third_party/ninja:$PATH"
+          cd "$WORK/src"
+          NOW=$(date +%s)
+          ELAPSED=$(( NOW - ${JOB_START:-NOW} ))
+          BUDGET=$(( 350*60 - ELAPSED - 20*60 ))     # 20 min reserve: stop+bank+summary
+          [ "$BUDGET" -gt $(( 300*60 )) ] && BUDGET=$(( 300*60 ))
+          [ "$BUDGET" -lt $(( 60*60 )) ]  && BUDGET=$(( 60*60 ))
+          echo "Build budget: $(( BUDGET / 60 )) min (elapsed $(( ELAPSED / 60 )) min)"
+          # watchdog metric: pre-dyndep dirty-edge count of this run (same
+          # meaning as the linux flavor; [why-dirty] explains the first ones)
+          EXPL="$(mktemp)"
+          DIRTY=$(ninja -C "out/$OUT" -d explain -n chrome chrome/installer/mini_installer 2>"$EXPL" | wc -l || true)
+          echo "AEGIS-DIRTY out=$OUT edges=${DIRTY:-unknown}"
+          head -40 "$EXPL" 2>/dev/null | sed 's/^/[why-dirty] /' || true
+          rm -f "$EXPL"
+          # ninja.exe directly (not autoninja): timeout's INT must reach ninja
+          # itself, not be swallowed by a .bat layer. Ninja lets running edges
+          # finish after INT = graceful stop, safe to bank.
+          timeout --preserve-status -s INT -k 120 "${BUDGET}s" \
+            ninja -C "out/$OUT" -j 4 chrome chrome/installer/mini_installer
+          RC=$?
+          DUR=$(( $(date +%s) - NOW ))
+          echo "ninja rc=$RC after $(( DUR / 60 )) min"
+          if [ "$RC" -eq 0 ] && [ -f "out/$OUT/mini_installer.exe" ]; then
+            echo "BUILD_DONE=1" >> "$GITHUB_ENV"
+          elif [ "$DUR" -ge $(( BUDGET - 45 )) ]; then
+            echo "BUILD_REASON=cap" >> "$GITHUB_ENV"
+          else
+            echo "BUILD_REASON=error" >> "$GITHUB_ENV"
+          fi
+          echo "NINJA_EDGES=$(wc -l < "out/$OUT/.ninja_log" 2>/dev/null || echo 0)" >> "$GITHUB_ENV"
+
+      - name: Bank the build tree (cap reached or error - next run resumes)
+        if: env.BUILD_DONE != '1'
+        timeout-minutes: 60
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash "$GITHUB_WORKSPACE/aegis/ci/bank.sh" save windows "$WORK/src" "$OUT"
+        # no continue-on-error: a failed bank must RED the run (previous
+        # generation stays intact) instead of ending GREEN with no bank.
+
+      - name: Fail loudly on a real build error (compile/link failure)
+        if: env.BUILD_REASON == 'error'
+        run: |
+          echo "::error::Build stopped early for a non-cap reason (compile error or crash)."
+          echo "::error::The build tree was banked; fix the error and re-dispatch."
+          exit 1
+
+      - name: Collect artifacts (mini_installer .exe + portable .zip)
+        if: env.BUILD_DONE == '1'
+        run: |
+          set -e
+          cd "$WORK/src/out/$OUT"
+          test -f mini_installer.exe || { echo "::error::no mini_installer.exe produced"; exit 1; }
+          EXE_OUT="AegisBrowser_${VERSION}_win_x64_r${GITHUB_RUN_NUMBER}.exe"
+          cp mini_installer.exe "$GITHUB_WORKSPACE/$EXE_OUT"
+          # portable zip: the runtime payload of the out root (chrome.exe,
+          # chrome.dll + friends, paks, locales) - build-only files excluded
+          STAGE=/tmp/aegis-portable/AegisBrowser
+          rm -rf /tmp/aegis-portable && mkdir -p "$STAGE"
+          shopt -s nullglob
+          for f in chrome.exe chrome_proxy.exe chrome.dll *.dll *.pak *.bin *.dat; do
+            [ -f "$f" ] && cp "$f" "$STAGE/"
+          done
+          for d in locales resources MEIPreload default_apps swiftshader; do
+            [ -d "$d" ] && cp -r "$d" "$STAGE/"
+          done
+          ZOUT="AegisBrowser_${VERSION}_win_x64_r${GITHUB_RUN_NUMBER}.zip"
+          ( cd /tmp/aegis-portable && /c/Windows/System32/tar.exe -caf "$GITHUB_WORKSPACE/$ZOUT" AegisBrowser )
+          echo "EXE_NAME=$EXE_OUT" >> "$GITHUB_ENV"
+          echo "ZIP_NAME=$ZOUT" >> "$GITHUB_ENV"
+          ls -la "$GITHUB_WORKSPACE" | grep -E 'Aegis.*win' || true
+
+      - name: Upload artifacts (kept 1 day, just in case)
+        if: env.BUILD_DONE == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: aegis-windows-x64-${{ github.run_number }}
+          path: |
+            ${{ github.workspace }}/${{ env.EXE_NAME }}
+            ${{ github.workspace }}/${{ env.ZIP_NAME }}
+          retention-days: 1
+
+      - name: Attach artifacts to a draft GitHub Release
+        if: env.BUILD_DONE == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          TAG="windows-${VERSION}-r${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" --draft \
+            --title "Aegis Browser - Chromium ${VERSION} (Windows x64)" \
+            --notes "Automated free build from GitHub Actions. Chromium ${VERSION}, windows x64, unofficial build (no LTO/PGO), Aegis patch series applied. Run the installer .exe, or unzip the portable .zip and start AegisBrowser\\chrome.exe." \
+            "$GITHUB_WORKSPACE/${{ env.EXE_NAME }}" \
+            "$GITHUB_WORKSPACE/${{ env.ZIP_NAME }}"
+          echo "Draft release created: $TAG"
+
+      - name: Build summary
+        if: always()
+        run: |
+          {
+            echo "## Aegis Windows build summary"
+            echo ""
+            echo "| Item | Value |"
+            echo "| --- | --- |"
+            echo "| Chromium | ${VERSION:-n/a} |"
+            echo "| Target | chrome + chrome/installer/mini_installer (win x64) |"
+            echo "| Runner | windows-latest hosted (4 vCPU / 16 GB) |"
+            echo "| Outcome | ${BUILD_DONE:+mini_installer built}${BUILD_REASON:+stopped early ($BUILD_REASON), tree banked} |"
+            echo "| Ninja edges logged | ${NINJA_EDGES:-n/a} |"
+            echo "| Exe | ${EXE_NAME:-not produced} |"
+            echo "| Zip | ${ZIP_NAME:-not produced} |"
+          } >> "$GITHUB_STEP_SUMMARY"

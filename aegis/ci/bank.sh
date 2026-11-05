@@ -66,6 +66,14 @@ TMP="${TMPDIR:-/tmp}/aegis-bank-$FLAVOR"
 # slurping the whole 1.16 GB body into RAM ("option --data-binary: out of
 # memory" on every retry), which a 700 MB volume only shrinks, never removes.
 PART_MB=700
+# python resolution: windows runners ship 'python' but not always 'python3'
+PY="python3"; command -v python3 >/dev/null 2>&1 || PY="python"
+# AEGIS_BANK_STREAM=1 -> streaming mode: upload bank volumes ONE BY ONE as
+# they are produced (disk peak = a single 700 MB part) and download+extract
+# one volume at a time on restore. Needed on the windows runners where the
+# disk next to the build tree is too tight to also hold the whole compressed
+# bank; linux/android keep the two-pass behavior (stream off = old path,
+# byte-identical).
 log() { echo "[bank] $*"; }
 die()  { echo "[bank] ERROR: $*" >&2; }
 
@@ -117,26 +125,60 @@ DLEOF
   if command -v zstd >/dev/null 2>&1; then DECOMP="zstd -dc"; else DECOMP="gzip -dc"; fi
   RESTORED=""; RESTORED_GEN=""
 
-  for G in $(echo "$GENLIST" | tac); do
-    log "trying generation $G ..."
+  # STREAM mode (AEGIS_BANK_STREAM=1): download + verify + extract ONE volume
+  # at a time - disk peak is a single 700 MB part; classic mode downloads all
+  # parts first (xargs -P 4) and extracts once.
+  restore_streaming() { # $1 = gen; rc 0 = extracted cleanly
+    local G="$1" n
     rm -rf "$TMP/parts"; mkdir -p "$TMP/parts"
     list_assets "$RID" | cut -f1 | grep -E "^$G-(vol-[0-9]+\.${EXT}|sha256\.txt)$" > "$TMP/names"
-    [ -s "$TMP/names" ] || { log "gen $G has no parts, skipping"; continue; }
+    [ -s "$TMP/names" ] || { log "gen $G has no parts, skipping"; return 1; }
     export API GH_TOKEN TMP RID
-    if ! xargs -P 4 -I{} bash "$TMP/dl_one.sh" {} < "$TMP/names"; then
-      log "some downloads failed for gen $G"; continue
+    if ! bash "$TMP/dl_one.sh" "$G-sha256.txt"; then
+      log "manifest download failed for gen $G"; return 1
     fi
-    if [ ! -f "$TMP/parts/$G-sha256.txt" ] || \
-       ! (cd "$TMP/parts" && sha256sum -c --quiet "$G-sha256.txt" >/dev/null 2>&1); then
-      log "sha256 verification FAILED for gen $G - trying older generation"
-      continue
-    fi
-    log "sha256 OK for gen $G; extracting ..."
+    log "gen $G: streaming download + extract (one volume on disk at a time) ..."
+    (
+      set -e
+      for n in $(grep -E "^$G-vol-[0-9]+\.${EXT}$" "$TMP/names" | sort); do
+        bash "$TMP/dl_one.sh" "$n"
+        grep -F " $n" "$TMP/parts/$G-sha256.txt" \
+          | ( cd "$TMP/parts" && sha256sum -c --quiet ) >/dev/null
+        cat "$TMP/parts/$n"
+        rm -f "$TMP/parts/$n"
+      done
+    ) | $DECOMP | tar -xf - -C "$SRC_DIR/out"
+    [ "${PIPESTATUS[0]}" = 0 ] && [ "${PIPESTATUS[1]}" = 0 ] && [ "${PIPESTATUS[2]}" = 0 ]
+  }
+
+  for G in $(echo "$GENLIST" | tac); do
+    log "trying generation $G ..."
     mkdir -p "$SRC_DIR/out"
-    if ! cat $(ls "$TMP/parts/$G"-vol-*."$EXT" | sort) | $DECOMP | tar -xf - -C "$SRC_DIR/out"; then
-      log "extraction failed for gen $G - trying older generation"
-      rm -rf "$OUT_DIR"
-      continue
+    if [ "${AEGIS_BANK_STREAM:-0}" = "1" ]; then
+      if ! restore_streaming "$G"; then
+        log "gen $G failed - trying older generation"
+        rm -rf "$OUT_DIR"
+        continue
+      fi
+    else
+      rm -rf "$TMP/parts"; mkdir -p "$TMP/parts"
+      list_assets "$RID" | cut -f1 | grep -E "^$G-(vol-[0-9]+\.${EXT}|sha256\.txt)$" > "$TMP/names"
+      [ -s "$TMP/names" ] || { log "gen $G has no parts, skipping"; continue; }
+      export API GH_TOKEN TMP RID
+      if ! xargs -P 4 -I{} bash "$TMP/dl_one.sh" {} < "$TMP/names"; then
+        log "some downloads failed for gen $G"; continue
+      fi
+      if [ ! -f "$TMP/parts/$G-sha256.txt" ] || \
+         ! (cd "$TMP/parts" && sha256sum -c --quiet "$G-sha256.txt" >/dev/null 2>&1); then
+        log "sha256 verification FAILED for gen $G - trying older generation"
+        continue
+      fi
+      log "sha256 OK for gen $G; extracting ..."
+      if ! cat $(ls "$TMP/parts/$G"-vol-*."$EXT" | sort) | $DECOMP | tar -xf - -C "$SRC_DIR/out"; then
+        log "extraction failed for gen $G - trying older generation"
+        rm -rf "$OUT_DIR"
+        continue
+      fi
     fi
     rm -rf "$TMP"
     RESTORED=1; RESTORED_GEN="$G"
@@ -179,9 +221,32 @@ DLEOF
   # ordering becomes: sources(2020) < gen/obj(2026 bank) - exactly what
   # ninja expects, with the v6 log's recorded mtimes left untouched.
   SRC_EPOCH="${AEGIS_SRC_EPOCH:-1577836800}"   # 2020-01-01T00:00:00Z
-  find "$SRC_DIR" \( -path "$SRC_DIR/out" -o -path "$SRC_DIR/.git" \) -prune -o \
-      -type f -print0 2>/dev/null \
-    | xargs -0 -r touch -d "@$SRC_EPOCH" 2>/dev/null || true
+  # python stamps a ~500k-file source tree 5-10x faster than find|xargs touch
+  # (process spawn is expensive on windows); identical semantics: every file
+  # outside out/ and .git goes to SRC_EPOCH, banked outputs untouched.
+  stamp_tree() {
+    "$PY" - "$SRC_DIR" "$SRC_EPOCH" <<'STAMPEOF'
+import os, sys
+src, epoch = sys.argv[1], int(sys.argv[2]) * 1000000000
+ns = (epoch, epoch)
+skip = {os.path.join(src, "out"), os.path.join(src, ".git")}
+n = 0
+for root, dirs, files in os.walk(src):
+    dirs[:] = [d for d in dirs if os.path.join(root, d) not in skip]
+    for f in files:
+        try:
+            os.utime(os.path.join(root, f), ns=ns, follow_symlinks=False)
+            n += 1
+        except OSError:
+            pass
+print(f"[bank] stamped {n} source files @{src}")
+STAMPEOF
+  }
+  if ! stamp_tree 2>/dev/null; then
+    find "$SRC_DIR" \( -path "$SRC_DIR/out" -o -path "$SRC_DIR/.git" \) -prune -o \
+        -type f -print0 2>/dev/null \
+      | xargs -0 -r touch -d "@$SRC_EPOCH" 2>/dev/null || true
+  fi
   log "src tree stamped @$SRC_EPOCH; banked outputs keep their banked mtimes (v6 contract)"
 
   EDGES=$(wc -l < "$OUT_DIR/.ninja_log" 2>/dev/null || echo 0)
@@ -227,21 +292,10 @@ if [ "$CMD" = save ]; then
     -print -delete | wc -l | xargs -I{} echo "[bank] deleted {} link outputs (relit on resume)"
 
   rm -rf "$TMP"; mkdir -p "$TMP"
-  log "streaming ${TOTAL_MB} MB out tree (obj ${OBJ_MB} + gen ${GEN_MB} + root extras $((TOTAL_MB - OBJ_MB - GEN_MB))) into $EXT volumes ..."
-  ( cd "$SRC_DIR/out" && tar -cf - "${TARPATHS[@]}" ) \
-    | { if [ "$EXT" = tar.zst ]; then zstd -1 -T0; else gzip -1; fi; } \
-    | split -b "${PART_MB}m" - "$TMP/$GEN-vol-000." \
-    || { die "tar/zstd/split failed"; rm -rf "$TMP"; exit 1; }
-  i=0
-  for p in "$TMP/$GEN"-vol-000.*; do
-    mv "$p" "$TMP/$(printf '%s-vol-%03d.%s' "$GEN" "$i" "$EXT")"; i=$((i+1))
-  done
-  FILELIST=""
-  for ((j=0; j<i; j++)); do FILELIST="$FILELIST $(printf '%s-vol-%03d.%s' "$GEN" "$j" "$EXT")"; done
-  ( cd "$TMP" && sha256sum ${FILELIST} > "$GEN-sha256.txt" ) || { die "sha256 failed"; exit 1; }
-  BYTES=$(du -sb "$TMP" | cut -f1)
-  log "bank: $i volumes, $BYTES bytes"
 
+  # Draft release must exist before ANY upload; the streaming path uploads
+  # mid-pipeline, so resolve/create it before the split (same behavior as
+  # before for the classic path, just earlier).
   RID="$(find_release_id || true)"
   if [ -z "${RID:-}" ]; then
     RID=$(gh api -X POST "$API/releases" \
@@ -275,7 +329,7 @@ try_up() {
       -H "Content-Type: application/octet-stream" \
       --max-time 1800 -o "$TMP/$f.resp" -w '%{http_code}' \
       "$UPLOADS/releases/$RID/assets?name=$f" 2>"$TMP/$f.curlerr")
-  got=$(python3 -c 'import json,sys
+  got=$("$PY" -c 'import json,sys
 try: print(json.load(open(sys.argv[1])).get("size",""))
 except Exception: print("")' "$TMP/$f.resp" 2>/dev/null)
   if [ -n "$got" ] && [ "$got" = "$want" ]; then
@@ -291,20 +345,93 @@ done
 exit 1
 UPEOF
 
-  export API UPLOADS GH_TOKEN TMP RID
-  # Two full passes: correlated failures (API-wide blips) killed every part
-  # at once under -P 4; -P 2 plus a 120s cool-down and a second pass now
-  # rides out multi-minute incidents before the bank is declared lost.
-  up_pass() { ls "$TMP" | grep -E "^[0-9]+-(vol-[0-9]+\.${EXT}|sha256\.txt)$" | xargs -P 2 -I{} bash "$TMP/up_one.sh" {}; }
-  if ! up_pass; then
-    log "upload pass 1 failed - cooling down 120s, then one more pass"
-    sleep 120
-    if ! up_pass; then
-      die "some uploads failed - previous generation left intact"
+  export API UPLOADS GH_TOKEN TMP RID PY
+
+  if [ "${AEGIS_BANK_STREAM:-0}" = "1" ]; then
+    # ---- streaming save (windows: one 700 MB part on disk at a time) ----
+    # split --filter hands each compressed part to the filter via stdin; the
+    # filter materializes + hashes + uploads + DELETES it. A failed upload
+    # aborts the stream (nonzero filter exit propagates through split) with
+    # the previous generation left intact - same failure semantics as before.
+    cat > "$TMP/stream_filter.sh" <<'SFEOF'
+#!/usr/bin/env bash
+# split --filter handler (env: TMP RID API UPLOADS GH_TOKEN GEN EXT PY)
+set -u
+n=$(cat "$TMP/.idx" 2>/dev/null || echo 0)
+printf '%s\n' $((n + 1)) > "$TMP/.idx"
+cur="$TMP/.part.cur"
+cat > "$cur"
+name=$(printf '%s-vol-%03d.%s' "$GEN" "$n" "$EXT")
+mv "$cur" "$TMP/$name"
+sha256sum "$name" | awk '{print $1 "  " $2}' >> "$TMP/$GEN-sha256.txt"
+sz=$(stat -c %s "$TMP/$name")
+echo $(( $(cat "$TMP/.bytes" 2>/dev/null || echo 0) + sz )) > "$TMP/.bytes"
+for t in 1 2 3 4 5; do
+  case $t in 2) sleep 15 ;; 3) sleep 45 ;; 4) sleep 90 ;; 5) sleep 150 ;; esac
+  old=$(gh api "$API/releases/$RID/assets?per_page=100" --jq ".[] | select(.name==\"$name\") | .id" 2>/dev/null)
+  [ -n "$old" ] && gh api -X DELETE "$API/releases/assets/$old" >/dev/null 2>&1
+  code=$(curl -sS -X POST -T "$TMP/$name" -H "Authorization: Bearer $GH_TOKEN" \
+      -H "Content-Type: application/octet-stream" \
+      --max-time 1800 -o "$TMP/$name.resp" -w '%{http_code}' \
+      "$UPLOADS/releases/$RID/assets?name=$name" 2>"$TMP/$name.curlerr")
+  got=$("$PY" -c 'import json,sys
+try: print(json.load(open(sys.argv[1])).get("size",""))
+except Exception: print("")' "$TMP/$name.resp" 2>/dev/null)
+  if [ -n "$got" ] && [ "$got" = "$sz" ]; then
+    rm -f "$TMP/$name.resp" "$TMP/$name.curlerr" "$TMP/$name"
+    echo "[up] $name uploaded, size-verified (try $t)" >&2
+    exit 0
+  fi
+  echo "[up] part $name try $t failed: http=${code:-none} got='${got:-none}' want=$sz err=$(head -c 120 "$TMP/$name.curlerr" 2>/dev/null | tr '\n' ' ')" >&2
+done
+rm -f "$TMP/$name.resp" "$TMP/$name.curlerr"
+exit 1
+SFEOF
+    export TMP RID API UPLOADS GH_TOKEN GEN EXT PY
+    log "streaming ${TOTAL_MB} MB out tree (obj ${OBJ_MB} + gen ${GEN_MB} + root extras $((TOTAL_MB - OBJ_MB - GEN_MB))) into $EXT volumes (one part on disk at a time) ..."
+    ( cd "$SRC_DIR/out" && tar -cf - "${TARPATHS[@]}" ) \
+      | { if [ "$EXT" = tar.zst ]; then zstd -1 -T0; else gzip -1; fi; } \
+      | split -b "${PART_MB}m" --filter="bash '$TMP/stream_filter.sh'" - "$TMP/raw-part-" \
+      || { die "tar/zstd/split (streamed) failed"; rm -rf "$TMP"; exit 1; }
+    i=$(cat "$TMP/.idx" 2>/dev/null || echo 0)
+    [ "$i" -ge 1 ] || { die "streamed bank produced no volumes"; rm -rf "$TMP"; exit 1; }
+    BYTES=$(cat "$TMP/.bytes")
+    log "bank: $i volumes, $BYTES bytes (streamed)"
+    if ! bash "$TMP/up_one.sh" "$GEN-sha256.txt"; then
+      die "manifest upload failed - previous generation left intact"
       rm -rf "$TMP"; exit 1
     fi
+    log "all $i volumes + manifest uploaded and size-verified"
+  else
+    # ---- classic two-pass save (linux/android: roomy disk) --------------
+    log "streaming ${TOTAL_MB} MB out tree (obj ${OBJ_MB} + gen ${GEN_MB} + root extras $((TOTAL_MB - OBJ_MB - GEN_MB))) into $EXT volumes ..."
+    ( cd "$SRC_DIR/out" && tar -cf - "${TARPATHS[@]}" ) \
+      | { if [ "$EXT" = tar.zst ]; then zstd -1 -T0; else gzip -1; fi; } \
+      | split -b "${PART_MB}m" - "$TMP/$GEN-vol-000." \
+      || { die "tar/zstd/split failed"; rm -rf "$TMP"; exit 1; }
+    i=0
+    for p in "$TMP/$GEN"-vol-000.*; do
+      mv "$p" "$TMP/$(printf '%s-vol-%03d.%s' "$GEN" "$i" "$EXT")"; i=$((i+1))
+    done
+    FILELIST=""
+    for ((j=0; j<i; j++)); do FILELIST="$FILELIST $(printf '%s-vol-%03d.%s' "$GEN" "$j" "$EXT")"; done
+    ( cd "$TMP" && sha256sum ${FILELIST} > "$GEN-sha256.txt" ) || { die "sha256 failed"; exit 1; }
+    BYTES=$(du -sb "$TMP" | cut -f1)
+    log "bank: $i volumes, $BYTES bytes"
+    # Two full passes: correlated failures (API-wide blips) killed every part
+    # at once under -P 4; -P 2 plus a 120s cool-down and a second pass now
+    # rides out multi-minute incidents before the bank is declared lost.
+    up_pass() { ls "$TMP" | grep -E "^[0-9]+-(vol-[0-9]+\.${EXT}|sha256\.txt)$" | xargs -P 2 -I{} bash "$TMP/up_one.sh" {}; }
+    if ! up_pass; then
+      log "upload pass 1 failed - cooling down 120s, then one more pass"
+      sleep 120
+      if ! up_pass; then
+        die "some uploads failed - previous generation left intact"
+        rm -rf "$TMP"; exit 1
+      fi
+    fi
+    log "all $i volumes + manifest uploaded and size-verified"
   fi
-  log "all $i volumes + manifest uploaded and size-verified"
 
   # retention: keep the TWO newest generations (the newest plus the previous
   # one as fallback if the newest ever proves bad), delete anything older.

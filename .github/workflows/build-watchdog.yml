@@ -167,6 +167,7 @@ jobs:
 
           flavor "APK"    "build-aegis-apk.yml"   "build-" ".apk" "banking-android"
           flavor "Linux"  "build-aegis-linux.yml" "linux-" ".deb" "banking-linux"
+          flavor "Windows" "build-aegis-windows.yml" "windows-" ".exe" "banking-windows"
 
           {
             echo "## Watchdog pass $(date -u '+%Y-%m-%d %H:%M UTC')"

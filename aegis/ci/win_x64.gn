@@ -1,0 +1,46 @@
+# Aegis Browser - free CI gn args (Windows x64 desktop)
+#
+# Same low-RAM family as linux_x64.gn / arm64.gn, aimed at the desktop
+# Windows target on a 4 vCPU / 16 GB GitHub-hosted runner with the 6-hour
+# job cap (see linux_x64.gn for the per-arg rationale):
+#
+#   is_official_build = false : no ThinLTO + PGO (the multi-GB RAM link
+#                               spike); the binary is still -O2 optimized.
+#   symbol_level = 0 / v8_symbol_level = 0 / blink_symbol_level = 0 :
+#                               no debug symbols -> far smaller out/ dir,
+#                               which is what makes whole-tree banking fit
+#                               the windows runner disk at all.
+#   is_component_build = false: one static binary, correct for packaging
+#                               (mini_installer + portable zip).
+#   disable_fieldtrial_testing_config : no experiment configs; predictable.
+#   ffmpeg_branding="Chrome" + proprietary_codecs=true : H.264/AAC etc.
+#
+# NOTE: no cc_wrapper here. The linux flavor wraps every compile with
+# aegis/ci/atomic_cc.c (fork/execvp) to make -o outputs atomic; that code is
+# POSIX-only and the windows runner has no MSYS gcc. Safety on windows comes
+# from the graceful SIGINT stop instead: the build step stops ninja under its
+# own budget (never at the hard cap), ninja lets running edges finish, and
+# .ninja_log only records edges that completed - a never-logged partial
+# output is always re-run on resume, never trusted.
+#
+# Toolchain notes (why the workflow installs SDK 10.0.28000):
+#   build/vs_toolchain.py @ tag 156.0.8078.79 pins
+#     SDK_VERSION = '10.0.28000.0'
+#   and build/toolchain/win/setup_toolchain.py passes that exact version to
+#   the compiler. The windows-2025 runner image ships VS2022 17.14 (VC143 -
+#   supported per MSVC_TOOLSET_VERSION) but only SDK 10.0.26100, so the
+#   workflow installs Microsoft.WindowsSDK.10.0.28000 via winget.
+
+target_os = "win"
+target_cpu = "x64"
+is_debug = false
+is_official_build = false
+is_component_build = false
+symbol_level = 0
+v8_symbol_level = 0
+blink_symbol_level = 0
+use_thin_lto = false
+chrome_pgo_phase = 0
+disable_fieldtrial_testing_config = true
+ffmpeg_branding = "Chrome"
+proprietary_codecs = true
