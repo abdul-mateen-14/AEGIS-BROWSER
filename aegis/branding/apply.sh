@@ -8,14 +8,16 @@
 # manifests - so searching is robust to that; the old single-path sed
 # silently did nothing when the path changed.)
 #
-# This gets your first builds displaying "Aegis Browser" in the launcher.
+# This gets your first builds displaying "Aegis" in the launcher.
 # For a deeper rebrand (package id, icons, about pages) prefer real .patch
 # files in aegis/patches/ so changes stay reviewable and revertible.
 #
 # Keep this script idempotent: CI may re-run it.
 set -euo pipefail
 SRC="${1:?usage: apply.sh <chromium-src>}"
-LABEL="Aegis Browser"
+# v1.3: launcher label is "Aegis" (user request 2026-11-06: "Aegis Browser" is
+# too long under the icon on the home screen).
+LABEL="Aegis"
 
 count=0
 while IFS= read -r -d '' f; do
