@@ -17,9 +17,12 @@ Aegis ID backend (LIVE): https://aegis-sync.abdulmateen14.workers.dev
 
 | Patch | Contents | Status |
 |---|---|---|
-| `085-degoogle-help-links.patch` | chrome/common/url_constants.h: 107x support.google.com -> https://aegis-browser.pages.dev/help/ (topic params preserved) | AUTHORED (gen: scripts/gen_patch_085.py, harness: scripts/chromium_file.py, cache: chromium-cache/156.0.8078.79/) |
-| `086-degoogle-services.patch` | Gemini/GenAI feature defaults OFF; GAIA sign-in promos hidden; "Google Password Manager" -> "Aegis Passwords" (local-only strings); keep local password manager functional | TODO - pin files next session |
-| `087-aegis-id-signin.patch` | Aegis ID sign-in entry + device status bound to aegis-sync API, hosted in the existing Aegis ecosystem page (054 seam: chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisEcosystemSettings.java) | TODO |
+| `085-degoogle-help-links.patch` | chrome/common/url_constants.h: 145 Google URLs (140 distinct: support/account/activity/wallet/gemini/...) -> https://aegis-browser.pages.dev/help/ (topic params preserved). Regenerated count-asserted; broken a/a//b/b/ path header fixed | DONE (gen: scripts/gen_patch_085.py) |
+| `073-aegis-degoogle-defaults.patch` | Gemini/Glic UI entries, Compose, sign-in prompt/preview features -> DISABLED_BY_DEFAULT | DONE |
+| `074-aegis-passwords-rebrand.patch` | "Google Password Manager" -> "Aegis Passwords" (130 strings, 4 grd/grdp) | DONE |
+| `072-aegis-help-links.patch` | Android help/feedback/legal URL seams (Help & feedback launcher, NTP, site settings, Safe Browsing, Safety Hub, personal_context) -> landing help/legal | DONE |
+| `087-aegis-id-signin.patch` | Aegis ID sign-in entry + device status bound to aegis-sync API, hosted in the existing Aegis ecosystem page (054 seam: chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisEcosystemSettings.java) | TODO - next patch session |
+| `080-083 mobile dock UI, 090-093 desktop glassbar UI` | Liquid Glass series per docs/design/IMPLEMENTATION-MAP*.md | TODO - ships in the same wave |
 | `landing/help/index.html` | Static help site routing ?p= topic params -> real docs (Shield, cookies, telemetry, sync, passwords, AI, troubleshooting) | AUTHORED (306 lines, JS syntax-checked) |
 
 ## Pinned seams (verified at tag 156.0.8078.79 via googlesource ?format=TEXT)

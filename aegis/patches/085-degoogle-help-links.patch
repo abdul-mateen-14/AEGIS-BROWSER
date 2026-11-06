@@ -1,11 +1,10 @@
-# 085 - De-Google help links: all support.google.com URLs in url_constants.h
-# -> https://aegis-browser.pages.dev/help/ (topic params preserved).
-# Part of the combined de-Google + Liquid Glass UI update.
-diff --git a/a/chrome/common/url_constants.h b/b/chrome/common/url_constants.h
-index 1bbf3af..a1e4d60 100644
---- a/a/chrome/common/url_constants.h
-+++ b/b/chrome/common/url_constants.h
-@@ -30,24 +30,24 @@ namespace chrome {
+# 085 - De-Google help links: every quoted Google URL in chrome/common/url_constants.h
+# -> https://aegis-browser.pages.dev/help/ (145 occurrences, 140 distinct;
+# topic params preserved). Regenerated against tag 156.0.8078.79, count-asserted.
+
+--- a/chrome/common/url_constants.h
++++ b/chrome/common/url_constants.h
+@@ -30,24 +30,24 @@
  
  // "Learn more" URL linked in the dialog to cast using a code.
  inline constexpr char kAccessCodeCastLearnMoreURL[] =
@@ -35,7 +34,7 @@ index 1bbf3af..a1e4d60 100644
  
  // "Chrome Settings" URL for the appearance page.
  inline constexpr char kBrowserSettingsSearchEngineURL[] =
-@@ -55,32 +55,32 @@ inline constexpr char kBrowserSettingsSearchEngineURL[] =
+@@ -55,32 +55,32 @@
  
  // "Learn more" URL for Battery Saver Mode.
  inline constexpr char16_t kBatterySaverModeLearnMoreUrl[] =
@@ -75,7 +74,7 @@ index 1bbf3af..a1e4d60 100644
  
  // General help links for Chrome, opened using various actions.
  inline constexpr char kChromeHelpViaKeyboardURL[] =
-@@ -88,10 +88,10 @@ inline constexpr char kChromeHelpViaKeyboardURL[] =
+@@ -88,10 +88,10 @@
  #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
      "chrome-extension://honijodknafkokifofgiaalefdiedpko/main.html";
  #else
@@ -88,7 +87,7 @@ index 1bbf3af..a1e4d60 100644
  #endif  // BUILDFLAG(IS_CHROMEOS)
  
  inline constexpr char kChromeHelpViaMenuURL[] =
-@@ -99,20 +99,20 @@ inline constexpr char kChromeHelpViaMenuURL[] =
+@@ -99,20 +99,20 @@
  #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
      "chrome-extension://honijodknafkokifofgiaalefdiedpko/main.html";
  #else
@@ -113,7 +112,16 @@ index 1bbf3af..a1e4d60 100644
  #endif  // BUILDFLAG(GOOGLE_CHROME_BRANDING)
  #endif  // BUILDFLAG(IS_CHROMEOS)
  
-@@ -177,62 +177,62 @@ static_assert(std::u16string_view(kChromiumProjectURL) ==
+@@ -128,7 +128,7 @@
+ 
+ // The URL of safe section in Chrome page (https://www.google.com/chrome).
+ inline constexpr char16_t kChromeSafePageURL[] =
+-    u"https://www.google.com/chrome/#safe";
++    u"https://aegis-browser.pages.dev/help/";
+ 
+ // Host and URL for most visited iframes used on the Instant Extended NTP.
+ inline constexpr char kChromeSearchMostVisitedHost[] = "most-visited";
+@@ -177,305 +177,305 @@
  #endif
  
  inline constexpr char16_t kContentSettingsExceptionsLearnMoreURL[] =
@@ -129,9 +137,10 @@ index 1bbf3af..a1e4d60 100644
  inline constexpr char kCrashReasonURL[] =
  #if BUILDFLAG(IS_CHROMEOS)
 -    "https://support.google.com/chromebook?p=e_awsnap";
-+    "https://aegis-browser.pages.dev/help/?p=e_awsnap";
- #else
+-#else
 -    "https://support.google.com/chrome?p=e_awsnap";
++    "https://aegis-browser.pages.dev/help/?p=e_awsnap";
++#else
 +    "https://aegis-browser.pages.dev/help/?p=e_awsnap";
  #endif
  
@@ -139,9 +148,10 @@ index 1bbf3af..a1e4d60 100644
  inline constexpr char kCrashReasonFeedbackDisplayedURL[] =
  #if BUILDFLAG(IS_CHROMEOS)
 -    "https://support.google.com/chromebook?p=e_awsnap_rl";
-+    "https://aegis-browser.pages.dev/help/?p=e_awsnap_rl";
- #else
+-#else
 -    "https://support.google.com/chrome?p=e_awsnap_rl";
++    "https://aegis-browser.pages.dev/help/?p=e_awsnap_rl";
++#else
 +    "https://aegis-browser.pages.dev/help/?p=e_awsnap_rl";
  #endif
  
@@ -154,9 +164,10 @@ index 1bbf3af..a1e4d60 100644
  inline constexpr char16_t kDoNotTrackLearnMoreURL[] =
  #if BUILDFLAG(IS_CHROMEOS)
 -    u"https://support.google.com/chromebook?p=settings_do_not_track";
-+    u"https://aegis-browser.pages.dev/help/?p=settings_do_not_track";
- #else
+-#else
 -    u"https://support.google.com/chrome?p=settings_do_not_track";
++    u"https://aegis-browser.pages.dev/help/?p=settings_do_not_track";
++#else
 +    u"https://aegis-browser.pages.dev/help/?p=settings_do_not_track";
  #endif
  
@@ -190,7 +201,13 @@ index 1bbf3af..a1e4d60 100644
  
  // Link for creating family group with Google Families.
  inline constexpr char16_t kFamilyGroupCreateURL[] =
-@@ -244,7 +244,7 @@ inline constexpr char16_t kFamilyGroupViewURL[] =
+-    u"https://myaccount.google.com/family/create?utm_source=cpwd";
++    u"https://aegis-browser.pages.dev/help/?utm_source=cpwd";
+ 
+ // Link for viewing family group with Google Families.
+ inline constexpr char16_t kFamilyGroupViewURL[] =
+-    u"https://myaccount.google.com/family/details?utm_source=cpwd";
++    u"https://aegis-browser.pages.dev/help/?utm_source=cpwd";
  
  // "Learn more" URL for related website sets.
  inline constexpr char kRelatedWebsiteSetsLearnMoreURL[] =
@@ -199,7 +216,69 @@ index 1bbf3af..a1e4d60 100644
      "chrome?p=cpn_cookies&rd=1#allow_block_cookies&zippy=%2Callow-or-block-"
      "third-party-cookies%2Callow-related-sites-to-access-your-activity%2Cabout-"
      "embedded-content";
-@@ -302,42 +302,42 @@ inline constexpr char kGooglePhotosURL[] = "https://photos.google.com";
+ 
+ // URL of the 'Activity controls' section of the privacy settings page.
+ inline constexpr char kGoogleAccountActivityControlsURL[] =
+-    "https://myaccount.google.com/activitycontrols/search";
++    "https://aegis-browser.pages.dev/help/";
+ 
+ // URL of the 'Activity controls' section of the privacy settings page, with
+ // privacy guide parameters and a link for users to manage data.
+ inline constexpr char kGoogleAccountActivityControlsURLInPrivacyGuide[] =
+-    "https://myaccount.google.com/activitycontrols/"
++    "https://aegis-browser.pages.dev/help/"
+     "search&utm_source=chrome&utm_medium=privacy-guide";
+ 
+ // URL of the 'Linked services' section of the privacy settings page.
+ inline constexpr char kGoogleAccountLinkedServicesURL[] =
+-    "https://myaccount.google.com/linked-services?utm_source=chrome_s";
++    "https://aegis-browser.pages.dev/help/?utm_source=chrome_s";
+ 
+ // URL of the Google Account.
+-inline constexpr char kGoogleAccountURL[] = "https://myaccount.google.com";
++inline constexpr char kGoogleAccountURL[] = "https://aegis-browser.pages.dev/help/";
+ 
+ // URL of the Google Account chooser.
+ inline constexpr char kGoogleAccountChooserURL[] =
+-    "https://accounts.google.com/AccountChooser";
++    "https://aegis-browser.pages.dev/help/";
+ 
+ // URL of the Google Account page showing the known user devices.
+ inline constexpr char kGoogleAccountDeviceActivityURL[] =
+-    "https://myaccount.google.com/device-activity?utm_source=chrome";
++    "https://aegis-browser.pages.dev/help/?utm_source=chrome";
+ 
+ // URL of the Google Account home address page.
+ inline constexpr char kGoogleAccountHomeAddressURL[] =
+-    "https://myaccount.google.com/address/"
++    "https://aegis-browser.pages.dev/help/"
+     "home?utm_source=chrome&utm_campaign=manage_addresses";
+ 
+ // URL of the Google Account work address page.
+ inline constexpr char kGoogleAccountWorkAddressURL[] =
+-    "https://myaccount.google.com/address/"
++    "https://aegis-browser.pages.dev/help/"
+     "work?utm_source=chrome&utm_campaign=manage_addresses";
+ 
+ // URL of the change Google Account name page.
+ inline constexpr char kGoogleAccountNameEmailAddressEditURL[] =
+-    "https://myaccount.google.com/"
++    "https://aegis-browser.pages.dev/help/"
+     "personal-info?utm_source=chrome-settings&utm_medium=autofill";
+ 
+ // URL of the two factor authentication setup required intersitial.
+ inline constexpr char kGoogleTwoFactorIntersitialURL[] =
+-    "https://myaccount.google.com/interstitials/twosvrequired";
++    "https://aegis-browser.pages.dev/help/";
+ 
+ // URL of the Google Password Manager.
+ inline constexpr char kGooglePasswordManagerURL[] =
+-    "https://passwords.google.com";
++    "https://aegis-browser.pages.dev/help/";
+ 
+ // URL of the Google Photos.
+-inline constexpr char kGooglePhotosURL[] = "https://photos.google.com";
++inline constexpr char kGooglePhotosURL[] = "https://aegis-browser.pages.dev/help/";
  
  // The URL for the "Learn more" link for the Memory Saver Mode.
  inline constexpr char16_t kMemorySaverModeLearnMoreUrl[] =
@@ -238,9 +317,10 @@ index 1bbf3af..a1e4d60 100644
  inline constexpr char16_t kManagedUiLearnMoreUrl[] =
  #if BUILDFLAG(IS_CHROMEOS)
 -    u"https://support.google.com/chromebook?p=is_chrome_managed";
-+    u"https://aegis-browser.pages.dev/help/?p=is_chrome_managed";
- #else
+-#else
 -    u"https://support.google.com/chrome?p=is_chrome_managed";
++    u"https://aegis-browser.pages.dev/help/?p=is_chrome_managed";
++#else
 +    u"https://aegis-browser.pages.dev/help/?p=is_chrome_managed";
  #endif
  
@@ -251,7 +331,41 @@ index 1bbf3af..a1e4d60 100644
  
  // "myactivity.google.com" URLs with their respective UTM sources.
  // - In the Clear Browsing Data footer.
-@@ -371,88 +371,88 @@ inline constexpr char16_t kMyActivitySearchServicesAppsUrl[] =
+ // - In the Clear Browsing Data "notice about other forms of history".
+ // - On the history page.
+ inline constexpr char16_t kMyActivityUrlInClearBrowsingData[] =
+-    u"https://myactivity.google.com/myactivity?utm_source=chrome_cbd";
++    u"https://aegis-browser.pages.dev/help/?utm_source=chrome_cbd";
+ inline constexpr char16_t kMyActivityUrlInClearBrowsingDataNotice[] =
+-    u"https://myactivity.google.com/myactivity/?utm_source=chrome_n";
++    u"https://aegis-browser.pages.dev/help/?utm_source=chrome_n";
+ inline constexpr char16_t kMyActivityUrlInHistory[] =
+-    u"https://myactivity.google.com/myactivity/?utm_source=chrome_h";
++    u"https://aegis-browser.pages.dev/help/?utm_source=chrome_h";
+ 
+ // The URL for the Gemini Personal Context page.
+ inline constexpr char16_t kGeminiPersonalContextUrl[] =
+-    u"https://gemini.google.com/personalization-settings";
++    u"https://aegis-browser.pages.dev/help/";
+ 
+ // The URL for "Your Gemini Apps Activity" page.
+ inline constexpr char16_t kMyActivityGeminiAppsUrl[] =
+-    u"https://myactivity.google.com/product/gemini";
++    u"https://aegis-browser.pages.dev/help/";
+ 
+ // The URL for Glic activity button.
+ inline constexpr char kGlicActivityUrl[] =
+-    "https://myactivity.google.com/product/gemini?utm_source=gemini";
++    "https://aegis-browser.pages.dev/help/?utm_source=gemini";
+ 
+ inline constexpr char16_t kMyActivityAiModeUrl[] =
+-    u"https://myactivity.google.com/myactivity?product=83";
++    u"https://aegis-browser.pages.dev/help/?product=83";
+ 
+ inline constexpr char16_t kMyActivitySearchServicesAppsUrl[] =
+-    u"https://myactivity.google.com/search-services/apps";
++    u"https://aegis-browser.pages.dev/help/";
+ 
  #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
  // "Learn more" URL for On-Device AI.
  inline constexpr char16_t kOnDeviceAiLearnMoreUrl[] =
@@ -263,9 +377,10 @@ index 1bbf3af..a1e4d60 100644
  inline constexpr char16_t kOmniboxLearnMoreURL[] =
  #if BUILDFLAG(IS_CHROMEOS)
 -    u"https://support.google.com/chromebook?p=settings_omnibox";
-+    u"https://aegis-browser.pages.dev/help/?p=settings_omnibox";
- #else
+-#else
 -    u"https://support.google.com/chrome?p=settings_omnibox";
++    u"https://aegis-browser.pages.dev/help/?p=settings_omnibox";
++#else
 +    u"https://aegis-browser.pages.dev/help/?p=settings_omnibox";
  #endif
  
@@ -273,9 +388,10 @@ index 1bbf3af..a1e4d60 100644
  inline constexpr char kPageInfoHelpCenterURL[] =
  #if BUILDFLAG(IS_CHROMEOS)
 -    "https://support.google.com/chromebook?p=ui_security_indicator";
-+    "https://aegis-browser.pages.dev/help/?p=ui_security_indicator";
- #else
+-#else
 -    "https://support.google.com/chrome?p=ui_security_indicator";
++    "https://aegis-browser.pages.dev/help/?p=ui_security_indicator";
++#else
 +    "https://aegis-browser.pages.dev/help/?p=ui_security_indicator";
  #endif
  
@@ -304,9 +420,10 @@ index 1bbf3af..a1e4d60 100644
  inline constexpr char16_t kPasswordManagerLearnMoreURL[] =
  #if BUILDFLAG(IS_CHROMEOS)
 -    u"https://support.google.com/chromebook?p=settings_password";
-+    u"https://aegis-browser.pages.dev/help/?p=settings_password";
- #else
+-#else
 -    u"https://support.google.com/chrome?p=settings_password";
++    u"https://aegis-browser.pages.dev/help/?p=settings_password";
++#else
 +    u"https://aegis-browser.pages.dev/help/?p=settings_password";
  #endif
  
@@ -329,9 +446,10 @@ index 1bbf3af..a1e4d60 100644
  inline constexpr char kAddressesAndPaymentMethodsLearnMoreURL[] =
  #if BUILDFLAG(IS_CHROMEOS)
 -    "https://support.google.com/chromebook?p=settings_autofill";
-+    "https://aegis-browser.pages.dev/help/?p=settings_autofill";
- #else
+-#else
 -    "https://support.google.com/chrome?p=settings_autofill";
++    "https://aegis-browser.pages.dev/help/?p=settings_autofill";
++#else
 +    "https://aegis-browser.pages.dev/help/?p=settings_autofill";
  #endif
  
@@ -341,7 +459,8 @@ index 1bbf3af..a1e4d60 100644
 +    u"https://aegis-browser.pages.dev/help/?p=bnpl_autofill_chrome";
  
  // The URL for the Wallet website.
- inline constexpr char16_t kWalletUrl[] = u"https://wallet.google.com";
+-inline constexpr char16_t kWalletUrl[] = u"https://wallet.google.com";
++inline constexpr char16_t kWalletUrl[] = u"https://aegis-browser.pages.dev/help/";
  
  // Help URL for Autofill AI.
  inline constexpr char16_t kAutofillAiLearnMoreURL[] =
@@ -360,7 +479,13 @@ index 1bbf3af..a1e4d60 100644
  
  // URL for Gmail general settings.
  inline constexpr char16_t kGmailSettingsURL[] =
-@@ -464,18 +464,18 @@ inline constexpr char16_t kGmailSmartFeaturesURL[] =
+-    u"https://mail.google.com/mail/u/0/#settings/general";
++    u"https://aegis-browser.pages.dev/help/";
+ 
+ // URL for Gmail smart features settings.
+ inline constexpr char16_t kGmailSmartFeaturesURL[] =
+-    u"https://mail.google.com/mail/u/0/?ogwsfsd=true#settings";
++    u"https://aegis-browser.pages.dev/help/?ogwsfsd=true#settings";
  
  // "Learn more" URL for the performance intervention notification setting.
  inline constexpr char16_t kPerformanceInterventionLearnMoreUrl[] =
@@ -376,14 +501,15 @@ index 1bbf3af..a1e4d60 100644
  inline constexpr char kPrivacyLearnMoreURL[] =
  #if BUILDFLAG(IS_CHROMEOS)
 -    "https://support.google.com/chromebook?p=settings_privacy";
-+    "https://aegis-browser.pages.dev/help/?p=settings_privacy";
- #else
+-#else
 -    "https://support.google.com/chrome?p=settings_privacy";
++    "https://aegis-browser.pages.dev/help/?p=settings_privacy";
++#else
 +    "https://aegis-browser.pages.dev/help/?p=settings_privacy";
  #endif
  
  // "Chrome Settings" URL for Ad Topics page
-@@ -488,39 +488,39 @@ inline constexpr char kPrivacySandboxManageTopicsURL[] =
+@@ -488,57 +488,57 @@
  
  // The URL for the Learn More link of the non-CWS bubble.
  inline constexpr char kRemoveNonCWSExtensionURL[] =
@@ -432,7 +558,10 @@ index 1bbf3af..a1e4d60 100644
  
  // Google search history URL that leads users of the CBD dialog to their search
  // history in their Google account.
-@@ -530,15 +530,15 @@ inline constexpr char16_t kSearchHistoryUrlInClearBrowsingData[] =
+ inline constexpr char16_t kSearchHistoryUrlInClearBrowsingData[] =
+-    u"https://myactivity.google.com/product/search?utm_source=chrome_cbd";
++    u"https://aegis-browser.pages.dev/help/?utm_source=chrome_cbd";
+ 
  // The URL for the "See more security tips" with advices how to create a strong
  // password.
  inline constexpr char kSeeMoreSecurityTipsURL[] =
@@ -451,14 +580,15 @@ index 1bbf3af..a1e4d60 100644
  #if BUILDFLAG(IS_CHROMEOS)
  static_assert(std::string_view(kSyncAndGoogleServicesLearnMoreURL) ==
                ash::chrome_external_urls::kSyncAndGoogleServicesLearnMoreURL);
-@@ -547,14 +547,14 @@ static_assert(std::string_view(kSyncAndGoogleServicesLearnMoreURL) ==
+@@ -547,18 +547,18 @@
  // The URL for the "Learn more" page on sync encryption.
  inline constexpr char16_t kSyncEncryptionHelpURL[] =
  #if BUILDFLAG(IS_CHROMEOS)
 -    u"https://support.google.com/chromebook?p=settings_encryption";
-+    u"https://aegis-browser.pages.dev/help/?p=settings_encryption";
- #else
+-#else
 -    u"https://support.google.com/chrome?p=settings_encryption";
++    u"https://aegis-browser.pages.dev/help/?p=settings_encryption";
++#else
 +    u"https://aegis-browser.pages.dev/help/?p=settings_encryption";
  #endif
  
@@ -469,7 +599,21 @@ index 1bbf3af..a1e4d60 100644
  
  // Legacy URL to the sync google dashboard.
  inline constexpr char kLegacySyncGoogleDashboardURL[] =
-@@ -574,38 +574,38 @@ static_assert(std::string_view(kNewSyncGoogleDashboardURL) ==
+-    "https://www.google.com/settings/chrome/sync";
++    "https://aegis-browser.pages.dev/help/";
+ #if BUILDFLAG(IS_CHROMEOS)
+ static_assert(std::string_view(kLegacySyncGoogleDashboardURL) ==
+               ash::chrome_external_urls::kLegacySyncGoogleDashboardURL);
+@@ -566,7 +566,7 @@
+ 
+ // New URL to the sync google dashboard.
+ inline constexpr char kNewSyncGoogleDashboardURL[] =
+-    "https://chrome.google.com/data";
++    "https://aegis-browser.pages.dev/help/";
+ #if BUILDFLAG(IS_CHROMEOS)
+ static_assert(std::string_view(kNewSyncGoogleDashboardURL) ==
+               ash::chrome_external_urls::kNewSyncGoogleDashboardURL);
+@@ -574,38 +574,38 @@
  
  // The URL for the "Learn more" page for sync setup on the personal stuff page.
  inline constexpr char16_t kSyncLearnMoreURL[] =
@@ -516,7 +660,7 @@ index 1bbf3af..a1e4d60 100644
  
  // The URL for the Settings page to enable history search.
  inline constexpr char16_t kHistorySearchSettingURL[] =
-@@ -613,7 +613,7 @@ inline constexpr char16_t kHistorySearchSettingURL[] =
+@@ -613,101 +613,101 @@
  
  // The URL for the "Learn more" page for Wallpaper Search.
  inline constexpr char kWallpaperSearchLearnMorePageURL[] =
@@ -525,7 +669,8 @@ index 1bbf3af..a1e4d60 100644
  
  // The URL for the passed in Google Wallet.
  inline constexpr char kWalletPassesPageURL[] =
-@@ -621,12 +621,12 @@ inline constexpr char kWalletPassesPageURL[] =
+-    "https://wallet.google.com/wallet/passes";
++    "https://aegis-browser.pages.dev/help/";
  
  // The help center article URL on using Wallet private passes across Google.
  inline constexpr char kWalletPrivatePassHelpCenterURL[] =
@@ -540,7 +685,11 @@ index 1bbf3af..a1e4d60 100644
  
  #if !BUILDFLAG(IS_ANDROID)
  // The URL for the trusted vault sync passphrase opt in.
-@@ -637,23 +637,23 @@ inline constexpr char kSyncTrustedVaultOptInURL[] =
+ inline constexpr char kSyncTrustedVaultOptInURL[] =
+-    "https://passwords.google.com/encryption/enroll?"
++    "https://aegis-browser.pages.dev/help/?"
+     "utm_source=chrome&utm_medium=desktop&utm_campaign=encryption_enroll";
+ #endif
  
  // The URL for the "Learn more" link for the trusted vault sync passphrase.
  inline constexpr char kSyncTrustedVaultLearnMoreURL[] =
@@ -569,7 +718,25 @@ index 1bbf3af..a1e4d60 100644
  
  // The URL path to Google's Privacy Policy page.
  inline constexpr char kPrivacyPolicyURL[] =
-@@ -675,11 +675,11 @@ inline constexpr char kPrivacyPolicyEmbeddedURLPathChina[] =
+-    "https://policies.google.com/privacy";
++    "https://aegis-browser.pages.dev/help/";
+ 
+ // The URL path to Google's Privacy Policy page for users in China.
+ inline constexpr char kPrivacyPolicyURLChina[] =
+-    "https://policies.google.cn/privacy";
++    "https://aegis-browser.pages.dev/help/";
+ 
+ // The URL path to Google's Embedded Privacy Policy page.
+ inline constexpr char kPrivacyPolicyOnlineURLPath[] =
+-    "https://policies.google.com/privacy/embedded";
++    "https://aegis-browser.pages.dev/help/";
+ 
+ // The URL path to Google's Embedded Privacy Policy page for users in China.
+ inline constexpr char kPrivacyPolicyEmbeddedURLPathChina[] =
+-    "https://policies.google.cn/privacy/embedded";
++    "https://aegis-browser.pages.dev/help/";
+ 
+ #if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_CHROMEOS)
  // "Learn more" URL for the enhanced playback notification dialog.
  inline constexpr char kEnhancedPlaybackNotificationLearnMoreURL[] =
  #if BUILDFLAG(IS_CHROMEOS)
@@ -583,7 +750,19 @@ index 1bbf3af..a1e4d60 100644
  #endif
  #endif
  
-@@ -696,18 +696,18 @@ inline constexpr char kAccountRecoveryURL[] =
+ #if BUILDFLAG(IS_CHROMEOS)
+ // Chrome OS default pre-defined custom handlers
+ inline constexpr char kChromeOSDefaultMailtoHandler[] =
+-    "https://mail.google.com/mail/?extsrc=mailto&amp;url=%s";
++    "https://aegis-browser.pages.dev/help/?extsrc=mailto&amp;url=%s";
+ inline constexpr char kChromeOSDefaultWebcalHandler[] =
+-    "https://www.google.com/calendar/render?cid=%s";
++    "https://aegis-browser.pages.dev/help/?cid=%s";
+ 
+ // The URL for the "Account recovery" page.
+ inline constexpr char kAccountRecoveryURL[] =
+-    "https://accounts.google.com/signin/recovery";
++    "https://aegis-browser.pages.dev/help/";
  
  // The URL for the Learn More page about enterprise enrolled devices.
  inline constexpr char kLearnMoreEnterpriseURL[] =
@@ -605,7 +784,7 @@ index 1bbf3af..a1e4d60 100644
  #endif
  
  #if BUILDFLAG(IS_WIN)
-@@ -718,28 +718,28 @@ inline constexpr char kWindowsXPVistaDeprecationURL[] =
+@@ -718,28 +718,28 @@
  
  // The URL for the Windows 7/8.1 deprecation help center article.
  inline constexpr char kWindows78DeprecationURL[] =
