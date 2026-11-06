@@ -38,7 +38,7 @@ diff --git a/chrome/browser/ui/color/aegis_glass_color_mixer.cc b/chrome/browser
 new file mode 100644
 --- /dev/null
 +++ b/chrome/browser/ui/color/aegis_glass_color_mixer.cc
-@@ -0,0 +1,34 @@
+@@ -0,0 +1,35 @@
 +// Copyright 2026 The Aegis Browser Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -48,6 +48,7 @@ new file mode 100644
 +#include "chrome/browser/ui/color/chrome_color_id.h"
 +#include "third_party/skia/include/core/SkColor.h"
 +#include "ui/color/color_provider.h"
++#include "ui/color/color_recipe.h"
 +
 +void AddAegisGlassColorMixer(ui::ColorProvider* provider,
 +                             const ui::ColorProviderKey& key) {
