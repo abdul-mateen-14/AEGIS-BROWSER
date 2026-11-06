@@ -7,6 +7,25 @@ found in the LICENSE file.
 
 <PreferenceScreen
     xmlns:android="http://schemas.android.com/apk/res/android">
+    <org.chromium.components.browser_ui.settings.ChromeBasePreferenceCategory
+        android:key="aegis_id_category"
+        android:title="Aegis ID">
+    <org.chromium.components.browser_ui.settings.ChromeBasePreference
+        android:key="aegis_id_status"
+        android:title="Signed in as"
+        android:summary="Not signed in" />
+    <org.chromium.components.browser_ui.settings.ChromeBasePreference
+        android:key="aegis_id_signin"
+        android:title="Sign in or create Aegis ID" />
+    <org.chromium.components.browser_ui.settings.ChromeBasePreference
+        android:key="aegis_id_devices"
+        android:title="Manage devices"
+        android:enabled="false" />
+    <org.chromium.components.browser_ui.settings.ChromeBasePreference
+        android:key="aegis_id_signout"
+        android:title="Sign out"
+        android:visible="false" />
+    </org.chromium.components.browser_ui.settings.ChromeBasePreferenceCategory>
     <org.chromium.components.browser_ui.settings.ChromeBasePreference
         android:key="aegis_products"
         android:title="AM Products"
