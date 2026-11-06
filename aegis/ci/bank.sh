@@ -148,7 +148,10 @@ DLEOF
         rm -f "$TMP/parts/$n"
       done
     ) | $DECOMP | tar -xf - -C "$SRC_DIR/out"
-    [ "${PIPESTATUS[0]}" = 0 ] && [ "${PIPESTATUS[1]}" = 0 ] && [ "${PIPESTATUS[2]}" = 0 ]
+    # Capture immediately: the first command below resets PIPESTATUS, so
+    # reading PIPESTATUS[1] afterwards is "unbound variable" under set -u.
+    local pipe_rc=("${PIPESTATUS[@]}")
+    [ "${pipe_rc[0]}" = 0 ] && [ "${pipe_rc[1]}" = 0 ] && [ "${pipe_rc[2]}" = 0 ]
   }
 
   for G in $(echo "$GENLIST" | tac); do
