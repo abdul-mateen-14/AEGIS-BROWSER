@@ -40,7 +40,13 @@ symbol_level = 0
 v8_symbol_level = 0
 blink_symbol_level = 0
 use_thin_lto = false
-chrome_pgo_phase = 2
+# chrome_pgo_phase = 0 : the free-runner hooks do not fetch the published
+# PGO profiles (cipd pgo_profiles hook), so phase 2 fails fast at gn gen
+# with "requested profile ... does not exist". Keep PGO off here.
+chrome_pgo_phase = 0
 disable_fieldtrial_testing_config = true
 ffmpeg_branding = "Chrome"
 proprietary_codecs = true
+# is_cfi = false : official Windows builds also default CFI on, and
+# compiler.gni asserts "CFI requires ThinLTO" (see linux_x64.gn).
+is_cfi = false
