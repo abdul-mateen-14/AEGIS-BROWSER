@@ -1,0 +1,24 @@
+--- a/chrome/android/chrome_java_resources.gni
++++ b/chrome/android/chrome_java_resources.gni
+@@ -234,6 +234,13 @@
+   "java/res/drawable-xxxhdpi/tab_group_outline.9.png",
+   "java/res/drawable-xxxhdpi/tab_indicator_spinner.png",
+   "java/res/drawable/acute_24dp.xml",
++  "java/res/drawable/aegis_dock_button.xml",
++  "java/res/drawable/aegis_dock_pill.xml",
++  "java/res/drawable/aegis_dock_sliver.xml",
++  "java/res/drawable/aegis_ic_menu.xml",
++  "java/res/drawable/aegis_ic_plus.xml",
++  "java/res/drawable/aegis_ic_search.xml",
++  "java/res/drawable/aegis_ic_tabs.xml",
+   "java/res/drawable/adaptive_toolbar_preference_header.xml",
+   "java/res/drawable/add_link.xml",
+   "java/res/drawable/add_photo_alternate_24dp.xml",
+@@ -650,6 +657,7 @@
+   "java/res/values-w600dp/dimens.xml",
+   "java/res/values-w800dp/dimens.xml",
+   "java/res/values/attrs.xml",
++  "java/res/values/aegis_tokens.xml",
+   "java/res/values/bools.xml",
+   "java/res/values/colors.xml",
+   "java/res/values/dimens.xml",
