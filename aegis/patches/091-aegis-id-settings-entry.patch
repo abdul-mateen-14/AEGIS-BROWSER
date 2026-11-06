@@ -1,0 +1,86 @@
+# 91 - aegis-id-settings-entry
+# Aegis ID at the top of Settings: the account entry point (sign-in /
+# sign-up / manage account) takes the slot the removed "You and Google"
+# section used to occupy, deep-linking to the Aegis Ecosystem page.
+# MainSettings keeps the row live: "Sign in or create account" while
+# signed out, "Manage account" + email while signed in (onResume).
+# Android-only - desktop targets are unaffected.
+
+--- a/chrome/android/java/res/xml/main_preferences.xml
++++ b/chrome/android/java/res/xml/main_preferences.xml
+@@ -12,8 +12,19 @@
+         android:key="settings_promo_card"
+         android:order="0" />
+     <!-- Aegis (de-Googled): the "You and Google" section (sign-in + Google
+-         services) is removed; Aegis ID sign-in lives in the Aegis Ecosystem
+-         settings page. -->
++         services) is removed. The Aegis ID account (sign-in / sign-up /
++         manage account) takes the top slot instead, deep-linking to the
++         Aegis Ecosystem settings page. -->
++    <org.chromium.components.browser_ui.settings.ChromeBasePreferenceCategory
++        android:key="aegis_id_section"
++        android:order="1"
++        android:title="Aegis ID"/>
++    <org.chromium.components.browser_ui.settings.ChromeBasePreference
++        android:key="aegis_id_entry"
++        android:order="2"
++        android:title="Sign in or create account"
++        android:summary="Sync your encrypted data across devices"
++        android:fragment="org.chromium.chrome.browser.aegis.AegisEcosystemSettings"/>
+     <org.chromium.components.browser_ui.settings.ChromeBasePreferenceCategory
+         android:key="basics_section"
+         android:order="5"
+
+--- a/chrome/android/java/src/org/chromium/chrome/browser/settings/MainSettings.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/settings/MainSettings.java
+@@ -52,6 +52,7 @@
+ import org.chromium.chrome.browser.password_manager.PasswordManagerLauncher;
+ import org.chromium.chrome.browser.password_manager.settings.PasswordsPreference;
+ import org.chromium.chrome.browser.preferences.ChromePreferenceKeys;
++import org.chromium.chrome.browser.aegis.AegisIdManager;
+ import org.chromium.chrome.browser.preferences.Pref;
+ import org.chromium.chrome.browser.profiles.Profile;
+ import org.chromium.chrome.browser.safety_hub.SafetyHubMetricUtils;
+@@ -423,6 +424,7 @@
+         }
+ 
+         cachePreferences();
++        updateAegisIdPreference();
+         updateAutofillPreferences();
+         updateGlicPreference();
+ 
+@@ -498,6 +500,34 @@
+      * Stores all preferences in memory so that, if they needed to be added/removed from the
+      * PreferenceScreen, there would be no need to reload them from 'main_preferences.xml'.
+      */
++    // Aegis: keep the top-of-settings Aegis ID entry in sync with the
++    // account state (sign-in / sign-up entry point vs. account manager
++    // row) - also refreshed on resume when returning from the Aegis
++    // Ecosystem page.
++    private void updateAegisIdPreference() {
++        ChromeBasePreference aegisIdEntry = findPreference("aegis_id_entry");
++        if (aegisIdEntry == null || getContext() == null) {
++            return;
++        }
++        AegisIdManager aegisIdManager = AegisIdManager.getInstance(getContext());
++        if (aegisIdManager.isSignedIn()) {
++            aegisIdEntry.setTitle("Manage account");
++            String email = aegisIdManager.signedInEmail();
++            aegisIdEntry.setSummary(
++                    email.isEmpty() ? "Manage your Aegis ID account and devices"
++                                    : email);
++        } else {
++            aegisIdEntry.setTitle("Sign in or create account");
++            aegisIdEntry.setSummary("Sync your encrypted data across devices");
++        }
++    }
++
++    @Override
++    public void onResume() {
++        super.onResume();
++        updateAegisIdPreference();
++    }
++
+     private void cachePreferences() {
+         int preferenceCount = getPreferenceScreen().getPreferenceCount();
+         for (int index = 0; index < preferenceCount; index++) {
