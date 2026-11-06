@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<title>What is Aegis Browser? — Aegis Help</title>
+<meta name="description" content="Aegis Browser is Chromium rebuilt with privacy on: Shield network-level ad and tracker blocking, no Google services by default, Google stays the default search engine, and optional end-to-end encrypted sync.">
+<meta property="og:title" content="What is Aegis Browser? — Aegis Help">
+<meta property="og:type" content="article">
+<link rel="canonical" href="https://aegis-browser.pages.dev/help/about/">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --black:#070707; --ink1:#0C0C0E; --ink2:#141416; --ink3:#1E1F22;
+    --line:#2A2A2E; --smoke:#9E9EA4; --smoke2:#C9C9CE; --white:#FFFFFF;
+    --accent:#5B8DEF; --ok:#3ECF8E; --warn:#E5B25D;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{
+    background:var(--black); color:var(--smoke2);
+    font-family:'Montserrat',system-ui,-apple-system,sans-serif;
+    font-size:16px; line-height:1.7; -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--accent); text-decoration:none}
+  a:hover{text-decoration:underline}
+  a.card{text-decoration:none; color:inherit}
+  .wrap{max-width:960px; margin:0 auto; padding:40px 24px 80px}
+  header.top{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:20px 24px; border-bottom:1px solid var(--line);
+    background:var(--ink1); position:sticky; top:0; z-index:5;
+  }
+  .brand{display:flex; align-items:center; gap:10px; color:var(--white); font-weight:700}
+  .brand img{width:26px; height:26px}
+  .brand a{color:var(--white)}
+  .crumb{color:var(--smoke); font-size:14px}
+  h1{color:var(--white); font-size:30px; font-weight:800; margin:28px 0 6px}
+  h2{color:var(--white); font-size:20px; font-weight:700; margin:30px 0 10px}
+  h3{color:var(--white); font-size:16px; font-weight:600; margin:18px 0 6px}
+  p{margin:10px 0}
+  .topic-tag{
+    display:inline-block; font-size:13px; color:var(--smoke);
+    border:1px solid var(--line); border-radius:999px; padding:2px 12px; margin-bottom:8px;
+    background:var(--ink2);
+  }
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px; margin-top:18px}
+  .card{
+    background:var(--ink2); border:1px solid var(--line); border-radius:14px; padding:18px;
+    transition:border-color .15s ease;
+  }
+  .card:hover{border-color:var(--accent)}
+  .card h3{margin:0 0 6px; font-size:16px}
+  .card p{font-size:14px; color:var(--smoke); margin:0}
+  .note{
+    background:var(--ink2); border:1px solid var(--line); border-left:3px solid var(--accent);
+    border-radius:10px; padding:14px 16px; margin:16px 0; font-size:15px;
+  }
+  .note.warn{border-left-color:var(--warn)}
+  ul{margin:10px 0 10px 22px}
+  li{margin:6px 0}
+  .related{margin-top:10px}
+  footer{
+    border-top:1px solid var(--line); margin-top:60px; padding:24px; text-align:center;
+    color:var(--smoke); font-size:14px;
+  }
+  .hidden{display:none}
+  code{background:var(--ink3); border-radius:6px; padding:1px 7px; font-size:14px}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <img src="/favicon.svg" alt="">
+    <a href="/">Aegis Browser</a>
+  </div>
+  <div class="crumb"><a href="/">Home</a> &nbsp;·&nbsp; <a href="/help/">Help</a></div>
+</header>
+
+<div class="wrap">
+  <span class="topic-tag">about</span>
+  <h1>What is Aegis Browser?</h1>
+  <p>Aegis Browser is Chromium, rebuilt with privacy switched on from the first launch. The
+        rendering engine, site compatibility, extensions and developer tools are exactly what you
+        know — the difference is everything that happens around the web content.</p>
+        <ul>
+          <li><b>Shield network blocking.</b> A compiled list of <b>92,957+</b> known ad and
+          tracking hosts is refused at the network level, before any data leaves your device.
+          Main-frame navigation is never blocked: the site itself always loads.</li>
+          <li><b>No Google services by default.</b> No Google account sign-in in the browser UI,
+          no Gemini integration, no Google-synced password storage, no usage metrics. Google
+          sites themselves work normally as websites.</li>
+          <li><b>Google stays the default search engine.</b> That is a deliberate choice, works
+          without any account link, and can be changed anytime in <code>Settings → Search
+          engine</code>.</li>
+          <li><b>End-to-end encrypted sync.</b> Optional Aegis Sync with your Aegis ID encrypts
+          data on your device before it leaves; the server stores only ciphertext.</li>
+        </ul>
+        <p>Aegis is free and open source software — every patch that separates it from Chromium
+        is inspectable in the project repository.</p>
+  <p style="margin-top:26px"><a href="/help/">← All help topics</a></p>
+
+  <h2>Related topics</h2>
+  <div class="grid related">
+      <a class="card" href="/help/shield/"><h3>How Shield works</h3><p>92,957+ hosts blocked at the network level; the site itself always loads.</p></a>
+      <a class="card" href="/help/syncgoogleservices/"><h3>Sync &amp; Aegis ID</h3><p>Aegis ID, end-to-end encrypted sync, per-device revocation.</p></a>
+      <a class="card" href="/help/version/"><h3>Checking your version</h3><p>Menu → Settings → About Aegis, or chrome://version.</p></a>
+  </div>
+</div>
+
+<footer>
+  Aegis Browser — your ultimate digital shield. <a href="/">Back to home</a>
+</footer>
+</body>
+</html>

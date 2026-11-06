@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<title>Checking your version — Aegis Help</title>
+<meta name="description" content="Find your exact Aegis release and Chromium version under Menu → Settings → About Aegis, or open chrome://version for the full build details.">
+<meta property="og:title" content="Checking your version — Aegis Help">
+<meta property="og:type" content="article">
+<link rel="canonical" href="https://aegis-browser.pages.dev/help/version/">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --black:#070707; --ink1:#0C0C0E; --ink2:#141416; --ink3:#1E1F22;
+    --line:#2A2A2E; --smoke:#9E9EA4; --smoke2:#C9C9CE; --white:#FFFFFF;
+    --accent:#5B8DEF; --ok:#3ECF8E; --warn:#E5B25D;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{
+    background:var(--black); color:var(--smoke2);
+    font-family:'Montserrat',system-ui,-apple-system,sans-serif;
+    font-size:16px; line-height:1.7; -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--accent); text-decoration:none}
+  a:hover{text-decoration:underline}
+  a.card{text-decoration:none; color:inherit}
+  .wrap{max-width:960px; margin:0 auto; padding:40px 24px 80px}
+  header.top{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:20px 24px; border-bottom:1px solid var(--line);
+    background:var(--ink1); position:sticky; top:0; z-index:5;
+  }
+  .brand{display:flex; align-items:center; gap:10px; color:var(--white); font-weight:700}
+  .brand img{width:26px; height:26px}
+  .brand a{color:var(--white)}
+  .crumb{color:var(--smoke); font-size:14px}
+  h1{color:var(--white); font-size:30px; font-weight:800; margin:28px 0 6px}
+  h2{color:var(--white); font-size:20px; font-weight:700; margin:30px 0 10px}
+  h3{color:var(--white); font-size:16px; font-weight:600; margin:18px 0 6px}
+  p{margin:10px 0}
+  .topic-tag{
+    display:inline-block; font-size:13px; color:var(--smoke);
+    border:1px solid var(--line); border-radius:999px; padding:2px 12px; margin-bottom:8px;
+    background:var(--ink2);
+  }
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px; margin-top:18px}
+  .card{
+    background:var(--ink2); border:1px solid var(--line); border-radius:14px; padding:18px;
+    transition:border-color .15s ease;
+  }
+  .card:hover{border-color:var(--accent)}
+  .card h3{margin:0 0 6px; font-size:16px}
+  .card p{font-size:14px; color:var(--smoke); margin:0}
+  .note{
+    background:var(--ink2); border:1px solid var(--line); border-left:3px solid var(--accent);
+    border-radius:10px; padding:14px 16px; margin:16px 0; font-size:15px;
+  }
+  .note.warn{border-left-color:var(--warn)}
+  ul{margin:10px 0 10px 22px}
+  li{margin:6px 0}
+  .related{margin-top:10px}
+  footer{
+    border-top:1px solid var(--line); margin-top:60px; padding:24px; text-align:center;
+    color:var(--smoke); font-size:14px;
+  }
+  .hidden{display:none}
+  code{background:var(--ink3); border-radius:6px; padding:1px 7px; font-size:14px}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <img src="/favicon.svg" alt="">
+    <a href="/">Aegis Browser</a>
+  </div>
+  <div class="crumb"><a href="/">Home</a> &nbsp;·&nbsp; <a href="/help/">Help</a></div>
+</header>
+
+<div class="wrap">
+  <span class="topic-tag">version</span>
+  <h1>Checking your version</h1>
+  <p>To see exactly which build you are running, open <code>Menu → Settings → About
+        Aegis</code>. The page shows the Aegis release number alongside the exact Chromium version
+        Aegis was built from, and it is also where update checks happen.</p>
+        <p>If you want the raw engine details, open <code>chrome://version</code>. It lists the
+        full user-agent string, the command line the browser was started with, the profile path
+        and the build revision — handy when filing a bug or checking that a change you expect is
+        actually present in your build.</p>
+        <p>Version numbers matter more for a privacy browser than for a mainstream one: the
+        compiled Shield blocklist, the certificate root store and Chromium’s security fixes all
+        update with each release. When About Aegis offers an update, let it finish and restart
+        when prompted — staying current is the easiest protection there is.</p>
+        <p>If the version page fails to open or an update will not apply, use the feedback entry
+        in the browser menu and include the version string from <code>chrome://version</code>.</p>
+  <p style="margin-top:26px"><a href="/help/">← All help topics</a></p>
+
+  <h2>Related topics</h2>
+  <div class="grid related">
+      <a class="card" href="/help/help/"><h3>Getting help &amp; feedback</h3><p>Where every Help entry lands and how to send feedback.</p></a>
+      <a class="card" href="/help/about/"><h3>What is Aegis Browser?</h3><p>Chromium rebuilt with privacy on — what makes Aegis different.</p></a>
+      <a class="card" href="/help/safebrowsing/"><h3>Safe Browsing protection</h3><p>Local phishing and malware checks stay on; enhanced lookups stay off.</p></a>
+  </div>
+</div>
+
+<footer>
+  Aegis Browser — your ultimate digital shield. <a href="/">Back to home</a>
+</footer>
+</body>
+</html>

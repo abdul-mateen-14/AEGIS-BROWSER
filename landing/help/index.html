@@ -8,6 +8,7 @@
 <meta name="description" content="Help and documentation for Aegis Browser: the privacy-hardened Chromium browser with built-in Shield ad blocking and end-to-end encrypted Aegis Sync.">
 <meta property="og:title" content="Help — Aegis Browser">
 <meta property="og:type" content="website">
+<link rel="canonical" href="https://aegis-browser.pages.dev/help/">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -24,6 +25,7 @@
   }
   a{color:var(--accent); text-decoration:none}
   a:hover{text-decoration:underline}
+  a.card{text-decoration:none; color:inherit}
   .wrap{max-width:960px; margin:0 auto; padding:40px 24px 80px}
   header.top{
     display:flex; align-items:center; justify-content:space-between;
@@ -58,17 +60,18 @@
   .note.warn{border-left-color:var(--warn)}
   ul{margin:10px 0 10px 22px}
   li{margin:6px 0}
-  input#q{
-    width:100%; padding:13px 16px; border-radius:12px; border:1px solid var(--line);
-    background:var(--ink2); color:var(--white); font-family:inherit; font-size:15px; outline:none;
-  }
-  input#q:focus{border-color:var(--accent)}
+  .related{margin-top:10px}
   footer{
     border-top:1px solid var(--line); margin-top:60px; padding:24px; text-align:center;
     color:var(--smoke); font-size:14px;
   }
   .hidden{display:none}
   code{background:var(--ink3); border-radius:6px; padding:1px 7px; font-size:14px}
+  input#q{
+    width:100%; padding:13px 16px; border-radius:12px; border:1px solid var(--line);
+    background:var(--ink2); color:var(--white); font-family:inherit; font-size:15px; outline:none;
+  }
+  input#q:focus{border-color:var(--accent)}
 </style>
 </head>
 <body>
@@ -87,54 +90,43 @@
        built-in Shield ad blocking and end-to-end encrypted sync. Search or pick a section.</p>
     <p><input id="q" type="search" placeholder="Search help topics…" autocomplete="off"></p>
 
-    <h2>Getting started</h2>
+    <h2 id="getting-started">Getting started</h2>
     <div class="grid" data-section="start">
-      <div class="card" data-k="getting started about overview what is aegis"><h3>What is Aegis Browser?</h3><p>A Chromium-based browser hardened for privacy: ads and trackers blocked at the network level, telemetry off, no Google services running by default.</p></div>
-      <div class="card" data-k="help feedback support contact menu settings keyboard"><h3>Getting help &amp; feedback</h3><p>How to reach this documentation from the browser menu, settings, or keyboard help entries.</p></div>
-      <div class="card" data-k="update version about about_version"><h3>Checking your version</h3><p>Open <code>Menu → Settings → About Aegis</code> (or <code>chrome://version</code>) to see the exact Chromium version and Aegis release number.</p></div>
+      <a class="card" href="/help/about/" data-k="getting started about overview what is aegis"><h3>What is Aegis Browser?</h3><p>A Chromium-based browser hardened for privacy: ads and trackers blocked at the network level, telemetry off, no Google services running by default.</p></a>
+      <a class="card" href="/help/help/" data-k="help feedback support contact menu settings keyboard"><h3>Getting help &amp; feedback</h3><p>How to reach this documentation from the browser menu, settings, or keyboard help entries.</p></a>
+      <a class="card" href="/help/version/" data-k="update version about about_version"><h3>Checking your version</h3><p>Open <code>Menu → Settings → About Aegis</code> (or <code>chrome://version</code>) to see the exact Chromium version and Aegis release number.</p></a>
     </div>
-
-    <h2>Privacy &amp; Shield</h2>
+    <h2 id="privacy">Privacy &amp; Shield</h2>
     <div class="grid" data-section="privacy">
-      <div class="card" data-k="shield ad blocking ads trackers blocked"><h3>How Shield works</h3><p>Shield blocks ads and trackers before they load: 92,957+ known tracking hosts are refused at the network level. Main-frame navigation is never blocked — you can always reach the site itself.</p></div>
-      <div class="card" data-k="shield count badge number"><h3>The Shield count</h3><p>The number you see in the UI is how many third-party requests were blocked on the pages you visited during this session.</p></div>
-      <div class="card" data-k="cookies third party 3p cookie blocking"><h3>Cookies</h3><p>Third-party cookies are blocked by default. First-party cookies work normally so sites stay signed in.</p></div>
-      <div class="card" data-k="incognito private mode"><h3>Incognito</h3><p>Incognito works as you expect: nothing from the session is written to history, cookies or storage after you close the last Incognito tab.</p></div>
-      <div class="card" data-k="safebrowsing safe browsing safe enhanced protection"><h3>Safe Browsing protection</h3><p>Local phishing/malware heuristics stay on. Network lookups for enhanced protection are off by default — Aegis sends no browsing data anywhere.</p></div>
-      <div class="card" data-k="dnt do not track metrics usage statistics crash reports telemetry"><h3>Telemetry</h3><p>Usage statistics and crash reports are off by default and cannot be turned on through settings prompts. “Do Not Track” is sent by default.</p></div>
+      <a class="card" href="/help/shield/" data-k="shield ad blocking ads trackers blocked"><h3>How Shield works</h3><p>Shield blocks ads and trackers before they load: 92,957+ known tracking hosts are refused at the network level. Main-frame navigation is never blocked — you can always reach the site itself.</p></a>
+      <a class="card" href="/help/shield/" data-k="shield count badge number"><h3>The Shield count</h3><p>The number you see in the UI is how many third-party requests were blocked on the pages you visited during this session.</p></a>
+      <a class="card" href="/help/cookies/" data-k="cookies third party 3p cookie blocking"><h3>Cookies</h3><p>Third-party cookies are blocked by default. First-party cookies work normally so sites stay signed in.</p></a>
+      <a class="card" href="/help/incognito/" data-k="incognito private mode"><h3>Incognito</h3><p>Incognito works as you expect: nothing from the session is written to history, cookies or storage after you close the last Incognito tab.</p></a>
+      <a class="card" href="/help/safebrowsing/" data-k="safebrowsing safe browsing safe enhanced protection"><h3>Safe Browsing protection</h3><p>Local phishing/malware heuristics stay on. Network lookups for enhanced protection are off by default — Aegis sends no browsing data anywhere.</p></a>
+      <a class="card" href="/help/metrics/" data-k="dnt do not track metrics usage statistics crash reports telemetry"><h3>Telemetry</h3><p>Usage statistics and crash reports are off by default and cannot be turned on through settings prompts. “Do Not Track” is sent by default.</p></a>
     </div>
-
-    <h2>Sync &amp; Aegis ID</h2>
+    <h2 id="sync">Sync &amp; Aegis ID</h2>
     <div class="grid" data-section="sync">
-      <div class="card" data-k="aegis id account sign in signin register syncgoogleservices"><h3>Aegis ID sign-in</h3><p>Aegis ID is your account for Aegis Sync — created inside Aegis, not with Google. Sign in from <code>Settings → Aegis ecosystem → Aegis ID</code>.</p></div>
-      <div class="card" data-k="sync encryption end to end e2e vault"><h3>How sync encryption works</h3><p>Your data is end-to-end encrypted on your device. The sync server stores only opaque ciphertext — it never sees your passwords or vault contents.</p></div>
-      <div class="card" data-k="devices revoke device lost"><h3>Managing devices</h3><p>Each signed-in device is listed under your Aegis ID. You can revoke any device at any time; it immediately loses access to new sync data.</p></div>
+      <a class="card" href="/help/syncgoogleservices/" data-k="aegis id account sign in signin register syncgoogleservices"><h3>Aegis ID sign-in</h3><p>Aegis ID is your account for Aegis Sync — created inside Aegis, not with Google. Sign in from <code>Settings → Aegis ecosystem → Aegis ID</code>.</p></a>
+      <a class="card" href="/help/syncgoogleservices/" data-k="sync encryption end to end e2e vault"><h3>How sync encryption works</h3><p>Your data is end-to-end encrypted on your device. The sync server stores only opaque ciphertext — it never sees your passwords or vault contents.</p></a>
+      <a class="card" href="/help/syncgoogleservices/" data-k="devices revoke device lost"><h3>Managing devices</h3><p>Each signed-in device is listed under your Aegis ID. You can revoke any device at any time; it immediately loses access to new sync data.</p></a>
     </div>
-
-    <h2>Features</h2>
+    <h2 id="features">Features</h2>
     <div class="grid" data-section="features">
-      <div class="card" data-k="password passwords manager manager autofill import"><h3>Passwords</h3><p>Aegis saves passwords locally on your device. There is no Google account in the loop — nothing is uploaded unless you turn on Aegis Sync with your Aegis ID.</p></div>
-      <div class="card" data-k="autofill addresses payments card credit"><h3>Autofill</h3><p>Addresses and payment methods are stored locally. They are offered only to sites you submit forms on.</p></div>
-      <div class="card" data-k="pwa web app install"><h3>Installing web apps</h3><p>Use <code>Menu → Add to Home screen</code> (Android) or the install icon in the omnibox (desktop) to install a site as an app.</p></div>
-      <div class="card" data-k="cast bluetooth usb webhid webserial"><h3>Device connections</h3><p>Cast, Bluetooth, USB and serial device prompts work as in Chromium; nothing connects without your explicit action.</p></div>
-      <div class="card" data-k="search engine default google duckduckgo startpage wikipedia chips"><h3>Search engines</h3><p>Google is the default search engine out of the box. You can change it anytime in <code>Settings → Search engine</code>; suggestions are off by default.</p></div>
-      <div class="card" data-k="gemini ai assistant"><h3>AI assistants</h3><p>AI features are not built into Aegis. If you want an AI service, just open its website (for example gemini.google.com) — nothing runs inside the browser by default.</p></div>
+      <a class="card" href="/help/password/" data-k="password passwords manager manager autofill import"><h3>Passwords</h3><p>Aegis saves passwords locally on your device. There is no Google account in the loop — nothing is uploaded unless you turn on Aegis Sync with your Aegis ID.</p></a>
+      <a class="card" href="/help/password/" data-k="autofill addresses payments card credit"><h3>Autofill</h3><p>Addresses and payment methods are stored locally. They are offered only to sites you submit forms on.</p></a>
+      <a class="card" href="/help/pwa/" data-k="pwa web app install"><h3>Installing web apps</h3><p>Use <code>Menu → Add to Home screen</code> (Android) or the install icon in the omnibox (desktop) to install a site as an app.</p></a>
+      <a class="card" href="/help/pwa/" data-k="cast bluetooth usb webhid webserial"><h3>Device connections</h3><p>Cast, Bluetooth, USB and serial device prompts work as in Chromium; nothing connects without your explicit action.</p></a>
+      <a class="card" href="/help/search/" data-k="search engine default google duckduckgo startpage wikipedia chips"><h3>Search engines</h3><p>Google is the default search engine out of the box. You can change it anytime in <code>Settings → Search engine</code>; suggestions are off by default.</p></a>
+      <a class="card" href="/help/gemini/" data-k="gemini ai assistant"><h3>AI assistants</h3><p>AI features are not built into Aegis. If you want an AI service, just open its website (for example gemini.google.com) — nothing runs inside the browser by default.</p></a>
     </div>
-
-    <h2>Troubleshooting</h2>
+    <h2 id="faq">Troubleshooting</h2>
     <div class="grid" data-section="troubleshoot">
-      <div class="card" data-k="site broken not working layout images"><h3>A site looks broken</h3><p>Some sites misbehave when trackers are blocked. Try <code>chrome://settings/shield</code> to review Shield, or test in Incognito. If it persists, report the site via feedback.</p></div>
-      <div class="card" data-k="sign in login problem account fail"><h3>Sign-in problems</h3><p>Websites sign in normally. Google account sign-in inside browser UI is disabled by design — Google services work as websites, not as browser-embedded services.</p></div>
-      <div class="card" data-k="slow performance battery saver"><h3>Performance</h3><p>Aegis blocks most trackers before they run, so pages usually load faster. If a page is slow, check Shield’s blocked count — heavy pages often hide dozens of trackers.</p></div>
-      <div class="card" data-k="mixed content root certificate error warning"><h3>Certificate warnings</h3><p>Certificate warnings are shown exactly as Chromium presents them. Never proceed past one unless you are certain about the site.</p></div>
+      <a class="card" href="/help/shield/" data-k="site broken not working layout images"><h3>A site looks broken</h3><p>Some sites misbehave when trackers are blocked. Try <code>chrome://settings/shield</code> to review Shield, or test in Incognito. If it persists, report the site via feedback.</p></a>
+      <a class="card" href="/help/syncgoogleservices/" data-k="sign in login problem account fail"><h3>Sign-in problems</h3><p>Websites sign in normally. Google account sign-in inside browser UI is disabled by design — Google services work as websites, not as browser-embedded services.</p></a>
+      <a class="card" href="/help/shield/" data-k="slow performance battery saver"><h3>Performance</h3><p>Aegis blocks most trackers before they run, so pages usually load faster. If a page is slow, check Shield’s blocked count — heavy pages often hide dozens of trackers.</p></a>
+      <a class="card" href="/help/safebrowsing/" data-k="mixed content root certificate error warning"><h3>Certificate warnings</h3><p>Certificate warnings are shown exactly as Chromium presents them. Never proceed past one unless you are certain about the site.</p></a>
     </div>
-  </div>
-
-  <div id="topic-view" class="hidden">
-    <span class="topic-tag" id="topic-tag">topic</span>
-    <h1 id="topic-title"></h1>
-    <div id="topic-body"></div>
-    <p style="margin-top:26px"><a href="help" id="backlink">← All help topics</a></p>
   </div>
 </div>
 
@@ -143,146 +135,160 @@
 </footer>
 
 <script>
-const TOPICS = {
-  "help": {
-    t: "Getting help & feedback",
-    b: `<p>Every “Help” entry inside Aegis Browser opens this documentation site — there is no
-        redirect to Google support. Entries in the <b>menu</b>, <b>settings</b> and
-        <b>keyboard help</b> all land here; use the search or the sections on the index page.</p>
-        <p>If you cannot find an answer, use the feedback entry in the browser menu to reach the
-        project. Aegis is free and open source software.</p>`
-  },
-  "shield": {
-    t: "How Shield works",
-    b: `<p>Shield is Aegis’s built-in content blocker. It ships with a compiled list of
-        <b>92,957+</b> known ad and tracking hosts. When a page tries to load third-party
-        subresources from those hosts — ads, analytics, tag managers — the request is refused
-        before any data leaves your device.</p>
-        <ul>
-          <li><b>Main-frame navigation is never blocked.</b> The site itself always loads; only
-          its embedded trackers are refused.</li>
-          <li>The blocklist is compiled into the browser and updates with each Aegis release.</li>
-          <li>The Shield count in the UI shows blocks for your current session.</li>
-        </ul>`
-  },
-  "safebrowsing": {
-    t: "Safe Browsing protection",
-    b: `<p>Aegis keeps Chromium’s local phishing and malware heuristics active. Enhanced
-        protection mode performs network lookups with Google — in Aegis this is off by default
-        so that no browsing data is sent anywhere. Standard local checks keep working offline.</p>`
-  },
-  "incognito": {
-    t: "Incognito mode",
-    b: `<p>Incognito gives you a session that is not written to history, cookies, site data or
-        form autofill. Close the last Incognito tab and the session is gone. Shield blocking
-        stays active in Incognito — often even more valuable there.</p>`
-  },
-  "password": {
-    t: "Passwords in Aegis",
-    b: `<p>Aegis includes Chromium’s password manager, rebranded and kept <b>local</b>: passwords
-        are stored encrypted on your device. There is no Google account involved.</p>
-        <ul>
-          <li>Save and autofill passwords as usual.</li>
-          <li>Turn on <b>Aegis Sync</b> with your Aegis ID to sync them across devices —
-          end-to-end encrypted, so the server only ever stores ciphertext.</li>
-          <li>Check <code>Settings → Passwords</code> to review saved items.</li>
-        </ul>`
-  },
-  "syncgoogleservices": {
-    t: "Sync & Aegis ID",
-    b: `<p>Aegis does not use Google accounts for browser sign-in. Instead you get an
-        <b>Aegis ID</b> — an account on Aegis’s own sync service.</p>
-        <ul>
-          <li>Create or sign in from <code>Settings → Aegis ecosystem → Aegis ID</code>.</li>
-          <li>Sync payloads are <b>end-to-end encrypted</b>: your passphrase never leaves the
-          device, and the server sees only ciphertext and minimal metadata (item counts and
-          timestamps).</li>
-          <li>Devices can be revoked individually at any time.</li>
-        </ul>
-        <div class="note">Google account sign-in inside the browser UI is intentionally
-        unavailable. Google sites themselves — including accounts.google.com — work normally as
-        websites.</div>`
-  },
-  "gemini": {
-    t: "AI assistants",
-    b: `<p>Aegis ships no built-in AI assistant and no Gemini integration. AI services are
-        websites like any other: open gemini.google.com if you want it — nothing runs inside the
-        browser UI by default and no prompts or conversations are processed by the browser.</p>`
-  },
-  "ad_privacy": {
-    t: "Ad privacy",
-    b: `<p>Chromium’s ad-privacy surfaces (Topics, Protected Audience, Attribution) belong to
-        Google’s ad ecosystem. In Aegis, Shield blocks the underlying third-party requests
-        anyway, and you can keep these surfaces off in <code>Settings → Privacy → Ad privacy</code>.</p>`
-  },
-  "cookies": {
-    t: "Cookies",
-    b: `<p><b>Third-party cookies are blocked by default</b> in Aegis. First-party cookies work
-        normally, which keeps site logins working. Combined with Shield, this removes the most
-        common cross-site tracking vector.</p>`
-  },
-  "metrics": {
-    t: "Telemetry & crash reports",
-    b: `<p>Aegis turns usage statistics and crash reporting off by default. “Do Not Track” is
-        sent by default. There is no Aegis-side telemetry collection.</p>`
-  },
-  "search": {
-    t: "Search engines",
-    b: `<p>Google is the default search engine in Aegis — that is a deliberate choice, and it
-        works without linking any browser account. Search suggestions are off by default (less
-        data leaves the device while typing). Change the engine anytime under
-        <code>Settings → Search engine</code>.</p>`
-  }
-};
-
+// Every p=/product=/utm_source=/extsrc= code the patched browser emits
+// (aegis/patches/085-degoogle-help-links.patch and 072-aegis-help-links.patch)
+// maps to a canonical topic page under /help/<key>/.
 const ALIAS = {
-  "help": "help", "chrome": "help", "beta": "help", "desktop": "help", "mobile": "help",
-  "safety": "shield", "safe": "safebrowsing", "enhanced": "safebrowsing",
-  "password": "password", "autofill": "password", "import": "password",
-  "syncgoogleservices": "syncgoogleservices", "profile": "syncgoogleservices", "managed": "syncgoogleservices",
-  "ai": "gemini", "generative": "gemini", "generate": "gemini",
-  "ad": "ad_privacy", "ad_privacy": "ad_privacy", "privacy": "ad_privacy",
-  "incognito": "incognito", "private": "incognito",
-  "safebrowsing": "safebrowsing", "root": "safebrowsing", "root_store": "safebrowsing",
-  "search": "search", "settings": "search", "one": "search", "on": "search",
-  "cookies": "cookies", "cpn": "cookies", "card": "password", "save": "password",
-  "performance": "shield", "process": "shield", "pwa": "shield", "pause": "shield",
-  "mixed": "safebrowsing", "cast": "shield", "bluetooth": "shield", "image": "shield",
-  "opt": "metrics", "no": "shield", "is": "help", "ib": "shield", "e": "help",
-  "create": "syncgoogleservices", "add": "password", "bnpl": "password", "automatedpasswordchange": "password"
+  "83": "gemini",
+  "ad": "ad_privacy",
+  "add": "password",
+  "addprofile": "syncgoogleservices",
+  "adprivacy": "ad_privacy",
+  "ai": "gemini",
+  "aihistorysearch": "gemini",
+  "autofill": "password",
+  "autofillai": "password",
+  "automatedpasswordchange": "password",
+  "beta": "help",
+  "betaforum": "help",
+  "bluetooth": "pwa",
+  "bnpl": "password",
+  "bnplautofillchrome": "password",
+  "card": "password",
+  "cardbenefitschrome": "password",
+  "cast": "pwa",
+  "casttoclassteacher": "pwa",
+  "chrome": "help",
+  "chromeappdeprecation": "pwa",
+  "chromebatterysaver": "shield",
+  "chromecbd": "help",
+  "chromeh": "help",
+  "chromememorysaver": "shield",
+  "chromen": "help",
+  "chromes": "help",
+  "cookies": "cookies",
+  "cpn": "cookies",
+  "cpncookies": "cookies",
+  "cpnsafebrowsing": "safebrowsing",
+  "cpnsafebrowsingwv": "safebrowsing",
+  "cpwd": "syncgoogleservices",
+  "create": "syncgoogleservices",
+  "createthemeswithai": "gemini",
+  "cwsenhancedsafebrowsing": "safebrowsing",
+  "desktop": "help",
+  "desktoptabgroups": "help",
+  "e": "help",
+  "eawsnap": "help",
+  "eawsnaprl": "help",
+  "enhanced": "safebrowsing",
+  "enhancedplayback": "pwa",
+  "gemini": "gemini",
+  "generatepassword": "password",
+  "generative": "gemini",
+  "generativeaisettings": "gemini",
+  "help": "help",
+  "helpmewrite": "gemini",
+  "helpmewritesettings": "gemini",
+  "ib": "safebrowsing",
+  "ibdownloadblocked": "safebrowsing",
+  "image": "gemini",
+  "imagedescriptions": "gemini",
+  "import": "password",
+  "importpasswordsdesktop": "password",
+  "incognito": "incognito",
+  "is": "help",
+  "ischromemanaged": "help",
+  "mailto": "help",
+  "managed": "help",
+  "mixed": "safebrowsing",
+  "mixedcontentdownloads": "safebrowsing",
+  "mobile": "help",
+  "mobileprotectedcontent": "pwa",
+  "nocastdestination": "pwa",
+  "ogwsfsd": "metrics",
+  "ondevicegenai": "gemini",
+  "onetimepassword": "password",
+  "opt": "metrics",
+  "optoutrequest": "metrics",
+  "password": "password",
+  "passwordsharing": "password",
+  "passwordsharingtroubleshoot": "password",
+  "pause": "shield",
+  "pauseprotections": "shield",
+  "performance": "shield",
+  "performancepersonalization": "metrics",
+  "performancepreloadpages": "shield",
+  "performancesiteexclusion": "shield",
+  "privacy": "ad_privacy",
+  "private": "incognito",
+  "privateuseacrossgoogle": "ad_privacy",
+  "process": "safebrowsing",
+  "processisolation": "safebrowsing",
+  "profile": "syncgoogleservices",
+  "profileseparation": "syncgoogleservices",
+  "pwa": "pwa",
+  "pwainstall": "pwa",
+  "root": "safebrowsing",
+  "rootstore": "safebrowsing",
+  "safe": "safebrowsing",
+  "safebrowsing": "safebrowsing",
+  "safebrowsinginchrome": "safebrowsing",
+  "safebrowsingpreferences": "safebrowsing",
+  "safety": "shield",
+  "safetycheck": "safebrowsing",
+  "safetytip": "safebrowsing",
+  "save": "password",
+  "savefromchrome": "password",
+  "search": "search",
+  "searchhistory": "search",
+  "settings": "search",
+  "settingsautofill": "password",
+  "settingsdonottrack": "metrics",
+  "settingsencryption": "syncgoogleservices",
+  "settingsmanageexceptions": "cookies",
+  "settingsomnibox": "search",
+  "settingspassword": "password",
+  "settingspasswordode": "password",
+  "settingsprivacy": "ad_privacy",
+  "settingssearchhelp": "search",
+  "settingssignin": "syncgoogleservices",
+  "settingssyncerror": "syncgoogleservices",
+  "syncgoogleservices": "syncgoogleservices",
+  "uiautomaticsettingsreset": "help",
+  "uidownloaderrors": "help",
+  "uiremovenoncwsextensions": "safebrowsing",
+  "uiresetsettings": "help",
+  "uisecurityindicator": "safebrowsing",
+  "uisettingsapiextension": "help",
+  "uiusagestat": "metrics",
+  "unsupportedmac": "help",
+  "unsupportedwindows": "help",
+  "webhid": "pwa",
+  "webserial": "pwa",
+  "webusb": "pwa",
+  "youradministrator": "help"
 };
 
 function norm(s){ return (s||"").toLowerCase().replace(/[^a-z0-9]/g,""); }
 
 function showIndex(){
   document.getElementById("index-view").classList.remove("hidden");
-  document.getElementById("topic-view").classList.add("hidden");
   document.title = "Help — Aegis Browser";
 }
 
-function showTopic(key){
-  const topic = TOPICS[key];
-  if(!topic){ showIndex(); return; }
-  document.getElementById("index-view").classList.add("hidden");
-  const v = document.getElementById("topic-view");
-  v.classList.remove("hidden");
-  document.getElementById("topic-tag").textContent = key;
-  document.getElementById("topic-title").textContent = topic.t;
-  document.getElementById("topic-body").innerHTML = topic.b;
-  document.title = topic.t + " — Aegis Help";
-  window.scrollTo(0,0);
-}
-
+// ?p= routing: canonicalize to the real topic page. Unknown codes fall back
+// to the plain index.
 function route(){
   const params = new URLSearchParams(location.search);
-  let raw = params.get("p") || params.get("product") || "";
-  // common contexts: ?p=help&ctx=menu|settings|keyboard all map to the help topic
+  const raw = params.get("p") || params.get("product") || params.get("utm_source")
+            || params.get("extsrc") || (params.has("ogwsfsd") ? "ogwsfsd" : "");
   if(!raw){ showIndex(); return; }
-  const key = ALIAS[norm(raw)] || ALIAS[norm(params.get("ctx"))];
-  if(key) showTopic(key); else showIndex();
+  const key = ALIAS[norm(raw)] || ALIAS[norm(params.get("ctx"))] || "";
+  if(key){ location.replace("/help/" + key + "/"); }
+  else{ showIndex(); }
 }
 
-// index search filter
+// index search filter (works over the anchor cards)
 document.getElementById("q").addEventListener("input", e=>{
   const q = norm(e.target.value);
   document.querySelectorAll("#index-view .card").forEach(c=>{
@@ -294,10 +300,6 @@ document.getElementById("q").addEventListener("input", e=>{
     if(sec) sec.classList.toggle("hidden", q.length>0 &&
       [...sec.querySelectorAll(".card")].every(c=>c.classList.contains("hidden")));
   });
-});
-
-document.getElementById("backlink").addEventListener("click", e=>{
-  e.preventDefault(); history.replaceState(null,"",location.pathname); showIndex();
 });
 
 route();
