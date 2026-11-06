@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 The Aegis Browser Authors
+     Use of this source code is governed by a BSD-style license that can be
+     found in the LICENSE file.
+
+     Aegis Liquid Glass design tokens (spec Tables 5-8). Base set = light
+     theme glass; values-night/aegis_tokens.xml (same resource names) carries
+     the dark set. Everything the dock and glass sheets use is prefixed
+     aegis_. -->
+<resources>
+    <!-- Glass surfaces -->
+    <color name="aegis_glass_pill">#D9F4F4F4</color>
+    <color name="aegis_glass_stroke">#3A8A8A8A</color>
+    <color name="aegis_glass_sheet">#F2F4F4F4</color>
+    <color name="aegis_glass_scrim">#4D101114</color>
+    <color name="aegis_glass_chip">#66FFFFFF</color>
+    <color name="aegis_glass_chip_text">#DE101114</color>
+    <!-- Foreground -->
+    <color name="aegis_glass_text">#DE101114</color>
+    <color name="aegis_glass_text_secondary">#99101114</color>
+    <color name="aegis_glass_icon">#DE101114</color>
+    <color name="aegis_glass_icon_pressed">#40101114</color>
+    <!-- Brand -->
+    <color name="aegis_accent">#DE101114</color>
+
+    <!-- Dock geometry (spec Table 9: pill 260x52dp, sliver 24x140dp) -->
+    <dimen name="aegis_dock_width">260dp</dimen>
+    <dimen name="aegis_dock_height">52dp</dimen>
+    <dimen name="aegis_dock_hpadding">10dp</dimen>
+    <dimen name="aegis_dock_url_padding">10dp</dimen>
+    <dimen name="aegis_dock_button">32dp</dimen>
+    <dimen name="aegis_dock_gap">6dp</dimen>
+    <dimen name="aegis_dock_bottom_margin">12dp</dimen>
+    <dimen name="aegis_sliver_width">24dp</dimen>
+    <dimen name="aegis_sliver_height">140dp</dimen>
+    <dimen name="aegis_sheet_corner">28dp</dimen>
+    <dimen name="aegis_sheet_padding">20dp</dimen>
+
+    <!-- Identifiers -->
+    <item name="aegis_dock" type="id"/>
+    <item name="aegis_search_sheet" type="id"/>
+    <item name="aegis_search_input" type="id"/>
+
+    <!-- Dock / sheet strings -->
+    <string name="aegis_dock_menu">Menu</string>
+    <string name="aegis_dock_new_tab">New tab</string>
+    <string name="aegis_dock_tabs">Tabs</string>
+    <string name="aegis_dock_search">Search</string>
+    <string name="aegis_dock_search_hint">Search or type URL</string>
+    <string name="aegis_dock_recall">Show dock</string>
+    <string name="aegis_sheet_search">Search %1$s or type a URL</string>
+</resources>

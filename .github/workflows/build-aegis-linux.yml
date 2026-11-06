@@ -1,0 +1,363 @@
+name: Build Aegis Browser Linux x64 (free GitHub-hosted runner)
+
+# Free-build pipeline for Aegis Browser (Linux, x64 desktop) - Phase D1 of
+# docs/DESKTOP_PLAN.md. Same $0 model as the Android build:
+#
+#   1. Frees disk space and adds swap on the runner
+#   2. Fetches Chromium source WITHOUT git history (saves ~20 GB)
+#   3. Checks out a specific Chromium stable tag
+#   4. Restores the banked build tree from the previous run (if any)
+#   5. Applies the SAME aegis/patches/*.patch series (desktop shares the files)
+#   6. Runs the desktop branding hook (English UI strings -> "Aegis")
+#   7. Builds `chrome` + the proper `stable_deb` package with low-RAM gn args
+#   8. Publishes .deb + portable .zip to a draft GitHub Release
+#
+# RESUMABILITY - build-tree banking (aegis/ci/bank.sh), NOT ccache:
+# Chromium 156 compiles all C++ with C++20 modules (clang PCM) and ccache
+# cannot cache module compilation units, so the old ccache design banked
+# almost nothing (37 MB). When a run approaches the 6 h cap it stops ninja
+# GRACEFULLY (SIGINT), streams out/<dir>/obj + gen + .ninja_log +
+# .ninja_deps into zstd volumes and uploads them as assets of a DRAFT
+# release (no actions/cache -> the 10 GB repo cache limit never applies;
+# only the 2 GiB per-file limit does, hence the split). The next run
+# downloads, sha256-verifies and extracts the bank, normalizes mtimes, and
+# ninja continues incrementally. Every compile goes through the atomic cc
+# wrapper (aegis/ci/atomic_cc.c) so a killed compiler never leaves a
+# half-written object behind. Patches are applied AFTER mtime
+# normalization, so patched sources recompile - invalidation by mtime.
+
+on:
+  workflow_dispatch:
+    inputs:
+      chromium_version:
+        description: 'Chromium version tag (empty = latest Chrome stable, e.g. 156.0.8078.79)'
+        required: false
+        default: ''
+
+concurrency:
+  group: aegis-linux-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04          # pinned: 'ubuntu-latest' is migrating to 26.04 during Oct-Nov 2026
+    timeout-minutes: 350           # GitHub hard cap is 360 for hosted runners
+    permissions:
+      contents: write              # needed to create the draft release(s)
+    env:
+      # /mnt is root-owned on hosted runners; keep the workspace in home.
+      WORK: /home/runner/aegis-work
+      OUT: linux_x64
+
+    steps:
+      - name: Start the job clock (budget math for the build step)
+        run: echo "JOB_START=$(date +%s)" >> "$GITHUB_ENV"
+
+      - name: Checkout this repository (workflow + patches + ci scripts)
+        uses: actions/checkout@v4
+
+      - name: Free up disk space (~25 GB)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true            # preinstalled Android SDK is dead weight for desktop builds too
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: false
+
+      - name: Install atomic cc wrapper and add 16 GB swap
+        run: |
+          set -e
+          # Atomic-output compile wrapper: every compiler -o target is written
+          # to a temp file and renamed on success only. A build killed at the
+          # cap (or stopped for banking) never leaves half-written objects.
+          sudo gcc -O2 -o /usr/local/bin/aegis_atomic_cc \
+            "$GITHUB_WORKSPACE/aegis/ci/atomic_cc.c"
+          /usr/local/bin/aegis_atomic_cc echo "atomic wrapper: $(date)" >/dev/null \
+            && echo "wrapper smoke test OK"
+          sudo fallocate -l 16G /mnt/swapfile
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile > /dev/null
+          sudo swapon /mnt/swapfile
+          echo "--- memory ---"; free -h
+          echo "--- disk ---";  df -h /
+
+      - name: Resolve Chromium version to build
+        run: |
+          set -e
+          if [ -n "${{ github.event.inputs.chromium_version }}" ]; then
+            VERSION="${{ github.event.inputs.chromium_version }}"
+          else
+            VERSION=$(curl -s "https://versionhistory.googleapis.com/v1/chrome/platforms/linux/channels/stable/versions?pageSize=1" \
+              | python3 -c "import json,sys; print(json.load(sys.stdin)['versions'][0]['version'])")
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "WANT_CHROMIUM_TAG=$VERSION" >> "$GITHUB_ENV"
+          echo "Building Chromium $VERSION for Linux x64"
+
+      - name: Install depot_tools
+        run: |
+          set -e
+          mkdir -p "$WORK"
+          cd "$WORK"
+          git clone --depth=1 https://chromium.googlesource.com/chromium/tools/depot_tools.git
+          echo "$WORK/depot_tools" >> "$GITHUB_PATH"
+          git config --global user.email "aegis@build.local"
+          git config --global user.name  "Aegis Builder"
+
+      - name: Fetch Chromium source (no history) + checkout target tag
+        run: |
+          set -e
+          cd "$WORK"
+          # googlesource.com intermittently returns HTTP 500 mid-clone; a single
+          # flake used to kill the entire run. Retry each phase with backoff.
+          # Once .gclient exists, gclient sync resumes a partial fetch.
+          # googlesource garbage-collected pinned child-DEPS objects: webpagereplay's
+          # clang-format script @9f796802 now returns HTTP 400 'expected
+          # acknowledgments'/'expected packfile' on EVERY fetch variant (v2, v0,
+          # HTTP/1.1) and 404s on the web object page - the object is gone
+          # server-side, so no retry can ever fix it (it killed APK #15 with the
+          # retry code in place). Write .gclient BY HAND (instead of `fetch
+          # chromium`) with a custom_deps override pointing that dep at a live
+          # revision of the same mirror. It is a formatting tool; the build never
+          # compiles it.
+          if [ ! -f .gclient ]; then
+            cat > .gclient <<'AEGIS_GCLIENT'
+          solutions = [
+            {
+              "name": "src",
+              "url": "https://chromium.googlesource.com/chromium/src.git",
+              "managed": False,
+              "custom_deps": {
+                # googlesource GC'd the pinned objects below (object page 404 while
+                # the repos are alive; verified via a preflight of ALL 273 git deps
+                # of tag 156.0.8078.79 - these two are the only dead ones). gclient
+                # can NEVER fetch a missing object, so point them at live revs of
+                # the same repos (verified fetchable + content-checked).
+                "src/third_party/clang-format/script": "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/clang/tools/clang-format.git@47dce8466cd71943f64df3860e608957d6e20007",
+                "src/third_party/webpagereplay/third_party/clang-format/script": "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/clang/tools/clang-format.git@47dce8466cd71943f64df3860e608957d6e20007",
+                "src/third_party/search_engines_data/resources": "https://chromium.googlesource.com/external/search_engines_data.git@effde84e73491653b245b68ac65835ad2fc4e1de"
+              },
+              "custom_vars": {},
+              "safesync_url": ""
+            }
+          ]
+          AEGIS_GCLIENT
+          fi
+          ok=0
+          for i in 1 2 3 4 5 6; do
+            echo ">>> syncing chromium source (attempt $i/6)"
+            gclient sync --nohooks --no-history -j 4 && ok=1 && break
+            echo "::warning::source fetch failed (attempt $i/6) - upstream flake, backing off"
+            sleep $((i * 30))
+          done
+          [ "$ok" = 1 ] || { echo "::error::Chromium source fetch failed after 6 attempts"; exit 1; }
+          cd "$WORK/src"
+          ok=0
+          for i in 1 2 3 4; do
+            git fetch --depth=1 origin "refs/tags/${VERSION}:refs/tags/${VERSION}" && ok=1 && break
+            echo "::warning::tag fetch failed (attempt $i/4) - retrying"
+            sleep 30
+          done
+          [ "$ok" = 1 ] || { echo "::error::tag fetch failed after 4 attempts"; exit 1; }
+          git checkout --detach "refs/tags/${VERSION}"
+          cd "$WORK"
+          ok=0
+          for i in 1 2 3 4; do
+            gclient sync -D -j 4 && ok=1 && break
+            echo "::warning::post-checkout sync failed (attempt $i/4) - retrying"
+            sleep 30
+          done
+          [ "$ok" = 1 ] || { echo "::error::gclient sync failed after 4 attempts"; exit 1; }
+
+      - name: Install build dependencies + run hooks
+        run: |
+          set -e
+          (cd "$WORK/src" && bash build/install-build-deps.sh) \
+            || echo "::warning::install-build-deps reported an error - continuing (runner usually ships the needed packages)"
+          cd "$WORK"
+          gclient runhooks -j 4
+
+      - name: Restore banked build tree (draft-release volumes)
+        id: restore
+        timeout-minutes: 30
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          bash "$GITHUB_WORKSPACE/aegis/ci/bank.sh" restore linux "$WORK/src" "$OUT"
+        # no continue-on-error: a bank that exists but fails to restore must
+        # RED the run (re-dispatch retries it), never silently seed-rebuild.
+
+      - name: Apply Aegis patches (aegis/patches/*.patch)
+        run: |
+          set -e
+          shopt -s nullglob
+          patches=( "$GITHUB_WORKSPACE"/aegis/patches/*.patch )
+          if [ ${#patches[@]} -gt 0 ]; then
+            for p in $(printf '%s\n' "${patches[@]}" | sort); do
+              echo "Applying $(basename "$p")"
+              (cd "$WORK/src" && git apply --3way "$p" 2>/dev/null) \
+                || (cd "$WORK/src" && git apply "$p") \
+                || { echo "::error::Patch failed: $p"; exit 1; }
+            done
+          else
+            echo "No patches found - building vanilla Chromium with Aegis branding only."
+          fi
+
+      - name: Run branding hooks (desktop + android-noop)
+        run: |
+          set -e
+          bash "$GITHUB_WORKSPACE/aegis/branding/apply_desktop.sh" "$WORK/src"
+          # the android hook is a no-op for the desktop binary but keeps both
+          # pipelines symmetric; ignore it if it is absent.
+          if [ -f "$GITHUB_WORKSPACE/aegis/branding/apply.sh" ]; then
+            bash "$GITHUB_WORKSPACE/aegis/branding/apply.sh" "$WORK/src" || true
+          fi
+
+      - name: Re-stamp patched/branded sources to bank epoch (keep bank clean)
+        run: |
+          # git apply + branding rewrite files with CURRENT mtimes, which made
+          # every banked output of every patched file look stale every run
+          # (audit 2026-11-05: each run redid the FULL ~27k-edge set). Re-
+          # stamping to the bank epoch restores sources(epoch) < outputs(bank)
+          # so an unchanged patch set costs zero recompiles. restore_tree.py
+          # below still deletes dependents of genuinely-changed patches.
+          bash "$GITHUB_WORKSPACE/aegis/ci/restamp.sh" "$WORK/src"
+
+      - name: Generate build files (low-RAM gn args)
+        run: |
+          set -e
+          cd "$WORK/src"
+          gn gen "out/$OUT" "--args=$(cat "$GITHUB_WORKSPACE/aegis/ci/linux_x64.gn")"
+          gn args "out/$OUT" --list --short > /dev/null
+          # mark which Chromium tag + Aegis overlay this tree was built from
+          AEGIS_SHA=$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)
+          echo "$VERSION $AEGIS_SHA" > "out/$OUT/.aegis_head"
+          echo "AEGIS_HEAD_SHA=$AEGIS_SHA" >> "$GITHUB_ENV"
+
+      - name: Surgically invalidate outputs of changed patches
+        run: |
+          # restore_tree.py compares the bank's .aegis_head (chromium tag +
+          # aegis overlay sha) with the current values: tag mismatch or
+          # ci/branding changes drop the bank; patch changes map to the
+          # chromium files they touch via `ninja -t deps` and delete ONLY
+          # the outputs that depend on them. Runs after gn gen because it
+          # needs build.ninja. Always exits 0.
+          python3 "$GITHUB_WORKSPACE/aegis/ci/restore_tree.py" \
+            "$WORK/src" "$OUT" "$GITHUB_WORKSPACE" "$VERSION"
+
+      - name: Build chrome + stable deb with a time budget (graceful SIGINT stop)
+        run: |
+          set +e
+          cd "$WORK/src"
+          NOW=$(date +%s)
+          ELAPSED=$(( NOW - ${JOB_START:-NOW} ))
+          BUDGET=$(( 350*60 - ELAPSED - 20*60 ))     # 20 min reserve: stop+bank+summary (measured: bank ~2-5 min; 5375f94 retries worst case ~14 min)
+          [ "$BUDGET" -gt $(( 300*60 )) ] && BUDGET=$(( 300*60 ))
+          [ "$BUDGET" -lt $(( 60*60 )) ]  && BUDGET=$(( 60*60 ))
+          echo "Build budget: $(( BUDGET / 60 )) min (elapsed $(( ELAPSED / 60 )) min)"
+          # watchdog metric: pre-dyndep dirty-edge count of this run. Should
+          # COLLAPSE from ~27k to a few hundred now that restamp.sh keeps
+          # unchanged patch sets from re-dirtying the banked tree.
+          # If it does NOT collapse, ninja's own explanation of the first
+          # dirty edges is dumped below ([why-dirty]) so the exact cause is
+          # in the same log - no blind 6h re-run needed to diagnose it.
+          EXPL="$(mktemp)"
+          DIRTY=$(ninja -C "out/$OUT" -d explain -n chrome chrome/installer/linux:stable_deb 2>"$EXPL" | wc -l || true)
+          echo "AEGIS-DIRTY out=$OUT edges=${DIRTY:-unknown}"
+          head -40 "$EXPL" 2>/dev/null | sed 's/^/[why-dirty] /' || true
+          rm -f "$EXPL"
+          timeout --preserve-status -s INT -k 120 "${BUDGET}s" \
+            autoninja -C "out/$OUT" chrome chrome/installer/linux:stable_deb
+          RC=$?
+          DUR=$(( $(date +%s) - NOW ))
+          echo "ninja rc=$RC after $(( DUR / 60 )) min"
+          if [ "$RC" -eq 0 ] && ls "out/$OUT"/*.deb >/dev/null 2>&1; then
+            echo "BUILD_DONE=1" >> "$GITHUB_ENV"
+          elif [ "$DUR" -ge $(( BUDGET - 45 )) ]; then
+            echo "BUILD_REASON=cap" >> "$GITHUB_ENV"
+          else
+            echo "BUILD_REASON=error" >> "$GITHUB_ENV"
+          fi
+          echo "NINJA_EDGES=$(wc -l < "out/$OUT/.ninja_log" 2>/dev/null || echo 0)" >> "$GITHUB_ENV"
+
+      - name: Bank the build tree (cap reached or error - next run resumes)
+        if: env.BUILD_DONE != '1'
+        timeout-minutes: 35
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash "$GITHUB_WORKSPACE/aegis/ci/bank.sh" save linux "$WORK/src" "$OUT"
+        # no continue-on-error: a failed bank must RED the run (previous
+        # generation stays intact) instead of ending GREEN with no bank.
+
+      - name: Fail loudly on a real build error (compile/link failure)
+        if: env.BUILD_REASON == 'error'
+        run: |
+          echo "::error::Build stopped early for a non-cap reason (compile error or crash)."
+          echo "::error::The build tree was banked; fix the error and re-dispatch."
+          exit 1
+
+      - name: Collect artifacts (.deb + portable .zip)
+        if: env.BUILD_DONE == '1'
+        run: |
+          set -e
+          cd "$WORK/src/out/$OUT"
+          DEB_IN=$(ls -1t *.deb 2>/dev/null | head -1)
+          test -n "$DEB_IN" || { echo "::error::no .deb produced"; exit 1; }
+          DEB_OUT="AegisBrowser_${VERSION}_linux_x64_r${GITHUB_RUN_NUMBER}.deb"
+          cp "$DEB_IN" "$GITHUB_WORKSPACE/$DEB_OUT"
+          # portable zip: unpack the deb and re-zip (the deb carries the exact
+          # canonical file list, so extraction is the reliable way to get one)
+          rm -rf /tmp/debx && mkdir -p /tmp/debx
+          dpkg-deb -x "$DEB_IN" /tmp/debx
+          ZOUT="AegisBrowser_${VERSION}_linux_x64_r${GITHUB_RUN_NUMBER}.zip"
+          (cd /tmp/debx && zip -qr "$GITHUB_WORKSPACE/$ZOUT" .)
+          cp "$DEB_OUT" "$GITHUB_WORKSPACE/" 2>/dev/null || true
+          echo "DEB_NAME=$DEB_OUT" >> "$GITHUB_ENV"
+          echo "ZIP_NAME=$ZOUT" >> "$GITHUB_ENV"
+          ls -la "$GITHUB_WORKSPACE" | grep -E 'Aegis.*linux' || true
+
+      - name: Upload artifacts (kept 1 day, just in case)
+        if: env.BUILD_DONE == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: aegis-linux-x64-${{ github.run_number }}
+          path: |
+            ${{ github.workspace }}/${{ env.DEB_NAME }}
+            ${{ github.workspace }}/${{ env.ZIP_NAME }}
+          retention-days: 1
+
+      - name: Attach artifacts to a draft GitHub Release
+        if: env.BUILD_DONE == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          TAG="linux-${VERSION}-r${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" --draft \
+            --title "Aegis Browser - Chromium ${VERSION} (Linux x64)" \
+            --notes "Automated free build from GitHub Actions. Chromium ${VERSION}, linux x64, unofficial build (no LTO/PGO), Aegis patch series applied. Install the .deb (\`sudo apt install ./<file>.deb\`) or unzip the portable .zip and run ./chrome. If sandbox errors appear in exotic kernels, prefer the .deb - it sets up chrome-sandbox correctly." \
+            "$GITHUB_WORKSPACE/${{ env.DEB_NAME }}" \
+            "$GITHUB_WORKSPACE/${{ env.ZIP_NAME }}"
+          echo "Draft release created: $TAG"
+
+      - name: Build summary
+        if: always()
+        run: |
+          {
+            echo "## Aegis Linux build summary"
+            echo ""
+            echo "| Item | Value |"
+            echo "| --- | --- |"
+            echo "| Chromium | ${VERSION:-n/a} |"
+            echo "| Target | chrome + chrome/installer/linux:stable_deb (linux x64) |"
+            echo "| Runner | ubuntu-24.04 hosted (4 vCPU / 16 GB) |"
+            echo "| Outcome | ${BUILD_DONE:+deb built}${BUILD_REASON:+stopped early ($BUILD_REASON), tree banked} |"
+            echo "| Ninja edges logged | ${NINJA_EDGES:-n/a} |"
+            echo "| Deb | ${DEB_NAME:-not produced} |"
+            echo "| Zip | ${ZIP_NAME:-not produced} |"
+          } >> "$GITHUB_STEP_SUMMARY"

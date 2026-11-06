@@ -1,0 +1,1343 @@
+# 087 - Aegis ID sign-in: account layer for the aegis-sync backend
+# (aegis-sync.abdulmateen14.workers.dev). AegisIdManager (email + device
+# UUID persistence, token/vault keys memory-only) on top of byte-exact
+# Java ports of the backend's crypto chain (PBKDF2-SHA256 600k -> HKDF
+# auth key -> PBKDF2 verifier / KEK -> AES-256-GCM vault) and its REST
+# client (register/login/refresh/devices/revoke/push/pull/cursor). The
+# Aegis Ecosystem settings page gains an 'Aegis ID' section: status,
+# sign-in / create-account dialog, device list with revoke, sign-out.
+# Staged against the post-054 tree (alphabetical application order).
+# Anchors count-asserted at tag 156.0.8078.79 post-054.
+
+--- a/chrome/android/chrome_java_sources.gni
++++ b/chrome/android/chrome_java_sources.gni
+@@ -61,6 +61,9 @@
+   "java/src/org/chromium/chrome/browser/aegis/dock/AegisSearchSheet.java",
+   "java/src/org/chromium/chrome/browser/about_settings/AboutChromeSettings.java",
+   "java/src/org/chromium/chrome/browser/aegis/AegisEcosystemSettings.java",
++  "java/src/org/chromium/chrome/browser/aegis/AegisIdManager.java",
++  "java/src/org/chromium/chrome/browser/aegis/sync/AegisCrypto.java",
++  "java/src/org/chromium/chrome/browser/aegis/sync/AegisSyncClient.java",
+   "java/src/org/chromium/chrome/browser/about_settings/AboutSettingsBridge.java",
+   "java/src/org/chromium/chrome/browser/about_settings/HyperlinkPreference.java",
+   "java/src/org/chromium/chrome/browser/about_settings/LegalInformationSettings.java",
+
+--- a/chrome/android/java/res/xml/aegis_ecosystem_preferences.xml
++++ b/chrome/android/java/res/xml/aegis_ecosystem_preferences.xml
+@@ -7,6 +7,25 @@
+ 
+ <PreferenceScreen
+     xmlns:android="http://schemas.android.com/apk/res/android">
++    <org.chromium.components.browser_ui.settings.ChromeBasePreferenceCategory
++        android:key="aegis_id_category"
++        android:title="Aegis ID">
++    <org.chromium.components.browser_ui.settings.ChromeBasePreference
++        android:key="aegis_id_status"
++        android:title="Signed in as"
++        android:summary="Not signed in" />
++    <org.chromium.components.browser_ui.settings.ChromeBasePreference
++        android:key="aegis_id_signin"
++        android:title="Sign in or create Aegis ID" />
++    <org.chromium.components.browser_ui.settings.ChromeBasePreference
++        android:key="aegis_id_devices"
++        android:title="Manage devices"
++        android:enabled="false" />
++    <org.chromium.components.browser_ui.settings.ChromeBasePreference
++        android:key="aegis_id_signout"
++        android:title="Sign out"
++        android:visible="false" />
++    </org.chromium.components.browser_ui.settings.ChromeBasePreferenceCategory>
+     <org.chromium.components.browser_ui.settings.ChromeBasePreference
+         android:key="aegis_products"
+         android:title="AM Products"
+
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisEcosystemSettings.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisEcosystemSettings.java
+@@ -6,10 +6,21 @@
+ 
+ import static org.chromium.build.NullUtil.assumeNonNull;
+ 
++import android.app.AlertDialog;
+ import android.content.ActivityNotFoundException;
++import android.content.Context;
++import android.content.DialogInterface;
+ import android.content.Intent;
+ import android.net.Uri;
+ import android.os.Bundle;
++import android.text.InputType;
++import android.view.View;
++import android.widget.Button;
++import android.widget.EditText;
++import android.widget.LinearLayout;
++import android.widget.ScrollView;
++import android.widget.TextView;
++import android.widget.Toast;
+ 
+ import androidx.preference.Preference;
+ 
+@@ -24,6 +35,8 @@
+ import org.chromium.components.browser_ui.settings.EmbeddableSettingsPage;
+ import org.chromium.components.browser_ui.settings.SettingsFragment;
+ import org.chromium.components.browser_ui.settings.SettingsUtils;
++import org.json.JSONArray;
++import org.json.JSONException;
+ 
+ /**
+  * Aegis Ecosystem: the AEGIS product family behind this browser.
+@@ -39,19 +52,28 @@
+     private static final String PREF_COREX = "aegis_corex";
+     private static final String PREF_OS = "aegis_os";
+     private static final String PREF_SOC = "aegis_soc";
++    private static final String PREF_ID_STATUS = "aegis_id_status";
++    private static final String PREF_ID_SIGNIN = "aegis_id_signin";
++    private static final String PREF_ID_DEVICES = "aegis_id_devices";
++    private static final String PREF_ID_SIGNOUT = "aegis_id_signout";
+ 
+     private final SettableMonotonicObservableSupplier<String> mPageTitle =
+             ObservableSuppliers.createMonotonic();
++
++    private AegisIdManager mIdManager;
+ 
+     @Override
+     public void onCreatePreferences(@Nullable Bundle bundle, @Nullable String s) {
+         mPageTitle.set("Aegis Ecosystem");
+         SettingsUtils.addPreferencesFromResource(this, R.xml.aegis_ecosystem_preferences);
+-        for (String key : new String[] {PREF_PRODUCTS, PREF_COREX, PREF_OS, PREF_SOC}) {
++        mIdManager = AegisIdManager.getInstance(requireContext());
++        for (String key : new String[] {PREF_PRODUCTS, PREF_COREX, PREF_OS, PREF_SOC,
++                PREF_ID_SIGNIN, PREF_ID_DEVICES, PREF_ID_SIGNOUT}) {
+             Preference preference = findPreference(key);
+             assumeNonNull(preference);
+             preference.setOnPreferenceClickListener(this);
+         }
++        refreshIdentityState();
+     }
+ 
+     @Override
+@@ -79,7 +101,268 @@
+                 // Nothing on the device can open a URL; do nothing.
+             }
+         }
++        if (PREF_ID_SIGNIN.equals(key)) {
++            showSignInDialog();
++        } else if (PREF_ID_DEVICES.equals(key)) {
++            showDevicesDialog();
++        } else if (PREF_ID_SIGNOUT.equals(key)) {
++            confirmSignOut();
++        }
+         return true;
++    }
++
++    private void refreshIdentityState() {
++        Preference status = findPreference(PREF_ID_STATUS);
++        Preference devices = findPreference(PREF_ID_DEVICES);
++        Preference signOut = findPreference(PREF_ID_SIGNOUT);
++        boolean signedIn = mIdManager.isSignedIn();
++        String email = mIdManager.signedInEmail();
++        if (status != null) {
++            status.setSummary(signedIn && !email.isEmpty() ? email : "Not signed in");
++        }
++        if (devices != null) {
++            devices.setEnabled(signedIn);
++        }
++        if (signOut != null) {
++            signOut.setVisible(signedIn);
++        }
++    }
++
++    /**
++     * Aegis ID sign-in / create-account dialog, built programmatically: two
++     * EditTexts and two action buttons ("Sign in" and "Create account").
++     * The buttons are disabled while the manager derives keys and talks to
++     * the backend, then re-enabled when the callback arrives.
++     */
++    private void showSignInDialog() {
++        Context context = requireContext();
++        LinearLayout layout = new LinearLayout(context);
++        layout.setOrientation(LinearLayout.VERTICAL);
++        int pad = dialogPadding(context);
++        layout.setPadding(pad, pad / 2, pad, 0);
++
++        EditText emailField = new EditText(context);
++        emailField.setHint("Email");
++        emailField.setInputType(
++                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
++        emailField.setSingleLine(true);
++        layout.addView(emailField);
++
++        EditText passphraseField = new EditText(context);
++        passphraseField.setHint("Passphrase - derives your sync keys and cannot be reset");
++        passphraseField.setInputType(
++                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
++        layout.addView(passphraseField);
++
++        final AlertDialog dialog = new AlertDialog.Builder(context)
++                .setTitle("Aegis ID")
++                .setMessage("Sign in to sync this browser across your devices, or create a "
++                        + "new Aegis ID. Your passphrase never leaves the device.")
++                .setView(layout)
++                .create();
++        // Two action buttons on one dialog (via setButton): the positive
++        // button signs in, the neutral button creates the account. Their
++        // View-level click listeners are bound in onShow so a click does NOT
++        // auto-dismiss the dialog - it stays open with the buttons disabled
++        // ("Working...") while the manager runs, then the callback decides:
++        // success dismisses, failure re-enables and shows a Toast.
++        dialog.setButton(AlertDialog.BUTTON_POSITIVE, "Sign in",
++                (DialogInterface.OnClickListener) null);
++        dialog.setButton(AlertDialog.BUTTON_NEUTRAL, "Create account",
++                (DialogInterface.OnClickListener) null);
++        dialog.setOnShowListener(new DialogInterface.OnShowListener() {
++            @Override
++            public void onShow(DialogInterface d) {
++                bindSignInButtons(dialog, emailField, passphraseField);
++            }
++        });
++        dialog.show();
++    }
++
++    private void bindSignInButtons(final AlertDialog dialog, final EditText emailField,
++            final EditText passphraseField) {
++        Button signIn = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
++        Button create = dialog.getButton(AlertDialog.BUTTON_NEUTRAL);
++        assumeNonNull(signIn);
++        assumeNonNull(create);
++        signIn.setOnClickListener(new View.OnClickListener() {
++            @Override
++            public void onClick(View v) {
++                attemptAegisId(dialog, emailField, passphraseField, false);
++            }
++        });
++        create.setOnClickListener(new View.OnClickListener() {
++            @Override
++            public void onClick(View v) {
++                attemptAegisId(dialog, emailField, passphraseField, true);
++            }
++        });
++    }
++
++    private void attemptAegisId(final AlertDialog dialog, EditText emailField,
++            EditText passphraseField, boolean createAccount) {
++        Context context = dialog.getContext();
++        String email = emailField.getText().toString().trim();
++        String passphrase = passphraseField.getText().toString();
++        if (email.isEmpty() || passphrase.isEmpty()) {
++            Toast.makeText(context, "Enter your email and passphrase.", Toast.LENGTH_SHORT).show();
++            return;
++        }
++        setSignInDialogBusy(dialog, true);
++        dialog.setTitle("Working\u2026");
++        AegisIdManager.Callback callback = new AegisIdManager.Callback() {
++            @Override
++            public void onResult(boolean ok, String errorOrSummary) {
++                setSignInDialogBusy(dialog, false);
++                if (ok) {
++                    dialog.dismiss();
++                } else {
++                    dialog.setTitle("Aegis ID");
++                    Toast.makeText(context, errorOrSummary, Toast.LENGTH_LONG).show();
++                }
++                refreshIdentityState();
++            }
++        };
++        if (createAccount) {
++            mIdManager.createAccount(email, passphrase, callback);
++        } else {
++            mIdManager.signIn(email, passphrase, callback);
++        }
++    }
++
++    private void setSignInDialogBusy(AlertDialog dialog, boolean busy) {
++        Button signIn = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
++        Button create = dialog.getButton(AlertDialog.BUTTON_NEUTRAL);
++        if (signIn != null) {
++            signIn.setEnabled(!busy);
++        }
++        if (create != null) {
++            create.setEnabled(!busy);
++        }
++    }
++
++    /**
++     * Lists the devices linked to the account as "name - platform" rows, each with a
++     * Revoke button, in a simple ScrollView (no RecyclerView). Revoking
++     * refreshes the list from the backend.
++     */
++    private void showDevicesDialog() {
++        Context context = requireContext();
++        LinearLayout list = new LinearLayout(context);
++        list.setOrientation(LinearLayout.VERTICAL);
++        int pad = dialogPadding(context);
++        list.setPadding(pad, pad, pad, pad);
++
++        TextView loading = new TextView(context);
++        loading.setText("Loading\u2026");
++        list.addView(loading);
++
++        ScrollView scroll = new ScrollView(context);
++        scroll.addView(list);
++
++        final AlertDialog dialog = new AlertDialog.Builder(context)
++                .setTitle("Manage devices")
++                .setView(scroll)
++                .setNegativeButton("Close", null)
++                .create();
++        dialog.show();
++        loadDevicesInto(dialog, list);
++    }
++
++    private void loadDevicesInto(final AlertDialog dialog, final LinearLayout list) {
++        mIdManager.devices(new AegisIdManager.Callback() {
++            @Override
++            public void onResult(boolean ok, String errorOrSummary) {
++                if (!dialog.isShowing()) {
++                    return;
++                }
++                if (ok) {
++                    populateDeviceRows(dialog, list, errorOrSummary);
++                } else {
++                    list.removeAllViews();
++                    TextView error = new TextView(dialog.getContext());
++                    error.setText(errorOrSummary);
++                    list.addView(error);
++                }
++            }
++        });
++    }
++
++    private void populateDeviceRows(AlertDialog dialog, LinearLayout list, String devicesJson) {
++        list.removeAllViews();
++        try {
++            JSONArray devices = new JSONArray(devicesJson);
++            for (int i = 0; i < devices.length(); i++) {
++                list.addView(buildDeviceRow(dialog, list, devices.getJSONObject(i)));
++            }
++        } catch (JSONException e) {
++            TextView error = new TextView(dialog.getContext());
++            error.setText("Unexpected devices response.");
++            list.addView(error);
++        }
++    }
++
++    private View buildDeviceRow(
++            final AlertDialog dialog, final LinearLayout list, JSONObject device) {
++        Context context = dialog.getContext();
++        final String id = device.optString("id", "");
++        LinearLayout row = new LinearLayout(context);
++        row.setOrientation(LinearLayout.HORIZONTAL);
++        int pad = dialogPadding(context) / 2;
++        row.setPadding(0, pad, 0, pad);
++
++        TextView label = new TextView(context);
++        label.setText(device.optString("name", "Unknown device") + " \u2014 "
++                + device.optString("platform", ""));
++        row.addView(label, new LinearLayout.LayoutParams(
++                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
++
++        Button revoke = new Button(context);
++        revoke.setText("Revoke");
++        revoke.setOnClickListener(new View.OnClickListener() {
++            @Override
++            public void onClick(View v) {
++                revoke.setEnabled(false);
++                mIdManager.revokeDevice(id, new AegisIdManager.Callback() {
++                    @Override
++                    public void onResult(boolean ok, String errorOrSummary) {
++                        if (ok) {
++                            loadDevicesInto(dialog, list);
++                        } else {
++                            revoke.setEnabled(true);
++                            Toast.makeText(context, errorOrSummary, Toast.LENGTH_LONG).show();
++                        }
++                    }
++                });
++            }
++        });
++        row.addView(revoke);
++        return row;
++    }
++
++    private void confirmSignOut() {
++        Context context = requireContext();
++        new AlertDialog.Builder(context)
++                .setTitle("Sign out")
++                .setMessage("Sign out of Aegis ID on this device? Your synced data stays "
++                        + "on the server and can be restored by signing in again.")
++                .setPositiveButton("Sign out", new DialogInterface.OnClickListener() {
++                    @Override
++                    public void onClick(DialogInterface d, int which) {
++                        mIdManager.signOut(new AegisIdManager.Callback() {
++                            @Override
++                            public void onResult(boolean ok, String errorOrSummary) {
++                                refreshIdentityState();
++                            }
++                        });
++                    }
++                })
++                .setNegativeButton("Cancel", null)
++                .show();
++    }
++
++    private static int dialogPadding(Context context) {
++        return (int) (16 * context.getResources().getDisplayMetrics().density);
+     }
+ 
+     @Override
+
+diff --git a/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisIdManager.java b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisIdManager.java
+new file mode 100644
+--- /dev/null
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisIdManager.java
+@@ -0,0 +1,306 @@
++// Copyright 2026 The Aegis Browser Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++package org.chromium.chrome.browser.aegis;
++
++import static org.chromium.build.NullUtil.assumeNonNull;
++
++import android.content.Context;
++import android.content.SharedPreferences;
++import android.os.Build;
++import android.os.Handler;
++import android.os.Looper;
++
++import org.chromium.base.ContextUtils;
++import org.chromium.build.annotations.NullMarked;
++import org.chromium.build.annotations.Nullable;
++import org.chromium.chrome.browser.aegis.sync.AegisCrypto;
++import org.chromium.chrome.browser.aegis.sync.AegisSyncClient;
++import org.json.JSONException;
++import org.json.JSONObject;
++
++import java.io.IOException;
++import java.util.UUID;
++import java.util.concurrent.ExecutorService;
++import java.util.concurrent.Executors;
++
++/**
++ * Aegis ID: sign-in and session manager for the Aegis sync backend
++ * (https://aegis-sync.abdulmateen14.workers.dev - a Cloudflare Worker that
++ * only ever sees opaque verifiers and wrapped keys).
++ *
++ * End-to-end model (mirrors aegis-sync/client-example/aegis-client.mjs):
++ *   - The passphrase never leaves the device. signIn() fetches the public
++ *     KDF params, derives the key chain ONCE (AegisCrypto.deriveCredentials)
++ *     and sends only the verifier over TLS.
++ *   - The vault key is generated on-device and only ever stored server-side
++ *     wrapped (AES-256-GCM) under the KEK; unwrapping happens in memory.
++ *   - Persisted state is identity-only: email, a stable device UUID and the
++ *     signed-in flag ("aegis_id_prefs"). Access/refresh tokens and the vault
++ *     key are volatile - a process restart keeps the identity but requires
++ *     a fresh sign-in before any backend call works again.
++ *
++ * Threading: every public operation runs on a single-thread executor and
++ * posts exactly one Callback result back on the main looper.
++ */
++@NullMarked
++public class AegisIdManager {
++    /** Delivered on the main thread. On failure errorOrSummary is a human
++     * readable error; on success it carries a summary (the email, or the
++     * raw JSON of the devices array for devices()). */
++    public interface Callback {
++        void onResult(boolean ok, String errorOrSummary);
++    }
++
++    private static final String BASE_URL = "https://aegis-sync.abdulmateen14.workers.dev";
++    private static final String PLATFORM = "android";
++    private static final String PREFS_NAME = "aegis_id_prefs";
++    private static final String KEY_EMAIL = "aegis_id_email";
++    private static final String KEY_DEVICE_UUID = "aegis_id_device_uuid";
++    private static final String KEY_SIGNED_IN = "aegis_id_signed_in";
++    private static final int DEVICE_NAME_MAX = 64;
++
++    private static AegisIdManager sInstance;
++
++    private final SharedPreferences mPrefs;
++    private final Handler mHandler = new Handler(Looper.getMainLooper());
++    private final ExecutorService mExecutor = Executors.newSingleThreadExecutor();
++    private final String mDeviceUuid;
++    private final String mDeviceName;
++
++    // Volatile session state - never persisted (see class comment).
++    private @Nullable String mAccessToken;
++    private @Nullable String mRefreshToken;
++    private @Nullable byte[] mVaultKey;
++    private @Nullable AegisSyncClient mClient;
++
++    /** Returns the process-wide instance, bound to the application context. */
++    public static AegisIdManager getInstance(Context context) {
++        if (sInstance == null) {
++            Context appContext = context.getApplicationContext();
++            assumeNonNull(appContext);
++            sInstance = new AegisIdManager(appContext);
++        }
++        return sInstance;
++    }
++
++    private AegisIdManager(Context context) {
++        mPrefs = ContextUtils.getAppSharedPreferences(context, PREFS_NAME);
++        mDeviceUuid = getOrCreateDeviceUuid();
++        mDeviceName = sanitizeDeviceName(Build.MODEL);
++    }
++
++    /** True when this device's identity is marked signed-in. */
++    public boolean isSignedIn() {
++        return mPrefs.getBoolean(KEY_SIGNED_IN, false);
++    }
++
++    /** The persisted account email, or "" when unknown. */
++    public String signedInEmail() {
++        return mPrefs.getString(KEY_EMAIL, "");
++    }
++
++    /** The stable per-install device UUID (random UUID, persisted once). */
++    public String deviceUuid() {
++        return mDeviceUuid;
++    }
++
++    /**
++     * Signs in: kdf-params -> deriveCredentials -> verifier login. On
++     * success the identity is persisted and the session kept in memory.
++     */
++    public void signIn(final String email, final String password, final Callback callback) {
++        mExecutor.execute(() -> {
++            try {
++                post(callback, true, doSignIn(email, password));
++            } catch (AegisSyncClient.AegisApiException e) {
++                post(callback, false, describeApiError(e));
++            } catch (Exception e) {
++                post(callback, false, describeFailure("Couldn't sign in", e));
++            }
++        });
++    }
++
++    /**
++     * Creates the account - KDF salt, verifier and wrapped vault key are all
++     * generated on-device - and then runs the normal sign-in flow.
++     */
++    public void createAccount(final String email, final String password, final Callback callback) {
++        mExecutor.execute(() -> {
++            try {
++                String kdfSaltB64 = AegisCrypto.b64(AegisCrypto.randomBytes(16));
++                AegisCrypto.Creds creds = AegisCrypto.deriveCredentials(password, kdfSaltB64);
++                byte[] vaultKey = AegisCrypto.generateVaultKey();
++                AegisCrypto.GcmResult wrapped = AegisCrypto.aesGcmEncrypt(creds.kek, vaultKey);
++                JSONObject kdf = new JSONObject()
++                        .put("algo", AegisCrypto.KDF_ALGO)
++                        .put("iterations", AegisCrypto.DEFAULT_ITERATIONS);
++                client().register(email, kdfSaltB64, kdf, AegisCrypto.b64(creds.verifier),
++                        AegisCrypto.b64(wrapped.ciphertext), AegisCrypto.b64(wrapped.nonce), null);
++                post(callback, true, doSignIn(email, password));
++            } catch (AegisSyncClient.AegisApiException e) {
++                post(callback, false, describeApiError(e));
++            } catch (Exception e) {
++                post(callback, false, describeFailure("Couldn't create the account", e));
++            }
++        });
++    }
++
++    /** Best-effort server logout (errors swallowed), then local sign-out. */
++    public void signOut(final Callback callback) {
++        mExecutor.execute(() -> {
++            if (mAccessToken != null || mRefreshToken != null) {
++                try {
++                    client().logout();
++                } catch (Exception e) {
++                    // Best-effort: the server session expires on its own.
++                }
++            }
++            clearSession();
++            post(callback, true, "");
++        });
++    }
++
++    /** Lists the account's devices; onResult carries the devices array JSON. */
++    public void devices(final Callback callback) {
++        mExecutor.execute(() -> {
++            AegisSyncClient client = client();
++            try {
++                JSONObject data = client.devices();
++                adopt(client);
++                post(callback, true, data.getJSONArray("devices").toString());
++            } catch (AegisSyncClient.AegisApiException e) {
++                adopt(client);
++                dropStaleSession();
++                post(callback, false, describeApiError(e));
++            } catch (Exception e) {
++                post(callback, false, describeFailure("Couldn't load devices", e));
++            }
++        });
++    }
++
++    /** Revokes a device by id; on success it disappears from devices(). */
++    public void revokeDevice(final String deviceId, final Callback callback) {
++        mExecutor.execute(() -> {
++            AegisSyncClient client = client();
++            try {
++                client.revokeDevice(deviceId);
++                adopt(client);
++                post(callback, true, "");
++            } catch (AegisSyncClient.AegisApiException e) {
++                adopt(client);
++                dropStaleSession();
++                post(callback, false, describeApiError(e));
++            } catch (Exception e) {
++                post(callback, false, describeFailure("Couldn't revoke the device", e));
++            }
++        });
++    }
++
++    // ------------------------------------------------------------- internals
++
++    private String doSignIn(String email, String password) throws IOException, JSONException {
++        AegisSyncClient client = client();
++        JSONObject params = client.kdfParams(email);
++        JSONObject kdf = params.getJSONObject("kdf");
++        AegisCrypto.Creds creds = AegisCrypto.deriveCredentials(
++                password, params.getString("kdf_salt_b64"), kdf.getInt("iterations"));
++        JSONObject data = client.login(email, AegisCrypto.b64(creds.verifier),
++                mDeviceUuid, mDeviceName, PLATFORM);
++        mAccessToken = data.getString("access_token");
++        mRefreshToken = data.getString("refresh_token");
++        JSONObject user = data.getJSONObject("user");
++        mVaultKey = unwrapVaultKey(password, creds, kdf, user);
++        client.setVaultKey(mVaultKey);
++        mPrefs.edit().putString(KEY_EMAIL, email).putBoolean(KEY_SIGNED_IN, true).apply();
++        return email;
++    }
++
++    /** Unwraps the vault key under the KEK, honoring migrated KDF params. */
++    private byte[] unwrapVaultKey(
++            String password, AegisCrypto.Creds creds, JSONObject kdf, JSONObject user)
++            throws JSONException {
++        JSONObject userKdf = user.getJSONObject("kdf");
++        byte[] kek = creds.kek;
++        if (!userKdf.optString("algo").equals(kdf.optString("algo"))
++                || userKdf.getInt("iterations") != kdf.getInt("iterations")) {
++            // The account was migrated to new KDF params: re-derive ONCE from
++            // the passphrase before unwrapping (mirrors aegis-client.mjs).
++            kek = AegisCrypto.deriveCredentials(
++                    password, user.getString("kdf_salt_b64"), userKdf.getInt("iterations")).kek;
++        }
++        return AegisCrypto.aesGcmDecrypt(kek,
++                AegisCrypto.unb64(user.getString("vault_nonce_b64")),
++                AegisCrypto.unb64(user.getString("wrapped_vault_key_b64")));
++    }
++
++    /** The protocol client for this session; tokens are pushed in per call. */
++    private AegisSyncClient client() {
++        if (mClient == null) {
++            mClient = new AegisSyncClient(BASE_URL);
++        }
++        mClient.setTokens(mAccessToken, mRefreshToken);
++        mClient.setVaultKey(mVaultKey);
++        return mClient;
++    }
++
++    /** Pulls token rotations (from the client's refresh retry) back in. */
++    private void adopt(AegisSyncClient client) {
++        mAccessToken = client.accessToken();
++        mRefreshToken = client.refreshToken();
++    }
++
++    /** A 401 with no tokens left means the volatile session died with the
++     * process: reset the persisted flag so the UI offers sign-in again. */
++    private void dropStaleSession() {
++        if (mAccessToken == null && mRefreshToken == null && isSignedIn()) {
++            clearSession();
++        }
++    }
++
++    private void clearSession() {
++        mAccessToken = null;
++        mRefreshToken = null;
++        mVaultKey = null;
++        mPrefs.edit().putBoolean(KEY_SIGNED_IN, false).remove(KEY_EMAIL).apply();
++    }
++
++    private String getOrCreateDeviceUuid() {
++        String uuid = mPrefs.getString(KEY_DEVICE_UUID, "");
++        if (uuid.isEmpty()) {
++            uuid = UUID.randomUUID().toString();
++            mPrefs.edit().putString(KEY_DEVICE_UUID, uuid).apply();
++        }
++        return uuid;
++    }
++
++    /** Build.MODEL stripped to a sane, single-line length (server cap: 100). */
++    private static String sanitizeDeviceName(@Nullable String model) {
++        String name = model == null ? "" : model.replaceAll("\\s+", " ").trim();
++        if (name.isEmpty()) name = "Android device";
++        if (name.length() > DEVICE_NAME_MAX) name = name.substring(0, DEVICE_NAME_MAX);
++        return name;
++    }
++
++    /** Maps API failures to human messages (no account enumeration). */
++    private static String describeApiError(AegisSyncClient.AegisApiException e) {
++        if (e.status == 401) return "Wrong email or passphrase";
++        if (e.status == 429) return "Too many attempts, try later";
++        if (e.code != null && !e.code.isEmpty()) return e.code;
++        String message = e.getMessage();
++        if (message == null || message.isEmpty()) return "Error " + e.status;
++        return message;
++    }
++
++    private static String describeFailure(String what, Exception e) {
++        String message = e.getMessage();
++        if (message == null || message.isEmpty()) message = e.getClass().getSimpleName();
++        return what + ": " + message;
++    }
++
++    /** Posts exactly one callback result, always on the main looper. */
++    private void post(final Callback callback, final boolean ok, final String errorOrSummary) {
++        mHandler.post(() -> callback.onResult(ok, errorOrSummary));
++    }
++}
+
+diff --git a/chrome/android/java/src/org/chromium/chrome/browser/aegis/sync/AegisCrypto.java b/chrome/android/java/src/org/chromium/chrome/browser/aegis/sync/AegisCrypto.java
+new file mode 100644
+--- /dev/null
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/sync/AegisCrypto.java
+@@ -0,0 +1,298 @@
++// Copyright 2026 The Aegis Browser Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++/*
++ * Aegis Browser - client-side crypto primitives (pure JVM, zero dependencies).
++ *
++ * JAVA PORT of AegisCrypto.kt. Both implementations are byte-exact mirrors of
++ * the crypto in aegis-sync/client-example/aegis-client.mjs (WebCrypto) and are
++ * validated against the SAME generated vectors (see AegisTestVectors.java and
++ * the .kt twin in android-sync/test/). The Java variant exists because
++ * Chromium's chrome_java targets are Java-first: adding Kotlin to the browser
++ * tree would also require new BUILD.gn wiring, while a plain .java file
++ * integrates with a one-line patch.
++ *
++ * KEY HIERARCHY (identical to the JS reference):
++ *   password + kdf_salt --PBKDF2-SHA256 x600k--> masterKey (32 B)   [never leaves device]
++ *   masterKey --HKDF-SHA256 info="aegis-auth-v1"--> authKey         [never leaves device]
++ *   authKey  --PBKDF2-SHA256 "aegis-verifier-v1" x100k--> verifier  [sent over TLS at login only]
++ *   masterKey --HKDF-SHA256 info="aegis-kek-v1"--> kek              [never leaves device]
++ *   vaultKey (random 32 B) --AES-256-GCM(kek)--> wrapped_vault_key  [stored on server]
++ *   every item --AES-256-GCM(vaultKey, aad="type|key|version")--> ciphertext
++ *
++ * WHY HAND-ROLLED PBKDF2/HKDF (instead of javax "PBKDF2WithHmacSHA256")
++ *   WebCrypto PBKDF2 takes the password as RAW BYTES. javax.crypto's
++ *   "PBKDF2WithHmacSHA256" takes a char[] and every provider converts those
++ *   chars to bytes with UTF-8, which is NOT the identity map for bytes
++ *   >= 0x80. The login verifier is PBKDF2 over 32 random authKey bytes, so a
++ *   char[]-based implementation derives a DIFFERENT verifier on Android than
++ *   the JS reference does - accounts registered from one client could not log
++ *   in from the other. RFC 2898 over raw bytes removes both the ambiguity and
++ *   the provider dependency. HKDF is hand-rolled for the same reason: Android
++ *   ships no public HKDF API. Both fit in ~25 lines and are validated against
++ *   three independent implementations by the vector test.
++ *
++ * Failure model: operational failures (bad tag = wrong key/nonce/tampered
++ * AAD, missing algorithm) are reported as the unchecked
++ * AegisCryptoException - callers cannot meaningfully recover from a corrupted
++ * vault, and checked exceptions in the browser UI would be noise. The cause
++ * field preserves the original AEADBadTagException for diagnostics.
++ *
++ * Performance: the full 600k-iteration chain runs in ~1-2 s on current
++ * phones (one HmacSHA256 Mac instance is reused across all iterations).
++ */
++package org.chromium.chrome.browser.aegis.sync;
++
++import java.security.GeneralSecurityException;
++import java.security.SecureRandom;
++import java.util.Base64;
++import javax.crypto.Cipher;
++import javax.crypto.Mac;
++import javax.crypto.spec.GCMParameterSpec;
++import javax.crypto.spec.SecretKeySpec;
++
++public final class AegisCrypto {
++
++    public static final int DEFAULT_ITERATIONS = 600_000;
++    public static final int VERIFIER_ITERATIONS = 100_000;
++    public static final String VERIFIER_INFO = "aegis-verifier-v1";
++    public static final String AUTH_INFO = "aegis-auth-v1";
++    public static final String KEK_INFO = "aegis-kek-v1";
++    public static final String KDF_ALGO = "PBKDF2-SHA256";
++
++    private static final SecureRandom RNG = new SecureRandom();
++    private static final int HLEN = 32; // SHA-256 output length
++
++    private AegisCrypto() {} // static utility class
++
++    /** Unchecked wrapper for crypto failures that callers cannot fix at runtime. */
++    public static final class AegisCryptoException extends RuntimeException {
++        public AegisCryptoException(String message, Throwable cause) {
++            super(message, cause);
++        }
++    }
++
++    // ------------------------------------------------------------- encoding
++
++    public static byte[] randomBytes(int n) {
++        byte[] b = new byte[n];
++        RNG.nextBytes(b);
++        return b;
++    }
++
++    /** Standard padded Base64 - same alphabet as JS btoa/atob. */
++    public static String b64(byte[] bytes) {
++        return Base64.getEncoder().encodeToString(bytes);
++    }
++
++    public static byte[] unb64(String s) {
++        return Base64.getDecoder().decode(s);
++    }
++
++    public static byte[] utf8(String s) {
++        return s.getBytes(java.nio.charset.StandardCharsets.UTF_8);
++    }
++
++    // --------------------------------------------------------------- PBKDF2
++
++    /**
++     * RFC 2898 PBKDF2-HMAC-SHA256 with a RAW-BYTE password (WebCrypto
++     * semantics). Returns dkLen bytes (the protocol uses 32 = 256 bits).
++     */
++    public static byte[] pbkdf2(byte[] password, byte[] salt, int iterations, int dkLen) {
++        if (iterations < 1) throw new IllegalArgumentException("iterations must be >= 1");
++        if (dkLen < 1) throw new IllegalArgumentException("dkLen must be >= 1");
++        try {
++            Mac mac = Mac.getInstance("HmacSHA256");
++            mac.init(new SecretKeySpec(password, "HmacSHA256"));
++            byte[] out = new byte[dkLen];
++            int copied = 0;
++            int block = 1;
++            while (copied < dkLen) {
++                byte[] bi = new byte[] {
++                    (byte) ((block >>> 24) & 0xFF),
++                    (byte) ((block >>> 16) & 0xFF),
++                    (byte) ((block >>> 8) & 0xFF),
++                    (byte) (block & 0xFF),
++                };
++                byte[] u = mac.doFinal(concat(salt, bi));
++                byte[] t = u.clone();
++                for (int i = 2; i <= iterations; i++) {
++                    u = mac.doFinal(u);
++                    for (int j = 0; j < t.length; j++) t[j] ^= u[j];
++                }
++                int n = Math.min(HLEN, dkLen - copied);
++                System.arraycopy(t, 0, out, copied, n);
++                copied += n;
++                block++;
++            }
++            return out;
++        } catch (GeneralSecurityException e) {
++            throw new AegisCryptoException("HmacSHA256 unavailable on this JVM/Android", e);
++        }
++    }
++
++    public static byte[] pbkdf2(byte[] password, byte[] salt, int iterations) {
++        return pbkdf2(password, salt, iterations, 32);
++    }
++
++    /** masterKey = PBKDF2-SHA256(utf8(password), kdf_salt, iterations) -> 32 B */
++    public static byte[] deriveMasterKey(String password, String kdfSaltB64, int iterations) {
++        return pbkdf2(utf8(password), unb64(kdfSaltB64), iterations);
++    }
++
++    // ----------------------------------------------------------------- HKDF
++
++    private static byte[] hmacSha256(byte[] key, byte[] data) {
++        try {
++            Mac mac = Mac.getInstance("HmacSHA256");
++            mac.init(new SecretKeySpec(key, "HmacSHA256"));
++            return mac.doFinal(data);
++        } catch (GeneralSecurityException e) {
++            throw new AegisCryptoException("HmacSHA256 unavailable on this JVM/Android", e);
++        }
++    }
++
++    /**
++     * RFC 5869 HKDF-SHA256 (extract + expand). The JS reference uses an EMPTY
++     * salt; HMAC zero-pads any key to 64 bytes, so an empty salt and a
++     * 32-byte zero-filled salt produce identical output - the zero-filled
++     * default here is byte-equivalent to the WebCrypto call.
++     */
++    public static byte[] hkdf(byte[] ikm, byte[] info, byte[] salt, int length) {
++        if (length < 1) throw new IllegalArgumentException("length must be >= 1");
++        byte[] prk = hmacSha256(salt, ikm);
++        byte[] t = new byte[0];
++        java.util.List<byte[]> chunks = new java.util.ArrayList<>();
++        int i = 1;
++        int total = 0;
++        while (total < length) {
++            t = hmacSha256(prk, concat(concat(t, info), new byte[] {(byte) i}));
++            chunks.add(t);
++            total += t.length;
++            i++;
++        }
++        byte[] out = new byte[length];
++        int off = 0;
++        for (byte[] c : chunks) {
++            int n = Math.min(c.length, length - off);
++            System.arraycopy(c, 0, out, off, n);
++            off += n;
++        }
++        return out;
++    }
++
++    public static byte[] hkdf(byte[] ikm, byte[] info) {
++        return hkdf(ikm, info, new byte[32], 32);
++    }
++
++    // ------------------------------------------------------------- verifier
++
++    /** verifier = PBKDF2-SHA256(authKey as RAW bytes, "aegis-verifier-v1", 100k) */
++    public static byte[] computeVerifier(byte[] authKey) {
++        return pbkdf2(authKey, utf8(VERIFIER_INFO), VERIFIER_ITERATIONS);
++    }
++
++    /**
++     * password -> (verifier, kek, masterKey); mirrors deriveCredentials() in
++     * the JS client.
++     */
++    public static Creds deriveCredentials(String password, String kdfSaltB64, int iterations) {
++        byte[] masterKey = deriveMasterKey(password, kdfSaltB64, iterations);
++        byte[] verifier = computeVerifier(hkdf(masterKey, utf8(AUTH_INFO)));
++        byte[] kek = hkdf(masterKey, utf8(KEK_INFO));
++        return new Creds(verifier, kek, masterKey);
++    }
++
++    public static Creds deriveCredentials(String password, String kdfSaltB64) {
++        return deriveCredentials(password, kdfSaltB64, DEFAULT_ITERATIONS);
++    }
++
++    /** Result triple of deriveCredentials (Java has no built-in Triple). */
++    public static final class Creds {
++        public final byte[] verifier;
++        public final byte[] kek;
++        public final byte[] masterKey;
++
++        public Creds(byte[] verifier, byte[] kek, byte[] masterKey) {
++            this.verifier = verifier;
++            this.kek = kek;
++            this.masterKey = masterKey;
++        }
++    }
++
++    // ------------------------------------------------------------ vault key
++
++    public static byte[] generateVaultKey() {
++        return randomBytes(32);
++    }
++
++    // -------------------------------------------------------------- AES-GCM
++
++    /** Result of an AES-GCM encryption: the nonce used and ciphertext||tag. */
++    public static final class GcmResult {
++        public final byte[] nonce;
++        public final byte[] ciphertext; // includes the 128-bit tag, WebCrypto layout
++
++        public GcmResult(byte[] nonce, byte[] ciphertext) {
++            this.nonce = nonce;
++            this.ciphertext = ciphertext;
++        }
++    }
++
++    /**
++     * AES-256-GCM. Returns the nonce and ciphertext||tag - exactly the
++     * layout WebCrypto produces (128-bit tag appended to the ciphertext).
++     */
++    public static GcmResult aesGcmEncrypt(byte[] key, byte[] plaintext, byte[] aad, byte[] nonce) {
++        if (key.length != 32) throw new IllegalArgumentException("AES-256 key must be 32 bytes");
++        try {
++            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
++            cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key, "AES"), new GCMParameterSpec(128, nonce));
++            if (aad != null) cipher.updateAAD(aad);
++            return new GcmResult(nonce, cipher.doFinal(plaintext));
++        } catch (GeneralSecurityException e) {
++            throw new AegisCryptoException("AES-GCM encryption failed", e);
++        }
++    }
++
++    public static GcmResult aesGcmEncrypt(byte[] key, byte[] plaintext, byte[] aad) {
++        return aesGcmEncrypt(key, plaintext, aad, randomBytes(12));
++    }
++
++    public static GcmResult aesGcmEncrypt(byte[] key, byte[] plaintext) {
++        return aesGcmEncrypt(key, plaintext, null, randomBytes(12));
++    }
++
++    /**
++     * AES-256-GCM decrypt. Throws AegisCryptoException (cause
++     * AEADBadTagException) on a wrong key, nonce, or tampered AAD - the same
++     * failure WebCrypto reports.
++     */
++    public static byte[] aesGcmDecrypt(byte[] key, byte[] nonce, byte[] ciphertext, byte[] aad) {
++        if (key.length != 32) throw new IllegalArgumentException("AES-256 key must be 32 bytes");
++        try {
++            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
++            cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key, "AES"), new GCMParameterSpec(128, nonce));
++            if (aad != null) cipher.updateAAD(aad);
++            return cipher.doFinal(ciphertext);
++        } catch (GeneralSecurityException e) {
++            throw new AegisCryptoException(
++                    "AES-GCM decryption failed (wrong key, nonce, or tampered AAD)", e);
++        }
++    }
++
++    public static byte[] aesGcmDecrypt(byte[] key, byte[] nonce, byte[] ciphertext) {
++        return aesGcmDecrypt(key, nonce, ciphertext, null);
++    }
++
++    // -------------------------------------------------------------- helpers
++
++    private static byte[] concat(byte[] a, byte[] b) {
++        byte[] out = new byte[a.length + b.length];
++        System.arraycopy(a, 0, out, 0, a.length);
++        System.arraycopy(b, 0, out, a.length, b.length);
++        return out;
++    }
++}
+
+diff --git a/chrome/android/java/src/org/chromium/chrome/browser/aegis/sync/AegisSyncClient.java b/chrome/android/java/src/org/chromium/chrome/browser/aegis/sync/AegisSyncClient.java
+new file mode 100644
+--- /dev/null
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/sync/AegisSyncClient.java
+@@ -0,0 +1,336 @@
++// Copyright 2026 The Aegis Browser Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++/*
++ * Aegis Browser - Android sync client (protocol layer), JAVA port.
++ *
++ * Java twin of AegisSyncClient.kt - a faithful port of the API half of
++ * aegis-sync/client-example/aegis-client.mjs. Endpoints, request/response
++ * field names, refresh-token retry and the vault-key unwrap path were
++ * verified 1:1 against aegis-sync/src/auth.ts and src/sync.ts, and the
++ * sequence is proven live by E2EDriver (13/13 steps, see test twin).
++ *
++ * Browser-embedded variant: this copy is a THIN PROTOCOL LAYER driven by
++ * org.chromium.chrome.browser.aegis.AegisIdManager. Key derivation is
++ * orchestrated by the manager (kdf-params -> deriveCredentials -> login),
++ * so register()/login() take pre-derived opaque fields (verifier, wrapped
++ * vault key, kdf params) with field names mirroring aegis-client.mjs
++ * exactly. Session tokens and the vault key live in memory only - the
++ * manager pushes them in via setTokens()/setVaultKey() and reads them back
++ * after calls that may rotate them. Crypto lives in AegisCrypto.java (same
++ * package) and is conformance-tested against the same generated vectors as
++ * the Kotlin original (AegisCryptoVectorTest.java, 16/16).
++ *
++ * Dependencies: org.json only (bundled with Android). No Android UI or
++ * framework imports - java.net + org.json only, so this file stays unit
++ * testable off-device.
++ */
++package org.chromium.chrome.browser.aegis.sync;
++
++import java.io.BufferedReader;
++import java.io.InputStreamReader;
++import java.net.HttpURLConnection;
++import java.net.URL;
++import java.net.URLEncoder;
++import java.nio.charset.StandardCharsets;
++import java.util.ArrayList;
++import java.util.List;
++import org.json.JSONArray;
++import org.json.JSONObject;
++
++public class AegisSyncClient {
++
++    /** Thrown for non-2xx responses (after a refresh retry has been tried). */
++    public static class AegisApiException extends RuntimeException {
++        public final int status;
++        public final String code; // may be null
++
++        public AegisApiException(int status, String code, String message) {
++            super(message);
++            this.status = status;
++            this.code = code;
++        }
++    }
++
++    /** One local change queued for push. */
++    public static class Change {
++        public final String type; // e.g. "bookmark", "tab", "setting", "password", "autofill"
++        public final String key;  // stable item key
++        public final long baseVersion;
++        public final boolean deleted;
++        public final JSONObject plaintext; // null iff deleted
++
++        public Change(String type, String key, long baseVersion, boolean deleted, JSONObject plaintext) {
++            this.type = type;
++            this.key = key;
++            this.baseVersion = baseVersion;
++            this.deleted = deleted;
++            this.plaintext = plaintext;
++        }
++
++        /** Upsert (not deleted). */
++        public Change(String type, String key, long baseVersion, JSONObject plaintext) {
++            this(type, key, baseVersion, false, plaintext);
++        }
++
++        /** Tombstone. */
++        public static Change deletion(String type, String key, long baseVersion) {
++            return new Change(type, key, baseVersion, true, null);
++        }
++    }
++
++    /** One pulled item (already decrypted). */
++    public static class SyncItem {
++        public final String type;
++        public final String key;
++        public final long version;
++        public final boolean deleted;
++        public final JSONObject plaintext; // null iff deleted
++
++        public SyncItem(String type, String key, long version, boolean deleted, JSONObject plaintext) {
++            this.type = type;
++            this.key = key;
++            this.version = version;
++            this.deleted = deleted;
++            this.plaintext = plaintext;
++        }
++    }
++
++    /** Result page of pull(): decrypted items plus the raw server page. */
++    public static class PullResult {
++        public final List<SyncItem> items;
++        public final JSONObject page; // has next_cursor / has_more
++
++        public PullResult(List<SyncItem> items, JSONObject page) {
++            this.items = items;
++            this.page = page;
++        }
++    }
++
++    private final String base;
++
++    private String accessToken;
++    private String refreshToken;
++    private byte[] vaultKey;
++
++    public AegisSyncClient(String baseUrl) {
++        this.base = baseUrl.trim().replaceAll("/+$", "");
++    }
++
++    public String accessToken() { return accessToken; }
++    public String refreshToken() { return refreshToken; }
++    public byte[] vaultKey() { return vaultKey; }
++
++    /** The manager owns the session; it pushes tokens in before each call. */
++    public void setTokens(String accessToken, String refreshToken) {
++        this.accessToken = accessToken;
++        this.refreshToken = refreshToken;
++    }
++
++    public void setVaultKey(byte[] vaultKey) {
++        this.vaultKey = vaultKey;
++    }
++
++    // ------------------------------------------------------------------ HTTP
++
++    private JSONObject http(String path, String method, JSONObject body, boolean auth, boolean retry)
++            throws java.io.IOException {
++        HttpURLConnection conn = (HttpURLConnection) new URL(base + path).openConnection();
++        conn.setRequestMethod(method);
++        conn.setConnectTimeout(15_000);
++        conn.setReadTimeout(30_000);
++        conn.setRequestProperty("Content-Type", "application/json");
++        if (auth && accessToken != null) {
++            conn.setRequestProperty("Authorization", "Bearer " + accessToken);
++        }
++        if (body != null) {
++            conn.setDoOutput(true);
++            conn.getOutputStream().write(body.toString().getBytes(StandardCharsets.UTF_8));
++        }
++        int status = conn.getResponseCode();
++        java.io.InputStream stream = (status >= 200 && status <= 299) ? conn.getInputStream() : conn.getErrorStream();
++        String text = "";
++        if (stream != null) {
++            try (BufferedReader r = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
++                StringBuilder sb = new StringBuilder();
++                String line;
++                while ((line = r.readLine()) != null) sb.append(line).append('\n');
++                text = sb.toString().trim();
++            }
++        }
++        conn.disconnect();
++
++        JSONObject data = text.isEmpty() ? new JSONObject() : new JSONObject(text);
++
++        if (status == 401 && auth && retry && refreshToken != null) {
++            if (refreshTokens()) {
++                return http(path, method, body, auth, false);
++            }
++        }
++        if (status < 200 || status > 299) {
++            JSONObject err = data.optJSONObject("error");
++            throw new AegisApiException(status,
++                    err != null ? err.optString("code", null) : null,
++                    err != null ? err.optString("message", "HTTP " + status) : "HTTP " + status);
++        }
++        return data;
++    }
++
++    private boolean refreshTokens() {
++        if (refreshToken == null) return false;
++        try {
++            refresh(refreshToken);
++            return true;
++        } catch (Exception e) {
++            accessToken = null;
++            refreshToken = null;
++            return false;
++        }
++    }
++
++    // ----------------------------------------------------------------- Auth
++
++    /** Public KDF parameters for an email: {kdf_salt_b64, kdf:{algo,iterations}}. */
++    public JSONObject kdfParams(String email) throws java.io.IOException {
++        return http("/v1/auth/kdf-params?email=" + URLEncoder.encode(email, StandardCharsets.UTF_8),
++                "GET", null, false, true);
++    }
++
++    /**
++     * Creates a new account. All crypto is done by the caller: it generates
++     * the KDF salt, derives verifier + KEK, generates and wraps the vault
++     * key. Field names mirror the register body of aegis-client.mjs.
++     */
++    public JSONObject register(String email, String kdfSaltB64, JSONObject kdf,
++            String verifierB64, String wrappedVaultKeyB64, String vaultNonceB64, String inviteCode)
++            throws java.io.IOException {
++        JSONObject body = new JSONObject()
++                .put("email", email)
++                .put("kdf_salt_b64", kdfSaltB64)
++                .put("kdf", kdf)
++                .put("verifier_b64", verifierB64)
++                .put("wrapped_vault_key_b64", wrappedVaultKeyB64)
++                .put("vault_nonce_b64", vaultNonceB64);
++        if (inviteCode != null && !inviteCode.isEmpty()) body.put("invite_code", inviteCode);
++        return http("/v1/auth/register", "POST", body, false, true);
++    }
++
++    /**
++     * Sends the pre-derived verifier (the caller fetched kdf-params and ran
++     * deriveCredentials), registers/updates the device and mints the session
++     * pair. Stores the tokens in memory and returns the raw response
++     * ({access_token, refresh_token, user:{...}}); unwrapping the vault key
++     * from response.user is the caller's job - it holds the derived KEK.
++     */
++    public JSONObject login(String email, String verifierB64, String deviceId,
++            String deviceName, String devicePlatform) throws java.io.IOException {
++        JSONObject data = http("/v1/auth/login", "POST",
++                new JSONObject()
++                        .put("email", email)
++                        .put("verifier_b64", verifierB64)
++                        .put("device", new JSONObject()
++                                .put("id", deviceId)
++                                .put("name", deviceName)
++                                .put("platform", devicePlatform)),
++                false, true);
++        accessToken = data.getString("access_token");
++        refreshToken = data.getString("refresh_token");
++        return data;
++    }
++
++    /** Exchanges a refresh token for a fresh pair (rotation: old one dies). */
++    public JSONObject refresh(String refreshToken) throws java.io.IOException {
++        JSONObject data = http("/v1/auth/refresh", "POST",
++                new JSONObject().put("refresh_token", refreshToken), false, true);
++        accessToken = data.getString("access_token");
++        this.refreshToken = data.getString("refresh_token");
++        return data;
++    }
++
++    public void logout() throws java.io.IOException {
++        try {
++            http("/v1/auth/logout", "POST", null, true, true);
++        } finally {
++            accessToken = null;
++            refreshToken = null;
++            vaultKey = null;
++        }
++    }
++
++    // ----------------------------------------------------------------- Sync
++
++    /** Push items. Auto-encrypts with the vault key; base version = clientVersionSeen. */
++    public JSONObject push(List<Change> changes) throws java.io.IOException {
++        if (vaultKey == null) throw new IllegalStateException("not logged in");
++        JSONArray items = new JSONArray();
++        for (Change c : changes) {
++            JSONObject item = new JSONObject()
++                    .put("item_type", c.type)
++                    .put("item_key", c.key)
++                    .put("base_version", c.baseVersion)
++                    .put("deleted", c.deleted);
++            if (!c.deleted) {
++                long newVersion = c.baseVersion + 1;
++                byte[] aad = AegisCrypto.utf8(c.type + "|" + c.key + "|" + newVersion);
++                AegisCrypto.GcmResult encrypted = AegisCrypto.aesGcmEncrypt(
++                        vaultKey, AegisCrypto.utf8(c.plaintext.toString()), aad);
++                item.put("nonce_b64", AegisCrypto.b64(encrypted.nonce));
++                item.put("ciphertext_b64", AegisCrypto.b64(encrypted.ciphertext));
++            }
++            items.put(item);
++        }
++        return http("/v1/sync/push", "POST", new JSONObject().put("items", items), true, true);
++    }
++
++    /** Pull items newer than cursor. Auto-decrypts. */
++    public PullResult pull(long cursor, List<String> types) throws java.io.IOException {
++        if (vaultKey == null) throw new IllegalStateException("not logged in");
++        StringBuilder q = new StringBuilder("/v1/sync/pull?cursor=").append(cursor);
++        if (types != null && !types.isEmpty()) {
++            q.append("&types=").append(URLEncoder.encode(String.join(",", types), StandardCharsets.UTF_8));
++        }
++        JSONObject data = http(q.toString(), "GET", null, true, true);
++        List<SyncItem> out = new ArrayList<>();
++        JSONArray rows = data.getJSONArray("items");
++        for (int i = 0; i < rows.length(); i++) {
++            JSONObject row = rows.getJSONObject(i);
++            String type = row.getString("item_type");
++            String key = row.getString("item_key");
++            long version = row.getLong("version");
++            boolean deleted = row.optBoolean("deleted", false);
++            if (deleted) {
++                out.add(new SyncItem(type, key, version, true, null));
++            } else {
++                byte[] aad = AegisCrypto.utf8(type + "|" + key + "|" + version);
++                byte[] plain = AegisCrypto.aesGcmDecrypt(
++                        vaultKey,
++                        AegisCrypto.unb64(row.getString("nonce_b64")),
++                        AegisCrypto.unb64(row.getString("ciphertext_b64")),
++                        aad);
++                out.add(new SyncItem(type, key, version, false,
++                        new JSONObject(new String(plain, StandardCharsets.UTF_8))));
++            }
++        }
++        return new PullResult(out, data);
++    }
++
++    public PullResult pull(long cursor) throws java.io.IOException {
++        return pull(cursor, null);
++    }
++
++    public JSONObject cursor() throws java.io.IOException {
++        return http("/v1/sync/cursor", "GET", null, true, true);
++    }
++
++    // -------------------------------------------------------------- Devices
++
++    public JSONObject devices() throws java.io.IOException {
++        return http("/v1/devices", "GET", null, true, true);
++    }
++
++    public JSONObject revokeDevice(String deviceIdToRevoke) throws java.io.IOException {
++        return http("/v1/devices/" + URLEncoder.encode(deviceIdToRevoke, StandardCharsets.UTF_8) + "/revoke",
++                "POST", null, true, true);
++    }
++}

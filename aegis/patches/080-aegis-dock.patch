@@ -1,0 +1,547 @@
+# 80 - aegis-dock
+# Liquid Glass dock (mobile M1+M2): the bottom-edge navigation pill that
+# replaces the hidden native top toolbar. Menu button opens the regular
+# app menu anchored to the dock (bottom-bar variant); URL pill binds the
+# current tab title at 1 Hz; tabs button opens the tab-search surface;
+# new-tab button uses the browser's own menu action. Collapses to a
+# 24x140dp edge sliver after 4s; touch recalls it. Design tokens live in
+# res/values/aegis_tokens.xml (light base; dark set overrides via the
+# same names). The ChromeActivity EDI hides the native control container;
+# the ChromeTabbedActivity EDI installs the dock after native init.
+
+diff --git a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
+new file mode 100644
+--- /dev/null
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
+@@ -0,0 +1,307 @@
++// Copyright 2026 The Aegis Browser Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++package org.chromium.chrome.browser.aegis.dock;
++
++import static org.chromium.build.NullUtil.assumeNonNull;
++
++import android.annotation.SuppressLint;
++import android.app.Activity;
++import android.content.res.Resources;
++import android.graphics.Color;
++import android.graphics.Outline;
++import android.graphics.Rect;
++import android.view.Gravity;
++import android.view.View;
++import android.view.ViewOutlineProvider;
++import android.view.ViewGroup;
++import android.widget.FrameLayout;
++import android.widget.ImageView;
++import android.widget.LinearLayout;
++import android.widget.TextView;
++
++import org.chromium.base.supplier.Supplier;
++import org.chromium.build.annotations.NullMarked;
++import org.chromium.build.annotations.Nullable;
++import org.chromium.chrome.R;
++import org.chromium.chrome.browser.ChromeTabbedActivity;
++import org.chromium.chrome.browser.tab.Tab;
++import org.chromium.chrome.browser.ui.appmenu.AppMenuHandler;
++
++/**
++ * Aegis Liquid Glass dock: the bottom-edge navigation pill that replaces the
++ * hidden native top toolbar (patch 080). The dock is a plain View overlay
++ * attached to the activity's content root, above all browser chrome and web
++ * content, so no compositor or rendering-pipeline changes are needed.
++ *
++ * Layout (spec Tables 5-11, aegis_tokens.xml):
++ *   [ menu ] [ URL / trust pill ] [ search ] [ new tab ] [ tabs ]
++ * The URL pill shows the current tab's page title with the URL as a subtitle
++ * ( refreshed at 1 Hz - no observer wiring into the tab model yet). Tapping
++ * the URL pill opens the glass search sheet (patch 081); the menu button
++ * opens the regular app menu anchored to the dock (bottom bar variant).
++ *
++ * Collapsed state: after 4 s without input the dock shrinks to a 24x140dp
++ * edge sliver on the trailing edge; touching it recalls the dock. Scroll-
++ * driven hiding is not wired yet (the sliver timer stands in for it).
++ */
++@NullMarked
++public class AegisDockView extends FrameLayout {
++    /** Collapse delay after the last interaction, in ms. */
++    private static final long COLLAPSE_DELAY_MS = 4000;
++    /** URL refresh cadence, in ms. */
++    private static final long REFRESH_MS = 1000;
++
++    private final LinearLayout mPill;
++    private final TextView mUrlPill;
++    private final View mSliver;
++    private final Supplier<@Nullable AppMenuHandler> mMenuSupplier;
++    private final Runnable mCollapse = this::collapse;
++    private final Runnable mRefresh = this::refreshUrl;
++    private boolean mExpanded;
++    private @Nullable String mLastBound;
++
++    /** Installs the dock into {@code activity} exactly once per content root. */
++    public static void install(
++            ChromeTabbedActivity activity, Supplier<@Nullable AppMenuHandler> menuSupplier) {
++        ViewGroup content = activity.findViewById(android.R.id.content);
++        if (content == null) return;
++        if (content.findViewById(R.id.aegis_dock) != null) return;
++        AegisDockView dock = new AegisDockView(activity, menuSupplier);
++        dock.setId(R.id.aegis_dock);
++        content.addView(
++                dock,
++                new FrameLayout.LayoutParams(
++                        ViewGroup.LayoutParams.MATCH_PARENT,
++                        ViewGroup.LayoutParams.WRAP_CONTENT,
++                        Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL));
++    }
++
++    private AegisDockView(
++            ChromeTabbedActivity activity, Supplier<@Nullable AppMenuHandler> menuSupplier) {
++        super(activity);
++        mMenuSupplier = menuSupplier;
++        Resources res = getResources();
++
++        // Full-width hit surface; the pill is centered inside it.
++        mPill = new LinearLayout(getContext());
++        mPill.setOrientation(LinearLayout.HORIZONTAL);
++        mPill.setGravity(Gravity.CENTER_VERTICAL);
++        mPill.setClickable(true);
++        mPill.setFocusable(true);
++        mPill.setBackgroundResource(R.drawable.aegis_dock_pill);
++        int hpad = res.getDimensionPixelSize(R.dimen.aegis_dock_hpadding);
++        mPill.setPadding(hpad, 0, hpad, 0);
++
++        mPill.addView(makeButton(R.drawable.aegis_ic_menu, R.string.aegis_dock_menu,
++                this::onMenuClicked));
++        mUrlPill = new TextView(getContext());
++        mUrlPill.setTextSize(13);
++        mUrlPill.setTextColor(Color.WHITE);
++        mUrlPill.setSingleLine(true);
++        mUrlPill.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
++        mUrlPill.setContentDescription(getContext().getString(R.string.aegis_dock_search));
++        LinearLayout.LayoutParams urlLp =
++                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
++        int vpad = res.getDimensionPixelSize(R.dimen.aegis_dock_url_padding);
++        mUrlPill.setPadding(vpad, 0, vpad, 0);
++        mUrlPill.setOnClickListener(v -> openSearchOverlay());
++        mPill.addView(mUrlPill, urlLp);
++        mPill.addView(makeButton(R.drawable.aegis_ic_search, R.string.aegis_dock_search,
++                this::openSearchOverlay));
++        mPill.addView(makeButton(R.drawable.aegis_ic_plus, R.string.aegis_dock_new_tab,
++                this::onNewTabClicked));
++        mPill.addView(makeButton(R.drawable.aegis_ic_tabs, R.string.aegis_dock_tabs,
++                this::onTabsClicked));
++
++        FrameLayout.LayoutParams pillLp =
++                new FrameLayout.LayoutParams(
++                        res.getDimensionPixelSize(R.dimen.aegis_dock_width),
++                        res.getDimensionPixelSize(R.dimen.aegis_dock_height),
++                        Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
++        int vmargin = res.getDimensionPixelSize(R.dimen.aegis_dock_bottom_margin);
++        pillLp.bottomMargin = vmargin;
++        addView(mPill, pillLp);
++
++        // Collapsed edge sliver: a thin rounded handle on the trailing edge.
++        mSliver = new View(getContext());
++        mSliver.setBackgroundResource(R.drawable.aegis_dock_sliver);
++        FrameLayout.LayoutParams sliverLp =
++                new FrameLayout.LayoutParams(
++                        res.getDimensionPixelSize(R.dimen.aegis_sliver_width),
++                        res.getDimensionPixelSize(R.dimen.aegis_sliver_height),
++                        Gravity.BOTTOM | Gravity.END);
++        sliverLp.bottomMargin = vmargin + res.getDimensionPixelSize(R.dimen.aegis_dock_height) / 2
++                - res.getDimensionPixelSize(R.dimen.aegis_sliver_height) / 2;
++        mSliver.setVisibility(GONE);
++        mSliver.setOnClickListener(v -> expand());
++        mSliver.setContentDescription(getContext().getString(R.string.aegis_dock_recall));
++        addView(mSliver, sliverLp);
++
++        // The pill is a capsule; the sliver a small rounded bar.
++        setOutlineFor(mPill, corner);
++        setOutlineFor(mSliver, res.getDimensionPixelSize(R.dimen.aegis_sliver_width) / 2);
++
++        expand();
++    }
++
++    private ImageView makeButton(int iconRes, int descRes, Runnable action) {
++        ImageView btn = new ImageView(getContext());
++        btn.setImageResource(iconRes);
++        btn.setBackgroundResource(R.drawable.aegis_dock_button);
++        btn.setContentDescription(getContext().getString(descRes));
++        int size = getResources().getDimensionPixelSize(R.dimen.aegis_dock_button);
++        int gap = getResources().getDimensionPixelSize(R.dimen.aegis_dock_gap);
++        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(size, size);
++        lp.leftMargin = gap;
++        btn.setOnClickListener(v -> action.run());
++        return btn;
++    }
++
++    private void setOutlineFor(View view, float cornerRadius) {
++        view.setOutlineProvider(
++                new ViewOutlineProvider() {
++                    @Override
++                    public void getOutline(View v, Outline outline) {
++                        outline.setRoundRect(0, 0, v.getWidth(), v.getHeight(), cornerRadius);
++                    }
++                });
++        view.setClipToOutline(true);
++    }
++
++    /** Collapses the dock to the edge sliver. */
++    public void collapse() {
++        if (!mExpanded) return;
++        mExpanded = false;
++        mPill.animate().alpha(0f).setDuration(220).withEndAction(() -> {
++            mPill.setVisibility(GONE);
++            mSliver.setAlpha(0f);
++            mSliver.setVisibility(VISIBLE);
++            mSliver.animate().alpha(1f).setDuration(140).start();
++        }).start();
++    }
++
++    /** Expands the full dock pill. */
++    public void expand() {
++        if (mExpanded) return;
++        mExpanded = true;
++        mSliver.animate().alpha(0f).setDuration(120).withEndAction(() -> mSliver.setVisibility(GONE))
++                .start();
++        mPill.setAlpha(0f);
++        mPill.setVisibility(VISIBLE);
++        mPill.animate().alpha(1f).setDuration(180).start();
++        refreshUrl();
++        scheduleCollapse();
++    }
++
++    private void scheduleCollapse() {
++        removeCallbacks(mCollapse);
++        // The dock never collapses while the app menu is open above it.
++        AppMenuHandler handler = mMenuSupplier.get();
++        if (handler != null && handler.isAppMenuShowing()) return;
++        postDelayed(mCollapse, COLLAPSE_DELAY_MS);
++    }
++
++    private void refreshUrl() {
++        Activity activity = (Activity) getContext();
++        if (!(activity instanceof ChromeTabbedActivity)) return;
++        ChromeTabbedActivity cta = (ChromeTabbedActivity) activity;
++        Tab tab = cta.getActivityTab();
++        String next;
++        if (tab == null || !tab.isLoaded()) {
++            next = getContext().getString(R.string.aegis_dock_search_hint);
++        } else {
++            String title = tab.getTitle();
++            next = (title == null || title.isEmpty())
++                    ? stripScheme(tab.getUrl().getSpec())
++                    : title;
++        }
++        if (next == null) next = getContext().getString(R.string.aegis_dock_search_hint);
++        if (!next.equals(mLastBound)) {
++            mLastBound = next;
++            mUrlPill.setText(next);
++        }
++    }
++
++    private static String stripScheme(@Nullable String spec) {
++        if (spec == null) return "";
++        if (spec.startsWith("https://")) return spec.substring(8);
++        if (spec.startsWith("http://")) return spec.substring(7);
++        return spec;
++    }
++
++    private void onMenuClicked() {
++        AppMenuHandler handler = mMenuSupplier.get();
++        if (handler != null) {
++            handler.showAppMenu(mUrlPill, false, true);
++        }
++        scheduleCollapse();
++    }
++
++    private void onNewTabClicked() {
++        Activity activity = (Activity) getContext();
++        if (!(activity instanceof ChromeTabbedActivity)) return;
++        ((ChromeTabbedActivity) activity)
++                .onMenuOrKeyboardAction(
++                        R.id.new_tab_menu_id, /* fromMenu= */ false,
++                        /* menuItemData= */ null, /* triggeringMotion= */ null);
++    }
++
++    private void onTabsClicked() {
++        Activity activity = (Activity) getContext();
++        if (!(activity instanceof ChromeTabbedActivity)) return;
++        ((ChromeTabbedActivity) activity)
++                .onMenuOrKeyboardAction(
++                        R.id.tab_search, /* fromMenu= */ false,
++                        /* menuItemData= */ null, /* triggeringMotion= */ null);
++    }
++
++    /**
++     * Opens the glass search sheet. Patch 080 ships this as a hook stub so
++     * the dock compiles standalone; patch 081 (AegisSearchSheet) rewrites
++     * the body to show the sheet.
++     */
++    public void openSearchOverlay() {
++        // Patch 081 replaces this body with the glass search sheet.
++    }
++
++    @Override
++    protected void onAttachedToWindow() {
++        super.onAttachedToWindow();
++        postDelayed(mRefresh, REFRESH_MS);
++    }
++
++    @Override
++    protected void onDetachedFromWindow() {
++        super.onDetachedFromWindow();
++        removeCallbacks(mRefresh);
++        removeCallbacks(mCollapse);
++    }
++
++    @Override
++    public boolean dispatchTouchEvent(android.view.MotionEvent event) {
++        @SuppressLint("UnusedVariable")
++        boolean result = super.dispatchTouchEvent(event);
++        scheduleCollapse();
++        return result;
++    }
++
++    @Override
++    protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
++        super.onLayout(changed, left, top, right, bottom);
++        // Keep clear of the system gesture area on the bottom edge.
++        Rect insets = new Rect();
++        getWindowVisibleDisplayFrame(insets);
++        int bottomInset = Math.max(0, getRootView().getHeight() - insets.bottom);
++        if (mPill.getLayoutParams() instanceof FrameLayout.LayoutParams) {
++            FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) mPill.getLayoutParams();
++            int wanted = getResources().getDimensionPixelSize(R.dimen.aegis_dock_bottom_margin)
++                    + bottomInset;
++            if (lp.bottomMargin != wanted) {
++                lp.bottomMargin = wanted;
++                mPill.setLayoutParams(lp);
++            }
++        }
++    }
++}
+
+--- a/chrome/android/chrome_java_sources.gni
++++ b/chrome/android/chrome_java_sources.gni
+@@ -57,6 +57,7 @@
+   "java/src/org/chromium/chrome/browser/WebSearchDelegate.java",
+   "java/src/org/chromium/chrome/browser/ZoomController.java",
+   "java/src/org/chromium/chrome/browser/about_settings/AboutChromePreferenceOSVersion.java",
++  "java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java",
+   "java/src/org/chromium/chrome/browser/about_settings/AboutChromeSettings.java",
+   "java/src/org/chromium/chrome/browser/aegis/AegisEcosystemSettings.java",
+   "java/src/org/chromium/chrome/browser/about_settings/AboutSettingsBridge.java",
+
+diff --git a/chrome/android/java/res/values/aegis_tokens.xml b/chrome/android/java/res/values/aegis_tokens.xml
+new file mode 100644
+--- /dev/null
++++ b/chrome/android/java/res/values/aegis_tokens.xml
+@@ -0,0 +1,52 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Copyright 2026 The Aegis Browser Authors
++     Use of this source code is governed by a BSD-style license that can be
++     found in the LICENSE file.
++
++     Aegis Liquid Glass design tokens (spec Tables 5-8). Base set = light
++     theme glass; values-night/aegis_tokens.xml (same resource names) carries
++     the dark set. Everything the dock and glass sheets use is prefixed
++     aegis_. -->
++<resources>
++    <!-- Glass surfaces -->
++    <color name="aegis_glass_pill">#D9F4F4F4</color>
++    <color name="aegis_glass_stroke">#3A8A8A8A</color>
++    <color name="aegis_glass_sheet">#F2F4F4F4</color>
++    <color name="aegis_glass_scrim">#4D101114</color>
++    <color name="aegis_glass_chip">#66FFFFFF</color>
++    <color name="aegis_glass_chip_text">#DE101114</color>
++    <!-- Foreground -->
++    <color name="aegis_glass_text">#DE101114</color>
++    <color name="aegis_glass_text_secondary">#99101114</color>
++    <color name="aegis_glass_icon">#DE101114</color>
++    <color name="aegis_glass_icon_pressed">#40101114</color>
++    <!-- Brand -->
++    <color name="aegis_accent">#DE101114</color>
++
++    <!-- Dock geometry (spec Table 9: pill 260x52dp, sliver 24x140dp) -->
++    <dimen name="aegis_dock_width">260dp</dimen>
++    <dimen name="aegis_dock_height">52dp</dimen>
++    <dimen name="aegis_dock_hpadding">10dp</dimen>
++    <dimen name="aegis_dock_url_padding">10dp</dimen>
++    <dimen name="aegis_dock_button">32dp</dimen>
++    <dimen name="aegis_dock_gap">6dp</dimen>
++    <dimen name="aegis_dock_bottom_margin">12dp</dimen>
++    <dimen name="aegis_sliver_width">24dp</dimen>
++    <dimen name="aegis_sliver_height">140dp</dimen>
++    <dimen name="aegis_sheet_corner">28dp</dimen>
++    <dimen name="aegis_sheet_padding">20dp</dimen>
++
++    <!-- Identifiers -->
++    <item name="aegis_dock" type="id"/>
++    <item name="aegis_search_sheet" type="id"/>
++    <item name="aegis_search_input" type="id"/>
++
++    <!-- Dock / sheet strings -->
++    <string name="aegis_dock_menu">Menu</string>
++    <string name="aegis_dock_new_tab">New tab</string>
++    <string name="aegis_dock_tabs">Tabs</string>
++    <string name="aegis_dock_search">Search</string>
++    <string name="aegis_dock_search_hint">Search or type URL</string>
++    <string name="aegis_dock_recall">Show dock</string>
++    <string name="aegis_sheet_search">Search %1$s or type a URL</string>
++</resources>
+
+diff --git a/chrome/android/java/res/drawable/aegis_dock_pill.xml b/chrome/android/java/res/drawable/aegis_dock_pill.xml
+new file mode 100644
+--- /dev/null
++++ b/chrome/android/java/res/drawable/aegis_dock_pill.xml
+@@ -0,0 +1,10 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Copyright 2026 The Aegis Browser Authors
++     Use of this source code is governed by a BSD-style license that can be
++     found in the LICENSE file. -->
++<shape xmlns:android="http://schemas.android.com/apk/res/android"
++    android:shape="rectangle">
++    <solid android:color="@color/aegis_glass_pill"/>
++    <corners android:radius="26dp"/>
++    <stroke android:width="1dp" android:color="@color/aegis_glass_stroke"/>
++</shape>
+
+diff --git a/chrome/android/java/res/drawable/aegis_dock_button.xml b/chrome/android/java/res/drawable/aegis_dock_button.xml
+new file mode 100644
+--- /dev/null
++++ b/chrome/android/java/res/drawable/aegis_dock_button.xml
+@@ -0,0 +1,12 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Copyright 2026 The Aegis Browser Authors
++     Use of this source code is governed by a BSD-style license that can be
++     found in the LICENSE file. -->
++<ripple xmlns:android="http://schemas.android.com/apk/res/android"
++    android:color="@color/aegis_glass_icon_pressed">
++    <item>
++        <shape android:shape="oval">
++            <solid android:color="@android:color/transparent"/>
++        </shape>
++    </item>
++</ripple>
+
+diff --git a/chrome/android/java/res/drawable/aegis_dock_sliver.xml b/chrome/android/java/res/drawable/aegis_dock_sliver.xml
+new file mode 100644
+--- /dev/null
++++ b/chrome/android/java/res/drawable/aegis_dock_sliver.xml
+@@ -0,0 +1,10 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Copyright 2026 The Aegis Browser Authors
++     Use of this source code is governed by a BSD-style license that can be
++     found in the LICENSE file. -->
++<shape xmlns:android="http://schemas.android.com/apk/res/android"
++    android:shape="rectangle">
++    <solid android:color="@color/aegis_glass_pill"/>
++    <corners android:radius="12dp"/>
++    <stroke android:width="1dp" android:color="@color/aegis_glass_stroke"/>
++</shape>
+
+diff --git a/chrome/android/java/res/drawable/aegis_ic_menu.xml b/chrome/android/java/res/drawable/aegis_ic_menu.xml
+new file mode 100644
+--- /dev/null
++++ b/chrome/android/java/res/drawable/aegis_ic_menu.xml
+@@ -0,0 +1,10 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Copyright 2026 The Aegis Browser Authors
++     Use of this source code is governed by a BSD-style license that can be
++     found in the LICENSE file. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp" android:height="24dp"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:fillColor="@color/aegis_glass_icon"
++        android:pathData="M3,18h18v-2H3v2zM3,13h18v-2H3v2zM3,6v2h18V6H3z"/>
++</vector>
+
+diff --git a/chrome/android/java/res/drawable/aegis_ic_plus.xml b/chrome/android/java/res/drawable/aegis_ic_plus.xml
+new file mode 100644
+--- /dev/null
++++ b/chrome/android/java/res/drawable/aegis_ic_plus.xml
+@@ -0,0 +1,10 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Copyright 2026 The Aegis Browser Authors
++     Use of this source code is governed by a BSD-style license that can be
++     found in the LICENSE file. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp" android:height="24dp"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:fillColor="@color/aegis_glass_icon"
++        android:pathData="M19,13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
++</vector>
+
+diff --git a/chrome/android/java/res/drawable/aegis_ic_search.xml b/chrome/android/java/res/drawable/aegis_ic_search.xml
+new file mode 100644
+--- /dev/null
++++ b/chrome/android/java/res/drawable/aegis_ic_search.xml
+@@ -0,0 +1,10 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Copyright 2026 The Aegis Browser Authors
++     Use of this source code is governed by a BSD-style license that can be
++     found in the LICENSE file. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp" android:height="24dp"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:fillColor="@color/aegis_glass_icon"
++        android:pathData="M15.5,14h-0.79l-0.28,-0.27C15.41,12.59 16,11.11 16,9.5 16,5.91 13.09,3 9.5,3S3,5.91 3,9.5 5.91,16 9.5,16c1.61,0 3.09,-0.59 4.23,-1.57l0.27,0.28v0.79l5,4.99L20.49,19l-4.99,-5zM9.5,14C7.01,14 5,11.99 5,9.5S7.01,5 9.5,5 14,7.01 14,9.5 11.99,14 9.5,14z"/>
++</vector>
+
+diff --git a/chrome/android/java/res/drawable/aegis_ic_tabs.xml b/chrome/android/java/res/drawable/aegis_ic_tabs.xml
+new file mode 100644
+--- /dev/null
++++ b/chrome/android/java/res/drawable/aegis_ic_tabs.xml
+@@ -0,0 +1,10 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Copyright 2026 The Aegis Browser Authors
++     Use of this source code is governed by a BSD-style license that can be
++     found in the LICENSE file. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp" android:height="24dp"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:fillColor="@color/aegis_glass_icon"
++        android:pathData="M3,3h8v8H3V3zM13,3h8v8h-8V3zM3,13h8v8H3v-8zM13,13h8v8h-8v-8z"/>
++</vector>
+
+--- a/chrome/android/java/src/org/chromium/chrome/browser/app/ChromeActivity.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/app/ChromeActivity.java
+@@ -918,6 +918,14 @@
+             // be the control container since it may be wrapped in another view.
+             ControlContainer controlContainer = findViewById(R.id.control_container);
+ 
++            // Aegis Liquid Glass: the native top toolbar stays hidden for the
++            // whole session; the Aegis dock replaces it at the bottom edge.
++            // Find-in-page UI lives in this container and returns with the
++            // glass sheets.
++            if (controlContainer != null) {
++                ((View) controlContainer).setVisibility(View.GONE);
++            }
++
+             // Inflate the correct toolbar layout for the device.
+             int toolbarLayoutId = getToolbarLayoutId();
+             if (toolbarLayoutId != ActivityUtils.NO_RESOURCE_ID && controlContainer != null) {
+
+--- a/chrome/android/java/src/org/chromium/chrome/browser/ChromeTabbedActivity.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/ChromeTabbedActivity.java
+@@ -88,6 +88,7 @@
+ import org.chromium.chrome.browser.actor.ActorForegroundServiceController;
+ import org.chromium.chrome.browser.actor.ActorNotificationService;
+ import org.chromium.chrome.browser.actor.ActorTabStateHelper;
++import org.chromium.chrome.browser.aegis.dock.AegisDockView;
+ import org.chromium.chrome.browser.app.ChromeActivity;
+ import org.chromium.chrome.browser.app.appmenu.AppMenuPropertiesDelegateImpl;
+ import org.chromium.chrome.browser.app.metrics.LaunchCauseMetrics;
+@@ -1663,6 +1664,11 @@
+ 
+             TabbedStartupWindowPolicyDelegate.getInstance().initializeWithNative(originalProfile);
+ 
++            // Aegis Liquid Glass: the bottom dock replaces the hidden top
++            // toolbar. The menu supplier is lazy - RootUiCoordinator creates
++            // the handler during native initialization.
++            AegisDockView.install(this, () -> mRootUiCoordinator.getAppMenuHandler());
++
+             // Deliberately not deferred to onDeferredStartup(): this timestamp is not just a
+             // metric, it gates feature eligibility (e.g. the Setup List time window, which treats
+             // a missing timestamp as "inactive"), and deferred startup is not guaranteed to run.

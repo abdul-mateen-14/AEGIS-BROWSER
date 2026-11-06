@@ -1,0 +1,52 @@
+# 82 - aegis-dock-parity
+# Dock parity (mobile M4 slice): respects the system reduced-motion
+# setting (animator duration scale 0) and low-RAM devices by applying
+# collapse/expand state changes instantly instead of animating them.
+# Light/dark theme tokens ship with 080 via values/ + values-night/.
+
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
+@@ -61,6 +61,15 @@
+     private final Runnable mRefresh = this::refreshUrl;
+     private boolean mExpanded;
+     private @Nullable String mLastBound;
++    /** False when the OS asks for reduced motion or the device is low-RAM:
++     *  state changes are applied instantly without animation. */
++    private final boolean mAnimate =
++            android.provider.Settings.Global.getFloat(
++                    getContext().getContentResolver(),
++                    android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
++                    > 0f
++            && !((android.app.ActivityManager) getContext().getSystemService(
++                    android.content.Context.ACTIVITY_SERVICE)).isLowRamDevice();
+ 
+     /** Installs the dock into {@code activity} exactly once per content root. */
+     public static void install(
+@@ -174,6 +183,12 @@
+     public void collapse() {
+         if (!mExpanded) return;
+         mExpanded = false;
++        if (!mAnimate) {
++            mPill.setVisibility(GONE);
++            mSliver.setAlpha(1f);
++            mSliver.setVisibility(VISIBLE);
++            return;
++        }
+         mPill.animate().alpha(0f).setDuration(220).withEndAction(() -> {
+             mPill.setVisibility(GONE);
+             mSliver.setAlpha(0f);
+@@ -186,6 +201,14 @@
+     public void expand() {
+         if (mExpanded) return;
+         mExpanded = true;
++        if (!mAnimate) {
++            mSliver.setVisibility(GONE);
++            mPill.setAlpha(1f);
++            mPill.setVisibility(VISIBLE);
++            refreshUrl();
++            scheduleCollapse();
++            return;
++        }
+         mSliver.animate().alpha(0f).setDuration(120).withEndAction(() -> mSliver.setVisibility(GONE))
+                 .start();
+         mPill.setAlpha(0f);

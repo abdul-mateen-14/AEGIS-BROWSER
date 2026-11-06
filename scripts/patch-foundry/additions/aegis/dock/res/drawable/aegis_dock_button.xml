@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 The Aegis Browser Authors
+     Use of this source code is governed by a BSD-style license that can be
+     found in the LICENSE file. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="@color/aegis_glass_icon_pressed">
+    <item>
+        <shape android:shape="oval">
+            <solid android:color="@android:color/transparent"/>
+        </shape>
+    </item>
+</ripple>

@@ -38,13 +38,13 @@
 target_os = "android"
 target_cpu = "arm64"
 is_debug = false
-is_official_build = false
+is_official_build = true
 is_component_build = false
 symbol_level = 0
 v8_symbol_level = 0
 blink_symbol_level = 0
 use_thin_lto = false
-chrome_pgo_phase = 0
+chrome_pgo_phase = 2
 disable_fieldtrial_testing_config = true
 ffmpeg_branding = "Chrome"
 proprietary_codecs = true
