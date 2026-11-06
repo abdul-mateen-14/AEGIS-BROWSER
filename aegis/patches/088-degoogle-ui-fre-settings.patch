@@ -1,0 +1,178 @@
+# 088 - De-Google UI: skip the First Run Experience (Google sign-in promo
+# "Make Chrome your own", Google ToS + metrics footer), remove the Settings
+# "You and Google" section (sign-in + Google services; Aegis ID lives in the
+# Aegis Ecosystem page), rebrand notification strings to Aegis (permission
+# rationale, UMA dialog, re-engagement notifications). Android-only files -
+# desktop (.deb/.exe) targets are unaffected. Anchors count-asserted at tag
+# 156.0.8078.79.
+
+--- a/chrome/android/java/src/org/chromium/chrome/browser/firstrun/FirstRunFlowSequencer.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/firstrun/FirstRunFlowSequencer.java
+@@ -266,7 +266,13 @@
+                         || FirstRunStatus.getLightweightFirstRunFlowComplete())) {
+             return false;
+         }
+-        return true;
++        // Aegis (de-Googled): no First Run Experience. The FRE welcome/sign-in
++        // screen ("Make Chrome your own"), the Google ToS + "Chrome sends usage
++        // and crash data to Google" footer and the sync opt-in pages are all
++        // Google services, so first launch goes straight to the browser. The
++        // search-engine default, notification permission and default-browser
++        // prompts are handled outside FRE.
++        return false;
+     }
+ 
+     /**
+
+--- a/chrome/android/java/res/xml/main_preferences.xml
++++ b/chrome/android/java/res/xml/main_preferences.xml
+@@ -11,21 +11,9 @@
+     <org.chromium.chrome.browser.ui.settings_promo_card.SettingsPromoCardPreference
+         android:key="settings_promo_card"
+         android:order="0" />
+-    <org.chromium.components.browser_ui.settings.ChromeBasePreferenceCategory
+-        android:key="account_and_google_services_section"
+-        android:order="1"
+-        android:title="@string/prefs_section_account_and_google_services"/>
+-    <org.chromium.chrome.browser.sync.settings.SignInPreference
+-        android:key="sign_in"
+-        android:order="2"/>
+-    <org.chromium.components.browser_ui.settings.ChromeBasePreference
+-        android:key="google_services"
+-        android:order="4"
+-        android:layout="@layout/account_management_account_row"
+-        android:title="@string/prefs_google_services"
+-        android:icon="@drawable/ic_google_services_48dp_with_bg"
+-        android:fragment="org.chromium.chrome.browser.sync.settings.GoogleServicesSettings"/>
+-
++    <!-- Aegis (de-Googled): the "You and Google" section (sign-in + Google
++         services) is removed; Aegis ID sign-in lives in the Aegis Ecosystem
++         settings page. -->
+     <org.chromium.components.browser_ui.settings.ChromeBasePreferenceCategory
+         android:key="basics_section"
+         android:order="5"
+
+--- a/chrome/android/java/src/org/chromium/chrome/browser/settings/MainSettings.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/settings/MainSettings.java
+@@ -62,7 +62,6 @@
+ import org.chromium.chrome.browser.signin.services.ProfileDataCache;
+ import org.chromium.chrome.browser.signin.services.SigninManager;
+ import org.chromium.chrome.browser.sync.SyncServiceFactory;
+-import org.chromium.chrome.browser.sync.settings.ManageSyncSettings;
+ import org.chromium.chrome.browser.sync.settings.SignInPreference;
+ import org.chromium.chrome.browser.toolbar.settings.AddressBarPreference;
+ import org.chromium.chrome.browser.tracing.settings.DeveloperSettings;
+@@ -378,7 +377,11 @@
+         OneshotSupplierImpl<BottomSheetSigninAndHistorySyncCoordinator> signinCoordinatorSupplier =
+                 new OneshotSupplierImpl<>();
+         SignInPreference signInPreference = findPreference(PREF_SIGN_IN);
+-        if (SigninFeatureMap.getInstance().isActivitylessSigninAllEntryPointEnabled()) {
++        // Aegis (de-Googled): the sign-in preference is removed from
++        // main_preferences.xml; guard the legacy wiring so Settings renders
++        // without it.
++        if (signInPreference != null
++                && SigninFeatureMap.getInstance().isActivitylessSigninAllEntryPointEnabled()) {
+             // TODO(crbug.com/495349057): update this to use the new sign-in coordinator API with
+             // suppliers.
+             SupplierUtils.waitForAll(
+@@ -409,10 +412,15 @@
+                             }),
+                     mWindowAndroidSupplier);
+         }
+-        signInPreference.initialize(
+-                getProfile(), profileDataCache, accountManagerFacade, signinCoordinatorSupplier);
++        if (signInPreference != null) {
++            signInPreference.initialize(
++                    getProfile(), profileDataCache, accountManagerFacade,
++                    signinCoordinatorSupplier);
++        }
+         ChromeBasePreference googleServicePreference = findPreference(PREF_GOOGLE_SERVICES);
+-        googleServicePreference.setViewId(R.id.account_management_google_services_row);
++        if (googleServicePreference != null) {
++            googleServicePreference.setViewId(R.id.account_management_google_services_row);
++        }
+ 
+         cachePreferences();
+         updateAutofillPreferences();
+@@ -582,11 +590,12 @@
+             promoCardPreference.updatePreferences();
+         }
+ 
++        // Aegis (de-Googled): never re-add the Google sign-in preference; also
++        // drop the Google services row if an older XML tree had it.
+         if (shouldShowSignInPref(getProfile())) {
+-            addPreferenceIfAbsent(PREF_SIGN_IN);
+-        } else {
+             removePreferenceIfPresent(PREF_SIGN_IN);
+         }
++        removePreferenceIfPresent(PREF_GOOGLE_SERVICES);
+ 
+         updateSearchEnginePreference();
+         updateAutofillPreferences();
+@@ -1003,15 +1012,8 @@
+                     if (!shouldShowSafetyHubPref()) {
+                         indexData.removeEntry(getUniqueId(PREF_SAFETY_HUB));
+                     }
+-                    if (!shouldShowSignInPref(profile) || !SignInPreference.isSignedIn(profile)) {
+-                        indexData.removeEntry(getUniqueId(PREF_SIGN_IN));
+-                    } else {
+-                        indexData.updateEntryForKey(
+-                                getPrefFragmentName(),
+-                                PREF_SIGN_IN,
+-                                R.string.prefs_section_account_and_google_services,
+-                                ManageSyncSettings.class.getName());
+-                    }
++                    // Aegis (de-Googled): the sign-in entry is never indexed.
++                    indexData.removeEntry(getUniqueId(PREF_SIGN_IN));
+                     if (!shouldShowDeveloperSettings()) {
+                         indexData.removeEntry(getUniqueId(PREF_DEVELOPER));
+                     }
+
+--- a/chrome/browser/ui/android/strings/android_chrome_strings.grd
++++ b/chrome/browser/ui/android/strings/android_chrome_strings.grd
+@@ -3590,13 +3590,13 @@
+         Manage usage and crash data settings
+       </message>
+       <message name="IDS_SIGNIN_FRE_UMA_DIALOG_TITLE" desc="Title of the dialog where users can change their Chrome metric sharing settings, like usage data. This appears when they open the Chrome app for the first time on their phone.">
+-        Make Chrome better
++        Make Aegis better
+       </message>
+       <message name="IDS_SIGNIN_FRE_UMA_DIALOG_FIRST_SECTION_HEADER" desc="Header of the section that shows the benefits for users if they turn on the metric sharing option.">
+         When on
+       </message>
+       <message name="IDS_SIGNIN_FRE_UMA_DIALOG_FIRST_SECTION_BODY" desc="Text that describes the benefits users will get if they turn on the metrics sharing option.">
+-        Help make Chrome better for people who use it the way you do
++        Help make Aegis better for people who use it the way you do
+       </message>
+       <message name="IDS_SIGNIN_FRE_UMA_DIALOG_SECOND_SECTION_HEADER" desc="Header of the section with info about the data that users share with Google if they turn on the metric sharing option.">
+         Things to consider
+@@ -6765,16 +6765,16 @@
+         Read today's news <ph name="NEWS_ICON">📰</ph>
+       </message>
+       <message name="IDS_CHROME_REENGAGEMENT_NOTIFICATION_1_DESCRIPTION" desc="The body text of a notification shown to suggest that users use Chrome.  Users probably have not opened Chrome in a while.  Promotes relevant articles Chrome has.">
+-        Articles on your interests on Chrome
++        Articles on your interests in Aegis
+       </message>
+       <message name="IDS_CHROME_REENGAGEMENT_NOTIFICATION_2_TITLE" desc="The title of a notification shown to suggest that users use Chrome.  Users probably have not opened Chrome in a while.  Promotes data savings.">
+         Save up to 60% data
+       </message>
+       <message name="IDS_CHROME_REENGAGEMENT_NOTIFICATION_2_DESCRIPTION" desc="The body text of a notification shown to suggest that users use Chrome.  Users probably have not opened Chrome in a while.  Promotes data savings.">
+-        Use Lite mode on Google Chrome
++        Use data saver in Aegis
+       </message>
+       <message name="IDS_CHROME_REENGAGEMENT_NOTIFICATION_3_TITLE" desc="The title of a notification shown to suggest that users use Chrome.  Users probably have not opened Chrome in a while.">
+-        Google recommends Chrome
++        Aegis is ready when you are
+       </message>
+       <message name="IDS_CHROME_REENGAGEMENT_NOTIFICATION_3_DESCRIPTION" desc="The title of a notification shown to suggest that users use Chrome.  Users probably have not opened Chrome in a while.  Promotes data savings and relevant news.">
+         Save up to 60% data, read today's news
+@@ -6782,7 +6782,7 @@
+ 
+       <!-- Notification Permission Rationale Dialog Strings-->
+       <message name="IDS_NOTIFICATION_PERMISSION_RATIONALE_DIALOG_TITLE" desc="The title of a dialog shown to users before asking for notification permission.">
+-        Chrome notifications make things easier
++        Aegis notifications make things easier
+       </message>
+       <message name="IDS_NOTIFICATION_PERMISSION_RATIONALE_DIALOG_MESSAGE" desc="The body text of a dialog explaining the benefits of enabling Chrome notifications.">
+         You’ll be able to easily manage media controls, Incognito sessions, downloads and more
+
