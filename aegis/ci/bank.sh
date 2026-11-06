@@ -363,7 +363,9 @@ cur="$TMP/.part.cur"
 cat > "$cur"
 name=$(printf '%s-vol-%03d.%s' "$GEN" "$n" "$EXT")
 mv "$cur" "$TMP/$name"
-sha256sum "$name" | awk '{print $1 "  " $2}' >> "$TMP/$GEN-sha256.txt"
+# NOTE: filter CWD is split's CWD, not $TMP (hit on Windows: relative
+# sha256sum failed -> empty manifest -> 422 on upload). Use absolute paths.
+sha256sum "$TMP/$name" | awk '{print $1 "  " $2}' >> "$TMP/$GEN-sha256.txt"
 sz=$(stat -c %s "$TMP/$name")
 echo $(( $(cat "$TMP/.bytes" 2>/dev/null || echo 0) + sz )) > "$TMP/.bytes"
 for t in 1 2 3 4 5; do
