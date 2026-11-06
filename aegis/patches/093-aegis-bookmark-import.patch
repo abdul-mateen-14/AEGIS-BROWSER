@@ -1,0 +1,343 @@
+--- a/chrome/browser/bookmarks/android/BUILD.gn
++++ b/chrome/browser/bookmarks/android/BUILD.gn
+@@ -54,6 +54,7 @@
+ android_library("java") {
+   sources = [
+     "java/src/org/chromium/chrome/browser/bookmarks/AddToBookmarksToolbarButtonController.java",
++    "java/src/org/chromium/chrome/browser/bookmarks/AegisBookmarkImporter.java",
+     "java/src/org/chromium/chrome/browser/bookmarks/BasicBookmarkQueryHandler.java",
+     "java/src/org/chromium/chrome/browser/bookmarks/BookmarkAddNewFolderCoordinator.java",
+     "java/src/org/chromium/chrome/browser/bookmarks/BookmarkBridge.java",
+
+--- a/chrome/browser/bookmarks/android/java/src/org/chromium/chrome/browser/bookmarks/AegisBookmarkImporter.java
++++ b/chrome/browser/bookmarks/android/java/src/org/chromium/chrome/browser/bookmarks/AegisBookmarkImporter.java
+@@ -0,0 +1,251 @@
++// Copyright 2026 The Aegis Browser Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++package org.chromium.chrome.browser.bookmarks;
++
++import android.content.Context;
++import android.net.Uri;
++import android.widget.Toast;
++
++import org.chromium.base.ThreadUtils;
++import org.chromium.base.task.PostTask;
++import org.chromium.base.task.TaskTraits;
++import org.chromium.chrome.browser.profiles.Profile;
++import org.chromium.components.bookmarks.BookmarkId;
++import org.chromium.url.GURL;
++
++import java.io.IOException;
++import java.io.InputStream;
++import java.nio.charset.StandardCharsets;
++import java.util.ArrayList;
++import java.util.HashSet;
++import java.util.List;
++import java.util.Locale;
++import java.util.Scanner;
++import java.util.Set;
++
++/**
++ * Aegis: import bookmarks from a Netscape-format bookmarks HTML file (the
++ * export format of every major browser) into the mobile bookmarks folder.
++ *
++ * The file is parsed on a background task through the ContentResolver; the
++ * bookmark-model mutations are applied back on the UI thread, as required by
++ * the native bookmark bridge.
++ */
++public class AegisBookmarkImporter {
++    private static final String ROOT_FOLDER_TITLE = "Imported bookmarks";
++    /** Request code for the Settings document picker. */
++    public static final int IMPORT_REQUEST_CODE = 9001;
++    /** Request code for the Settings document picker. */
++    public static final int IMPORT_REQUEST_CODE = 9001;
++    /** Request code for the Settings document picker. */
++    public static final int IMPORT_REQUEST_CODE = 9001;
++
++    /** One parsed entry: a folder ({@code url == null}) or a bookmark. */
++    private static class Node {
++        public final String title;
++        public final String url;
++        public final List<Node> children = new ArrayList<>();
++
++        public Node(String title, String url) {
++            this.title = title;
++            this.url = url;
++        }
++    }
++
++    private AegisBookmarkImporter() {}
++
++    /**
++     * Opens {@code uri} via ContentResolver, parses the HTML on a background
++     * task and imports it. Must be called from the UI thread.
++     */
++    public static void importFromUri(Context context, Uri uri) {
++        PostTask.postTask(TaskTraits.BEST_EFFORT_MAY_BLOCK, () -> {
++            Node root;
++            try (InputStream in = context.getContentResolver().openInputStream(uri)) {
++                root = parse(in);
++            } catch (IOException | SecurityException | IllegalArgumentException e) {
++                ThreadUtils.postOnUiThread(() -> report(context, 0, 0, 1));
++                return;
++            }
++            ThreadUtils.postOnUiThread(() -> importTree(context, root));
++        });
++    }
++
++    private static void importTree(Context context, Node root) {
++        BookmarkModel model =
++                BookmarkModel.getForProfile(Profile.getLastUsedRegularProfile());
++        if (model == null || !model.isBookmarkModelLoaded()) {
++            // The model loads right after start-up; retry once on the next UI pass.
++            ThreadUtils.postOnUiThreadDelayed(
++                    () -> importTree(context, root), 500);
++            return;
++        }
++        doImport(context, model, root);
++    }
++
++    private static void doImport(Context context, BookmarkModel model, Node root) {
++        BookmarkId parent = model.getMobileFolderId();
++        if (parent == null) parent = model.getOtherFolderId();
++        if (parent == null) parent = model.getRootFolderId();
++        if (parent == null) {
++            report(context, 0, 0, 1);
++            return;
++        }
++        BookmarkId target = model.addFolder(parent, model.getChildCount(parent),
++                ROOT_FOLDER_TITLE);
++        if (target == null) {
++            report(context, 0, 0, 1);
++            return;
++        }
++        int[] folders = new int[] {0};
++        int[] bookmarks = new int[] {0};
++        int[] skipped = new int[] {0};
++        Set<String> seen = new HashSet<>();
++        for (Node child : root.children) {
++            insert(model, target, child, folders, bookmarks, skipped, seen);
++        }
++        report(context, bookmarks[0], folders[0], skipped[0]);
++    }
++
++    private static void insert(BookmarkModel model, BookmarkId parent, Node node,
++            int[] folders, int[] bookmarks, int[] skipped, Set<String> seen) {
++        if (node.url != null) {
++            if (!seen.add(node.url) || skipped[0] > 5000) {
++                skipped[0]++;
++                return;
++            }
++            GURL gurl = new GURL(node.url);
++            if (!gurl.isValid()) {
++                skipped[0]++;
++                return;
++            }
++            String title =
++                    node.title == null || node.title.isEmpty() ? node.url : node.title;
++            if (model.addBookmark(parent, model.getChildCount(parent), title, gurl)
++                    == null) {
++                skipped[0]++;
++                return;
++            }
++            bookmarks[0]++;
++        } else {
++            String title =
++                    node.title == null || node.title.isEmpty() ? "Folder" : node.title;
++            BookmarkId folder =
++                    model.addFolder(parent, model.getChildCount(parent), title);
++            if (folder == null) {
++                skipped[0]++;
++                return;
++            }
++            folders[0]++;
++            for (Node child : node.children) {
++                insert(model, folder, child, folders, bookmarks, skipped, seen);
++            }
++        }
++    }
++
++    private static void report(
++            Context context, int bookmarks, int folders, int skipped) {
++        String message;
++        if (bookmarks == 0 && folders == 0) {
++            message = "No bookmarks imported - is this a bookmarks HTML file?";
++        } else if (skipped > 0) {
++            message = "Imported " + bookmarks + " bookmarks (" + folders
++                    + " folders), " + skipped + " skipped";
++        } else {
++            message = "Imported " + bookmarks + " bookmarks (" + folders + " folders)";
++        }
++        Toast.makeText(context, message, Toast.LENGTH_LONG).show();
++    }
++
++    // ----- Netscape bookmarks HTML parsing -----
++
++    /**
++     * Parses a Netscape bookmarks HTML stream into a tree. Small state machine:
++     * folders arrive as {@code <DT><H3>name</H3>} followed by {@code <DL>},
++     * entries as {@code <DT><A HREF="...">title</A>}.
++     */
++    private static Node parse(InputStream in) throws IOException {
++        Node root = new Node(ROOT_FOLDER_TITLE, null);
++        List<Node> stack = new ArrayList<>();
++        stack.add(root);
++        String pendingFolder = null;
++        try (Scanner scanner =
++                        new Scanner(in, StandardCharsets.UTF_8.name()).useDelimiter("\n")) {
++            while (scanner.hasNext()) {
++                String line = scanner.next();
++                if (line == null) continue;
++                String trimmed = line.trim();
++                if (trimmed.isEmpty()) continue;
++                String upper = trimmed.toUpperCase(Locale.US);
++                if (upper.contains("<H3")) {
++                    pendingFolder = extractTagText(trimmed, "<H3", "</H3>");
++                } else if (upper.contains("<DL")) {
++                    String title = pendingFolder == null ? "Folder" : pendingFolder;
++                    pendingFolder = null;
++                    Node folder = new Node(unescape(title), null);
++                    stack.get(stack.size() - 1).children.add(folder);
++                    stack.add(folder);
++                } else if (upper.contains("</DL")) {
++                    if (stack.size() > 1) stack.remove(stack.size() - 1);
++                } else if (upper.contains("<A ")) {
++                    String href = extractHref(trimmed);
++                    if (href == null) continue;
++                    String low = href.toLowerCase(Locale.US);
++                    if (!low.startsWith("http://") && !low.startsWith("https://")) {
++                        continue;
++                    }
++                    String text = extractTagText(trimmed, "<A", "</A>");
++                    Node entry = new Node(unescape(text == null ? "" : text), href);
++                    stack.get(stack.size() - 1).children.add(entry);
++                }
++            }
++        }
++        return root;
++    }
++
++    /** Returns the inner text of the first {@code openTag}...{@code closeTag}. */
++    private static String extractTagText(String line, String openTag, String closeTag) {
++        int open = indexOfIgnoreCase(line, openTag);
++        if (open < 0) return "";
++        int gt = line.indexOf('>', open);
++        if (gt < 0) return "";
++        int close = indexOfIgnoreCase(line, closeTag);
++        if (close < 0 || close <= gt) return line.substring(gt + 1).trim();
++        return line.substring(gt + 1, close).trim();
++    }
++
++    /** Returns the HREF attribute value of the first anchor on the line. */
++    private static String extractHref(String line) {
++        int a = indexOfIgnoreCase(line, "HREF=");
++        if (a < 0) return null;
++        int rest = a + "HREF=".length();
++        if (rest >= line.length()) return null;
++        char quote = line.charAt(rest);
++        if (quote == '"' || quote == '\'') {
++            int end = line.indexOf(quote, rest + 1);
++            if (end < 0) return null;
++            return line.substring(rest + 1, end);
++        }
++        int end = rest;
++        while (end < line.length() && line.charAt(end) != ' ' && line.charAt(end) != '>') {
++            end++;
++        }
++        return line.substring(rest, end);
++    }
++
++    private static int indexOfIgnoreCase(String haystack, String needle) {
++        return haystack.toUpperCase(Locale.US).indexOf(needle.toUpperCase(Locale.US));
++    }
++
++    private static String unescape(String s) {
++        if (s.indexOf('&') < 0) return s;
++        return s.replace("&amp;", "&")
++                .replace("&lt;", "<")
++                .replace("&gt;", ">")
++                .replace("&quot;", "\"")
++                .replace("&apos;", "'")
++                .replace("&#39;", "'");
++    }
++}
+
+--- a/chrome/android/java/res/xml/aegis_ecosystem_preferences.xml
++++ b/chrome/android/java/res/xml/aegis_ecosystem_preferences.xml
+@@ -42,4 +42,8 @@
+         android:key="aegis_soc"
+         android:title="AEGIS SOC"
+         android:summary="agis-soc.whf.bz" />
++    <org.chromium.components.browser_ui.settings.ChromeBasePreference
++        android:key="aegis_import_bookmarks"
++        android:title="Import bookmarks from file"
++        android:summary="Open a bookmarks HTML file exported from another browser" />
+ </PreferenceScreen>
+
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisEcosystemSettings.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisEcosystemSettings.java
+@@ -30,6 +30,7 @@
+ import org.chromium.build.annotations.NullMarked;
+ import org.chromium.build.annotations.Nullable;
+ import org.chromium.chrome.R;
++import org.chromium.chrome.browser.bookmarks.AegisBookmarkImporter;
+ import org.chromium.chrome.browser.settings.ChromeBaseSettingsFragment;
+ import org.chromium.chrome.browser.settings.search.ChromeBaseSearchIndexProvider;
+ import org.chromium.components.browser_ui.settings.EmbeddableSettingsPage;
+@@ -56,6 +57,8 @@
+     private static final String PREF_ID_SIGNIN = "aegis_id_signin";
+     private static final String PREF_ID_DEVICES = "aegis_id_devices";
+     private static final String PREF_ID_SIGNOUT = "aegis_id_signout";
++    private static final String PREF_IMPORT_BOOKMARKS =
++            "aegis_import_bookmarks";
+ 
+     private final SettableMonotonicObservableSupplier<String> mPageTitle =
+             ObservableSuppliers.createMonotonic();
+@@ -68,7 +71,7 @@
+         SettingsUtils.addPreferencesFromResource(this, R.xml.aegis_ecosystem_preferences);
+         mIdManager = AegisIdManager.getInstance(requireContext());
+         for (String key : new String[] {PREF_PRODUCTS, PREF_COREX, PREF_OS, PREF_SOC,
+-                PREF_ID_SIGNIN, PREF_ID_DEVICES, PREF_ID_SIGNOUT}) {
++                PREF_ID_SIGNIN, PREF_ID_DEVICES, PREF_ID_SIGNOUT, PREF_IMPORT_BOOKMARKS}) {
+             Preference preference = findPreference(key);
+             assumeNonNull(preference);
+             preference.setOnPreferenceClickListener(this);
+@@ -107,10 +110,36 @@
+             showDevicesDialog();
+         } else if (PREF_ID_SIGNOUT.equals(key)) {
+             confirmSignOut();
++        } else if (PREF_IMPORT_BOOKMARKS.equals(key)) {
++            launchBookmarkImportPicker();
+         }
+         return true;
+     }
+ 
++    private void launchBookmarkImportPicker() {
++        try {
++            startActivityForResult(
++                    new Intent(Intent.ACTION_OPEN_DOCUMENT)
++                            .addCategory(Intent.CATEGORY_OPENABLE)
++                            .setType("*/*")
++                            .putExtra(Intent.EXTRA_MIME_TYPES,
++                                    new String[] {"text/html", "text/plain",
++                                            "application/xhtml+xml"}),
++                    AegisBookmarkImporter.IMPORT_REQUEST_CODE);
++        } catch (ActivityNotFoundException e) {
++            Toast.makeText(getContext(), "No file picker available", Toast.LENGTH_SHORT)
++                    .show();
++        }
++    }
++
++    @Override
++    public void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
++        super.onActivityResult(requestCode, resultCode, data);
++        if (requestCode != AegisBookmarkImporter.IMPORT_REQUEST_CODE) return;
++        if (data == null || data.getData() == null || getContext() == null) return;
++        AegisBookmarkImporter.importFromUri(requireContext(), data.getData());
++    }
++
+     private void refreshIdentityState() {
+         Preference status = findPreference(PREF_ID_STATUS);
+         Preference devices = findPreference(PREF_ID_DEVICES);
