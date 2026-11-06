@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="color-scheme" content="dark">
 <title>Aegis Browser — Your Ultimate Digital Shield</title>
-<meta name="description" content="A privacy-hardened Chromium browser for Android: network-level ad and tracker blocking (92,957 hosts), third-party cookies off by default, end-to-end encrypted sync. Free and open source.">
+<meta name="description" content="A privacy-hardened Chromium browser for Android, Linux and Windows: network-level ad and tracker blocking (92,957 hosts), third-party cookies off by default, end-to-end encrypted sync. Free and open source.">
 <meta property="og:title" content="Aegis Browser — Your Ultimate Digital Shield">
-<meta property="og:description" content="Privacy-hardened Chromium for Android. Network-level ad blocking, E2E encrypted sync, no telemetry. Free and open source.">
+<meta property="og:description" content="Privacy-hardened Chromium for Android, Linux and Windows. Network-level ad blocking, E2E encrypted sync, no telemetry. Free and open source.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://aegis-browser.pages.dev/">
 <meta property="og:image" content="https://aegis-browser.pages.dev/og-image.png">
@@ -229,7 +229,33 @@
   .eco:hover .go{color:var(--white)}
 
   /* ---------- download ---------- */
-  .dl-wrap{display:grid;grid-template-columns:1fr 1fr;gap:64px;padding-bottom:104px}
+  .dl-wrap{padding-bottom:104px}
+  .dl-grid{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);margin-bottom:64px}
+  .dl-card{
+    padding:34px 30px 30px;border-right:1px solid var(--line);background:var(--ink1);
+    display:flex;flex-direction:column;gap:14px;
+  }
+  .dl-card:last-child{border-right:none}
+  .dl-card .plat{font-size:.64rem;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--smoke)}
+  .dl-card h3{font-size:1.12rem;font-weight:700;color:var(--white);letter-spacing:.01em}
+  .dl-card p{font-size:.84rem;color:var(--smoke);flex:1}
+  .dl-btns{display:flex;gap:10px;flex-wrap:wrap}
+  .dl-btn{
+    display:inline-block;border:1px solid var(--line);padding:12px 17px;
+    font-size:.7rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--white);transition:background .15s ease,border-color .15s ease,color .15s ease;
+  }
+  .dl-btn:hover{border-color:var(--white)}
+  .dl-btn.solid{background:var(--white);color:var(--black);border-color:var(--white)}
+  .dl-btn.solid:hover{background:var(--smoke2)}
+  .dl-file{font-size:.72rem;color:var(--smoke);letter-spacing:.02em}
+  @media(max-width:980px){
+    .dl-grid{grid-template-columns:1fr}
+    .dl-card{border-right:none;border-bottom:1px solid var(--line)}
+    .dl-card:last-child{border-bottom:none}
+  }
+  .dl-steps{display:grid;grid-template-columns:.8fr 1.2fr;gap:64px;align-items:start}
+  @media(max-width:860px){.dl-steps{grid-template-columns:1fr;gap:36px}}
   .steps{display:flex;flex-direction:column}
   .step{
     display:flex;gap:26px;align-items:flex-start;
@@ -277,6 +303,7 @@
       <a href="#shield">Shield</a>
       <a href="#features">Features</a>
       <a href="#ecosystem">Ecosystem</a>
+      <a href="/help/">Help</a>
       <a href="#download" class="nav-cta">Download</a>
     </div>
   </div>
@@ -287,11 +314,11 @@
   <svg class="hero-mark" viewBox="23 24 62 60" aria-hidden="true"><path fill="#101013" fill-rule="evenodd" d="M53.91,23.99 L 23.00,83.92 L 68.98,83.92 L 56.58,57.92 L 62.52,46.21 L 80.95,83.92 L 84.83,83.92 L 63.04,41.64 L 48.49,70.49 L 36.35,70.49 L 56.93,30.19 Z M26.10,82.29 L 31.18,72.21 L 61.49,72.21 L 66.40,82.29 Z"/></svg>
   <div class="container hero-inner">
     <svg class="mark" viewBox="0 0 108 108" aria-hidden="true"><path fill="#FFFFFF" fill-rule="evenodd" d="M53.91,23.99 L 23.00,83.92 L 68.98,83.92 L 56.58,57.92 L 62.52,46.21 L 80.95,83.92 L 84.83,83.92 L 63.04,41.64 L 48.49,70.49 L 36.35,70.49 L 56.93,30.19 Z M26.10,82.29 L 31.18,72.21 L 61.49,72.21 L 66.40,82.29 Z"/></svg>
-    <span class="caption">Privacy-hardened Chromium for Android</span>
+    <span class="caption">Privacy-hardened Chromium for Android, Linux &amp; Windows</span>
     <h1>Your ultimate digital shield.</h1>
-    <p class="lede">Aegis is Chromium, rebuilt with privacy switched on by default — ad and tracker blocking at the network layer, third-party cookies off, end-to-end encrypted sync where the server only ever sees ciphertext. Every patch is public. Every build is free.</p>
+    <p class="lede">Aegis is Chromium, rebuilt with privacy switched on by default — ad and tracker blocking at the network layer, third-party cookies off, no Google services wired into the browser, end-to-end encrypted sync where the server only ever sees ciphertext. Every patch is public. Every build is free.</p>
     <div class="hero-ctas">
-      <a class="btn btn-solid" href="#download">Download for Android</a>
+      <a class="btn btn-solid" href="#download">Download Aegis</a>
       <a class="btn btn-ghost" href="https://github.com/abdul-mateen-14/AEGIS-BROWSER" target="_blank" rel="noopener">View source</a>
     </div>
     <div class="hero-chips">
@@ -415,13 +442,43 @@
   <div class="container">
     <div class="sec-head">
       <span class="caption">Download</span>
-      <h2>Get Aegis on Android.</h2>
+      <h2>Get Aegis on every device.</h2>
     </div>
     <div class="dl-wrap">
+      <div class="dl-grid">
+        <div class="dl-card">
+          <span class="plat">Android · arm64</span>
+          <h3>Aegis for Android</h3>
+          <p>Signed APK, Android 8 and up. Install straight from the phone — no store, no account, Shield on from the first launch.</p>
+          <div class="dl-btns">
+            <a class="dl-btn solid" href="https://github.com/abdul-mateen-14/AEGIS-BROWSER/releases/download/build-156.0.8078.79-r28/AegisBrowser_156.0.8078.79_arm64_r28.apk">Download .apk</a>
+          </div>
+          <span class="dl-file">AegisBrowser_156.0.8078.79_arm64_r28.apk · 536 MB</span>
+        </div>
+        <div class="dl-card">
+          <span class="plat">Linux · x64</span>
+          <h3>Aegis for Linux</h3>
+          <p>The .deb installs system-wide through your package manager; the portable .zip runs from any folder without touching the system.</p>
+          <div class="dl-btns">
+            <a class="dl-btn solid" href="https://github.com/abdul-mateen-14/AEGIS-BROWSER/releases/download/linux-156.0.8078.79-r24/AegisBrowser_156.0.8078.79_linux_x64_r24.deb">Download .deb</a>
+            <a class="dl-btn" href="https://github.com/abdul-mateen-14/AEGIS-BROWSER/releases/download/linux-156.0.8078.79-r24/AegisBrowser_156.0.8078.79_linux_x64_r24.zip">Portable .zip</a>
+          </div>
+          <span class="dl-file">AegisBrowser_156.0.8078.79_linux_x64_r24.deb · 614 MB</span>
+        </div>
+        <div class="dl-card">
+          <span class="plat">Windows · x64</span>
+          <h3>Aegis for Windows</h3>
+          <p>The first Windows installer is compiling right now and ships with the next release. Watch the releases page — the direct link lands here.</p>
+          <div class="dl-btns">
+            <a class="dl-btn" href="https://github.com/abdul-mateen-14/AEGIS-BROWSER/releases" target="_blank" rel="noopener">Watch releases ↗</a>
+          </div>
+          <span class="dl-file">In build · this card switches to a direct .exe link on release.</span>
+        </div>
+      </div>
+      <div class="dl-steps">
       <div>
-        <p class="lede" style="margin-bottom:30px">Every build produces a signed APK, published to the project's releases. arm64, Android 8 and up.</p>
-        <a class="btn btn-solid" href="https://github.com/abdul-mateen-14/AEGIS-BROWSER/releases" target="_blank" rel="noopener">Open GitHub Releases ↗</a>
-        <p class="dl-note">Releases always carries the latest signed build.<br>Nothing here is a black box — the complete pipeline, patches included, is public in the <a href="https://github.com/abdul-mateen-14/AEGIS-BROWSER" target="_blank" rel="noopener" style="text-decoration:underline;text-underline-offset:3px">repository</a>.</p>
+        <p class="lede" style="margin-bottom:22px">Older builds stay on <a href="https://github.com/abdul-mateen-14/AEGIS-BROWSER/releases" target="_blank" rel="noopener" style="text-decoration:underline;text-underline-offset:3px">GitHub Releases</a> — nothing here is a black box: the complete pipeline, patches included, is public in the <a href="https://github.com/abdul-mateen-14/AEGIS-BROWSER" target="_blank" rel="noopener" style="text-decoration:underline;text-underline-offset:3px">repository</a>.</p>
+        <p class="caption" style="margin-bottom:6px">First install on Android</p>
       </div>
       <div class="steps">
         <div class="step">
@@ -445,6 +502,7 @@
             <p>A new icon with the shield-A appears among the apps. The network-level blocking is on from the first launch.</p>
           </div>
         </div>
+      </div>
       </div>
     </div>
   </div>
