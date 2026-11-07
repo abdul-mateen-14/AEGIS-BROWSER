@@ -1004,7 +1004,7 @@ diff --git a/chrome/android/java/src/org/chromium/chrome/browser/aegis/sync/Aegi
 new file mode 100644
 --- /dev/null
 +++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/sync/AegisSyncClient.java
-@@ -0,0 +1,336 @@
+@@ -0,0 +1,337 @@
 +// Copyright 2026 The Aegis Browser Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -1044,6 +1044,7 @@ new file mode 100644
 +import java.util.ArrayList;
 +import java.util.List;
 +import org.json.JSONArray;
++import org.json.JSONException;
 +import org.json.JSONObject;
 +
 +public class AegisSyncClient {
@@ -1142,7 +1143,7 @@ new file mode 100644
 +    // ------------------------------------------------------------------ HTTP
 +
 +    private JSONObject http(String path, String method, JSONObject body, boolean auth, boolean retry)
-+            throws java.io.IOException {
++            throws java.io.IOException, JSONException {
 +        HttpURLConnection conn = (HttpURLConnection) new URL(base + path).openConnection();
 +        conn.setRequestMethod(method);
 +        conn.setConnectTimeout(15_000);
@@ -1199,7 +1200,7 @@ new file mode 100644
 +    // ----------------------------------------------------------------- Auth
 +
 +    /** Public KDF parameters for an email: {kdf_salt_b64, kdf:{algo,iterations}}. */
-+    public JSONObject kdfParams(String email) throws java.io.IOException {
++    public JSONObject kdfParams(String email) throws java.io.IOException, JSONException {
 +        return http("/v1/auth/kdf-params?email=" + URLEncoder.encode(email, StandardCharsets.UTF_8),
 +                "GET", null, false, true);
 +    }
@@ -1211,7 +1212,7 @@ new file mode 100644
 +     */
 +    public JSONObject register(String email, String kdfSaltB64, JSONObject kdf,
 +            String verifierB64, String wrappedVaultKeyB64, String vaultNonceB64, String inviteCode)
-+            throws java.io.IOException {
++            throws java.io.IOException, JSONException {
 +        JSONObject body = new JSONObject()
 +                .put("email", email)
 +                .put("kdf_salt_b64", kdfSaltB64)
@@ -1231,7 +1232,7 @@ new file mode 100644
 +     * from response.user is the caller's job - it holds the derived KEK.
 +     */
 +    public JSONObject login(String email, String verifierB64, String deviceId,
-+            String deviceName, String devicePlatform) throws java.io.IOException {
++            String deviceName, String devicePlatform) throws java.io.IOException, JSONException {
 +        JSONObject data = http("/v1/auth/login", "POST",
 +                new JSONObject()
 +                        .put("email", email)
@@ -1247,7 +1248,7 @@ new file mode 100644
 +    }
 +
 +    /** Exchanges a refresh token for a fresh pair (rotation: old one dies). */
-+    public JSONObject refresh(String refreshToken) throws java.io.IOException {
++    public JSONObject refresh(String refreshToken) throws java.io.IOException, JSONException {
 +        JSONObject data = http("/v1/auth/refresh", "POST",
 +                new JSONObject().put("refresh_token", refreshToken), false, true);
 +        accessToken = data.getString("access_token");
@@ -1255,7 +1256,7 @@ new file mode 100644
 +        return data;
 +    }
 +
-+    public void logout() throws java.io.IOException {
++    public void logout() throws java.io.IOException, JSONException {
 +        try {
 +            http("/v1/auth/logout", "POST", null, true, true);
 +        } finally {
@@ -1268,7 +1269,7 @@ new file mode 100644
 +    // ----------------------------------------------------------------- Sync
 +
 +    /** Push items. Auto-encrypts with the vault key; base version = clientVersionSeen. */
-+    public JSONObject push(List<Change> changes) throws java.io.IOException {
++    public JSONObject push(List<Change> changes) throws java.io.IOException, JSONException {
 +        if (vaultKey == null) throw new IllegalStateException("not logged in");
 +        JSONArray items = new JSONArray();
 +        for (Change c : changes) {
@@ -1291,7 +1292,7 @@ new file mode 100644
 +    }
 +
 +    /** Pull items newer than cursor. Auto-decrypts. */
-+    public PullResult pull(long cursor, List<String> types) throws java.io.IOException {
++    public PullResult pull(long cursor, List<String> types) throws java.io.IOException, JSONException {
 +        if (vaultKey == null) throw new IllegalStateException("not logged in");
 +        StringBuilder q = new StringBuilder("/v1/sync/pull?cursor=").append(cursor);
 +        if (types != null && !types.isEmpty()) {
@@ -1322,21 +1323,21 @@ new file mode 100644
 +        return new PullResult(out, data);
 +    }
 +
-+    public PullResult pull(long cursor) throws java.io.IOException {
++    public PullResult pull(long cursor) throws java.io.IOException, JSONException {
 +        return pull(cursor, null);
 +    }
 +
-+    public JSONObject cursor() throws java.io.IOException {
++    public JSONObject cursor() throws java.io.IOException, JSONException {
 +        return http("/v1/sync/cursor", "GET", null, true, true);
 +    }
 +
 +    // -------------------------------------------------------------- Devices
 +
-+    public JSONObject devices() throws java.io.IOException {
++    public JSONObject devices() throws java.io.IOException, JSONException {
 +        return http("/v1/devices", "GET", null, true, true);
 +    }
 +
-+    public JSONObject revokeDevice(String deviceIdToRevoke) throws java.io.IOException {
++    public JSONObject revokeDevice(String deviceIdToRevoke) throws java.io.IOException, JSONException {
 +        return http("/v1/devices/" + URLEncoder.encode(deviceIdToRevoke, StandardCharsets.UTF_8) + "/revoke",
 +                "POST", null, true, true);
 +    }
