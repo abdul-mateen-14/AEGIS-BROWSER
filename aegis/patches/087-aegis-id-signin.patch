@@ -75,16 +75,17 @@
  
  import androidx.preference.Preference;
  
-@@ -24,6 +35,8 @@
+@@ -24,6 +35,9 @@
  import org.chromium.components.browser_ui.settings.EmbeddableSettingsPage;
  import org.chromium.components.browser_ui.settings.SettingsFragment;
  import org.chromium.components.browser_ui.settings.SettingsUtils;
 +import org.json.JSONArray;
 +import org.json.JSONException;
++import org.json.JSONObject;
  
  /**
   * Aegis Ecosystem: the AEGIS product family behind this browser.
-@@ -39,19 +52,28 @@
+@@ -39,19 +53,28 @@
      private static final String PREF_COREX = "aegis_corex";
      private static final String PREF_OS = "aegis_os";
      private static final String PREF_SOC = "aegis_soc";
@@ -114,7 +115,7 @@
      }
  
      @Override
-@@ -79,7 +101,268 @@
+@@ -79,7 +102,268 @@
                  // Nothing on the device can open a URL; do nothing.
              }
          }
