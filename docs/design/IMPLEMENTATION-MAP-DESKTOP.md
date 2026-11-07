@@ -77,3 +77,19 @@ milestones. Windows artifact additionally requires standing up a Windows bank fl
 2. Engine chips default order (same open question as mobile: Aegis/DuckDuckGo/Startpage/Wikipedia)?
 3. Windows .exe flavor: stand up `banking-windows` now or after the first .deb lands? (Recommend: after.)
 4. GNOME caption cluster: spec fixes close-only CSD — confirm no minimize/maximize even for GNOME users who ask.
+
+## 5. Status 2026-11-07 (reconciled against the shipped patch list)
+
+| Map milestone | Map patch # | Actual patch | Status |
+|---|---|---|---|
+| Foundation (tokens/color mixer) | — | `090-aegis-glass-tokens.patch` (`aegis_glass_color_mixer.h/.cc`, 111 lines) | **DONE** — shipped 97b4e11, GREEN on desktop lanes |
+| M1 glassbar capsule | `090-glassbar-capsule.patch` | — | **PENDING** |
+| M2 glassbar states | `091-glassbar-states.patch` | — | **PENDING** |
+| M3 glassbar sheets | `092-glassbar-sheets.patch` | — | **PENDING** |
+| M4 glassbar parity | `093-glassbar-parity.patch` | — | **PENDING** |
+
+Renumbering note: the map reserved 090–093 for Glassbar, but 091/092/093 (plus 094/096/097/098) were
+consumed by the de-google / branding / settings chain. The desktop Glassbar series is now
+**099-glassbar-capsule → 100-glassbar-states → 101-glassbar-sheets → 102-glassbar-parity**.
+M1 (099) starts once Layer 1 closes (Linux #29 verifying 097, Windows/APK legs on 094+) and the user
+rotates the API token — per the agreed two-phase plan.

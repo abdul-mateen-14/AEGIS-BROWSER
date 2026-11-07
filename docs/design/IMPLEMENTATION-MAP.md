@@ -67,3 +67,15 @@ Design tokens live in one XML file per spec Table 5–8, so visual fine-tuning i
 2. Home quick tiles: which 6 shortcuts ship in v1?
 3. Montserrat licensing: OFL — bundle as APK asset (confirmed fine).
 4. Shield count source: patch 070's engine count API (reuse, no new C++).
+
+## 5. Status 2026-11-07 (reconciled against the shipped patch list)
+
+| Map milestone | Map patch # | Actual patch | Status |
+|---|---|---|---|
+| M1 dock | `080-aegis-dock.patch` | `080-aegis-dock.patch` (547 lines, 9 files) | **DONE** — shipped 97b4e11, GREEN through every APK banking leg since |
+| M2 collapse/auto-hide | `081-aegis-dock-collapse.patch` | — | **PENDING** (081 was reused by the search sheet) |
+| M3 glass sheets | `082-aegis-glass-sheets.patch` | `081-aegis-search-sheet.patch` (search overlay slice only) | **PARTIAL** — tab grid sheet + menu sheet still to write |
+| M4 parity | `083-aegis-glass-parity.patch` | `082-aegis-dock-parity.patch` (reduced-motion + low-RAM instant states) | **PARTIAL** — light/dark tokens shipped with 080 |
+
+Renumbering note: 081–083 drifted from the plan (081 = search sheet, 082 = dock parity, 083 unused).
+Next Android UI patches start at **099** to stay clear of the 090–098 de-google/branding chain.
