@@ -235,7 +235,13 @@ jobs:
           gn args "out/$OUT" --list --short > /dev/null
           # mark which Chromium tag + Aegis overlay this tree was built from
           AEGIS_SHA=$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)
-          echo "$VERSION $AEGIS_SHA" > "out/$OUT/.aegis_head"
+          # NOTE(2026-11-07 defect fix): do NOT write .aegis_head here. The
+          # banked marker (banked aegis sha) must survive until restore_tree.py
+          # reads it below; overwriting it with the current sha made the
+          # bank-vs-current comparison tautologically "unchanged", so patch
+          # deltas (e.g. 094-098) were never invalidated and stale banked
+          # objects shipped in r31 (linux) / r12 (windows). bank.sh save
+          # rewrites the marker only for fresh trees that have none.
           echo "AEGIS_HEAD_SHA=$AEGIS_SHA" >> "$GITHUB_ENV"
 
       - name: Surgically invalidate outputs of changed patches
