@@ -16,6 +16,18 @@ On resume, compare with the current values:
   * anything else changed         -> docs/workflows/etc.; ignore
 
 Always exits 0; prints what it did.
+
+2026-11-07 defect (#33 linux): drop_tree() removed obj/ + gen/ but left
+build.ninja / toolchain.ninja / build.ninja.d behind. Those manifests
+reference the deleted subninjas (toolchain.ninja -> obj/*/*.ninja) and
+deleted gen inputs (build.ninja.d), and ninja's self-regeneration edge
+lives INSIDE build.ninja, so it cannot repair itself: the run died with
+"error in depfile build.ninja.d: deps input gen/cc/mojom/mojom.ts_typemap_
+config not exist" before compiling a single file. drop_tree() now also
+removes the manifest set and regenerates it via `gn gen` (args.gn survives
+the drop and pins the args). The surgical path never deletes *.ninja /
+build.ninja* / toolchain.ninja or anything build.ninja.d lists as a
+manifest input.
 """
 import os
 import shutil
@@ -30,14 +42,72 @@ def sh(args, cwd=None, check=True, timeout=180):
     return r.stdout.strip()
 
 
-def drop_tree(out):
+MANIFEST_FILES = ("build.ninja", "build.ninja.d", "toolchain.ninja",
+                  "build.ninja.stamp")
+
+
+def find_gn(src):
+    cands = [shutil.which("gn"),
+             os.path.join(src, "buildtools", "linux64", "gn"),
+             os.path.join(src, "buildtools", "win", "gn.exe")]
+    for c in cands:
+        if c and os.path.isfile(c) and os.access(c, os.X_OK):
+            return c
+    return None
+
+
+def regenerate_manifest(src, rel_out):
+    """Rebuild build.ninja + subninjas after a drop (args.gn survives)."""
+    gn = find_gn(src)
+    if not gn:
+        print("WARNING: gn not found - run 'gn gen' before ninja or the "
+              "stale manifest will block ninja's self-regeneration")
+        return False
+    try:
+        r = subprocess.run([gn, "gen", rel_out], cwd=src,
+                           capture_output=True, text=True, timeout=900)
+    except Exception as e:  # noqa: BLE001
+        print(f"WARNING: gn gen failed ({e}) - re-dispatch to retry")
+        return False
+    if r.returncode != 0:
+        print(f"WARNING: gn gen failed: {(r.stderr or '').strip()[:200]} - "
+              "re-dispatch to retry")
+        return False
+    print("manifest regenerated after drop (gn gen) - tree is loadable again")
+    return True
+
+
+def drop_tree(out, src=None, odir=None):
     for sub in ("obj", "gen", ".ninja_deps", ".ninja_log"):
         p = os.path.join(out, sub)
         if os.path.isdir(p):
             shutil.rmtree(p, ignore_errors=True)
         elif os.path.exists(p):
             os.remove(p)
+    # The manifest set references the deleted subninjas and gen inputs and
+    # cannot self-repair (the regen edge lives inside build.ninja). Wipe it
+    # and regenerate coherently; without this the next ninja dies on
+    # "error in depfile build.ninja.d: deps input ... not exist" (#33).
+    for f in MANIFEST_FILES:
+        p = os.path.join(out, f)
+        if os.path.exists(p):
+            os.remove(p)
     print("build tree dropped - the next ninja run compiles from scratch")
+    if src and odir:
+        regenerate_manifest(src, os.path.join("out", odir))
+
+
+def manifest_protect_set(out):
+    """Paths (relative to out/) ninja's own graph depends on; never delete."""
+    prot = set(MANIFEST_FILES)
+    dp = os.path.join(out, "build.ninja.d")
+    if os.path.exists(dp):
+        txt = open(dp, errors="replace").read().replace("\\\n", " ")
+        for tok in txt.split():
+            t = tok.strip()
+            if t and ":" not in t and not t.startswith("out/"):
+                prot.add(t)
+    return prot
 
 
 def patch_target_paths(content):
@@ -66,13 +136,13 @@ def main():
     tok = open(hf).read().split()
     if len(tok) < 2:
         print(".aegis_head malformed - dropping bank")
-        drop_tree(out)
+        drop_tree(out, src, odir)
         return
     btag, bsha = tok[0], tok[1]
 
     if btag != cur_tag:
         print(f"banked chromium tag {btag} != requested {cur_tag} - dropping bank")
-        drop_tree(out)
+        drop_tree(out, src, odir)
         return
 
     cur_sha = sh(["git", "rev-parse", "HEAD"], cwd=arepo, check=False)
@@ -94,18 +164,18 @@ def main():
             changed = [l.strip() for l in r.stdout.splitlines() if l.strip()]
     except Exception as e:  # noqa: BLE001
         print(f"diff unavailable ({e}) - dropping bank for safety")
-        drop_tree(out)
+        drop_tree(out, src, odir)
         return
     if changed is None:
         print("cannot diff against banked sha - dropping bank for safety")
-        drop_tree(out)
+        drop_tree(out, src, odir)
         return
 
     print(f"aegis changed since bank: {bsha[:10]} -> {cur_sha[:10]} ({len(changed)} files)")
 
-    # bank.sh / restore_tree.py do not affect gn args, compiler flags or any
-    # compiled object - changing them must NOT drop the bank. Only the
-    # build-affecting ci files (gn args, atomic_cc wrapper) do.
+    # bank.sh / restore_tree.py / restamp.py do not affect gn args, compiler
+    # flags or any compiled object - changing them must NOT drop the bank.
+    # Only the build-affecting ci files (gn args, atomic_cc wrapper) do.
     ci_build_affecting = [
         p for p in changed
         if p.startswith("aegis/ci/") and os.path.basename(p) not in (
@@ -113,11 +183,11 @@ def main():
     ]
     if ci_build_affecting:
         print("gn args or compiler wrapper changed - dropping bank for safety")
-        drop_tree(out)
+        drop_tree(out, src, odir)
         return
     if any(p.startswith("aegis/branding/") for p in changed):
         print("branding hooks changed - dropping bank for safety")
-        drop_tree(out)
+        drop_tree(out, src, odir)
         return
 
     patch_files = [p for p in changed if p.startswith("aegis/patches/")]
@@ -155,10 +225,11 @@ def main():
                        cwd=src, capture_output=True, text=True, timeout=300)
     if r.returncode != 0:
         print("ninja -t deps failed - dropping bank for safety")
-        drop_tree(out)
+        drop_tree(out, src, odir)
         return
 
-    cur_out, killed = None, 0
+    prot = manifest_protect_set(out)
+    cur_out, killed, skipped = None, 0, 0
     for line in r.stdout.splitlines():
         if not line:
             cur_out = None
@@ -168,12 +239,16 @@ def main():
         elif cur_out:
             dep = line.strip()
             if dep.startswith("../../") and dep[6:] in targets:
-                p = os.path.join(out, cur_out)
-                if os.path.exists(p):
-                    os.remove(p)
-                    killed += 1
+                if cur_out.endswith(".ninja") or cur_out in prot:
+                    skipped += 1
+                else:
+                    p = os.path.join(out, cur_out)
+                    if os.path.exists(p):
+                        os.remove(p)
+                        killed += 1
                 cur_out = None
-    print(f"invalidated {killed} outputs that depend on patched files - tree repaired")
+    print(f"invalidated {killed} outputs that depend on patched files "
+          f"({skipped} manifest files protected) - tree repaired")
 
 
 if __name__ == "__main__":
