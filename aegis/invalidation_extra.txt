@@ -1,0 +1,18 @@
+# ONE-TIME force-invalidation (2026-11-07): the .aegis_head marker bug let
+# banks ship objects compiled BEFORE patches 094-098 while their markers
+# claimed those patches were included. The marker fix (7425d9e) only sees
+# future deltas, so this file forces restore_tree.py to also invalidate
+# every chromium path 094-098 touch. Remove once all three lanes have a
+# full-green gen built by the fixed workflow (markers truthful again).
+chrome/app/password_manager_ui_strings.grdp
+chrome/app/settings_chromium_strings.grdp
+chrome/app/settings_strings.grdp
+chrome/app/shared_settings_strings.grdp
+chrome/browser/resources/settings/people_page/people_page.html.ts
+chrome/installer/linux/BUILD.gn
+chrome/installer/linux/common/chromium-browser.info
+components/components_chromium_strings.grd
+components/search_engines/search_engine_type.h
+components/search_engines/template_url_prepopulate_data.cc
+third_party/search_engines_data/resources/definitions/prepopulated_engines.json
+third_party/search_engines_data/resources/definitions/regional_settings.json

@@ -135,6 +135,17 @@ def main():
             old = sh(["git", "show", f"{bsha}:{p}"], cwd=arepo, check=False)
             if old:
                 targets |= patch_target_paths(old)
+    # one-time force-invalidation list (see aegis/invalidation_extra.txt):
+    # the marker bug shipped banks whose objects predate patches their marker
+    # claims are included; the git diff alone can never re-discover those, so
+    # the extra list adds them unconditionally until it is removed.
+    extra_f = os.path.join(arepo, "aegis", "invalidation_extra.txt")
+    if os.path.exists(extra_f):
+        extra = [l.strip() for l in open(extra_f, errors="replace")
+                 if l.strip() and not l.strip().startswith("#")]
+        if extra:
+            targets |= set(extra)
+            print(f"force-invalidation: +{len(extra)} paths from invalidation_extra.txt")
     if not targets:
         print("aegis changes touch no compiled sources - tree is consistent")
         return
