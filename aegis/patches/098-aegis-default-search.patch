@@ -1851,7 +1851,7 @@ index 85b0c96..e0cb09e 100644
          regional_prepopulated_engines) {
    return FindPrepopulatedEngineInternal(prefs, regional_prepopulated_engines,
 -                                        google.id,
-+                                        aegis.id,
++                                        118,  // aegis.id - literal so this file compiles even if json_to_struct has not regenerated prepopulated_engines.h yet
                                          /*use_first_as_fallback=*/true);
  }
  

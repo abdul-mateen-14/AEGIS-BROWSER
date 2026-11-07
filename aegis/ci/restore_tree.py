@@ -205,17 +205,34 @@ def main():
             old = sh(["git", "show", f"{bsha}:{p}"], cwd=arepo, check=False)
             if old:
                 targets |= patch_target_paths(old)
-    # one-time force-invalidation list (see aegis/invalidation_extra.txt):
-    # the marker bug shipped banks whose objects predate patches their marker
-    # claims are included; the git diff alone can never re-discover those, so
-    # the extra list adds them unconditionally until it is removed.
+    # force-invalidation list (see aegis/invalidation_extra.txt):
+    # - plain paths: one-time marker-bug recovery (objects predating patches
+    #   their marker claims) - remove once all lanes bank a truthful gen.
+    # - "gen:<rel>" paths: DURABLE generated-artifact invalidation. ninja
+    #   -t deps only records depfile edges (CXX), never ACTION edges
+    #   (json_to_struct, grd -> pak), so a patched .json/.grd can never
+    #   invalidate its own generated outputs through the mapping below -
+    #   and restamp pins sources to the bank epoch while banked outputs
+    #   keep newer mtimes, so ninja also sees the action as up to date.
+    #   Deleting the gen paths directly forces the generating action to
+    #   re-run before any consumer compiles (APK RED 42388197815: banked
+    #   prepopulated_engines.h predated patch 098's 'aegis' engine).
     extra_f = os.path.join(arepo, "aegis", "invalidation_extra.txt")
     if os.path.exists(extra_f):
         extra = [l.strip() for l in open(extra_f, errors="replace")
                  if l.strip() and not l.strip().startswith("#")]
         if extra:
-            targets |= set(extra)
             print(f"force-invalidation: +{len(extra)} paths from invalidation_extra.txt")
+        gen_extra = [p[len("gen:"):] for p in extra if p.startswith("gen:")]
+        targets |= {p for p in extra if not p.startswith("gen:")}
+        for rel in gen_extra:
+            p = os.path.join(out, rel)
+            if os.path.isdir(p):
+                shutil.rmtree(p, ignore_errors=True)
+                print(f"force-invalidated gen dir: {rel}")
+            elif os.path.exists(p):
+                os.remove(p)
+                print(f"force-invalidated gen file: {rel}")
     if not targets:
         print("aegis changes touch no compiled sources - tree is consistent")
         return

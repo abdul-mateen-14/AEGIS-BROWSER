@@ -16,3 +16,14 @@ components/search_engines/search_engine_type.h
 components/search_engines/template_url_prepopulate_data.cc
 third_party/search_engines_data/resources/definitions/prepopulated_engines.json
 third_party/search_engines_data/resources/definitions/regional_settings.json
+
+# DURABLE generated-output invalidation ("gen:" prefix, 2026-11-07). ninja
+# -t deps records depfile (CXX) edges only - never ACTION edges - so patched
+# .json definitions can never invalidate their generated outputs through the
+# source mapping; restamp additionally pins sources to the bank epoch while
+# banked outputs keep newer mtimes. These gen dirs are deleted directly so
+# the json_to_struct action re-runs before any consumer compiles. Keep while
+# any shipped patch edits files under third_party/search_engines_data.
+# (APK RED 42388197815: banked prepopulated_engines.h predated patch 098.)
+gen:third_party/search_engines_data/prepopulated_engines
+gen:third_party/search_engines_data/regional_settings
