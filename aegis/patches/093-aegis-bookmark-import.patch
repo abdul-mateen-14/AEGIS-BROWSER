@@ -25,7 +25,7 @@
 +import org.chromium.base.ThreadUtils;
 +import org.chromium.base.task.PostTask;
 +import org.chromium.base.task.TaskTraits;
-+import org.chromium.chrome.browser.profiles.Profile;
++import org.chromium.chrome.browser.profiles.ProfileManager;
 +import org.chromium.components.bookmarks.BookmarkId;
 +import org.chromium.url.GURL;
 +
@@ -85,7 +85,7 @@
 +
 +    private static void importTree(Context context, Node root) {
 +        BookmarkModel model =
-+                BookmarkModel.getForProfile(Profile.getLastUsedRegularProfile());
++                BookmarkModel.getForProfile(ProfileManager.getLastUsedRegularProfile());
 +        if (model == null || !model.isBookmarkModelLoaded()) {
 +            // The model loads right after start-up; retry once on the next UI pass.
 +            ThreadUtils.postOnUiThreadDelayed(
