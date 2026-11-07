@@ -11,7 +11,7 @@
 
 --- a/chrome/browser/bookmarks/android/java/src/org/chromium/chrome/browser/bookmarks/AegisBookmarkImporter.java
 +++ b/chrome/browser/bookmarks/android/java/src/org/chromium/chrome/browser/bookmarks/AegisBookmarkImporter.java
-@@ -0,0 +1,251 @@
+@@ -0,0 +1,247 @@
 +// Copyright 2026 The Aegis Browser Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -49,10 +49,6 @@
 + */
 +public class AegisBookmarkImporter {
 +    private static final String ROOT_FOLDER_TITLE = "Imported bookmarks";
-+    /** Request code for the Settings document picker. */
-+    public static final int IMPORT_REQUEST_CODE = 9001;
-+    /** Request code for the Settings document picker. */
-+    public static final int IMPORT_REQUEST_CODE = 9001;
 +    /** Request code for the Settings document picker. */
 +    public static final int IMPORT_REQUEST_CODE = 9001;
 +
