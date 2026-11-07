@@ -49,3 +49,9 @@ if [ -d "$ICONS" ] && [ -d "$DEST" ]; then
 else
   echo "Branding: icon override skipped (missing $ICONS or $DEST - layout changed upstream?)"
 fi
+
+# --- Default search engine: DuckDuckGo first, Google demoted -------------
+# regional_settings.json lives in the DEPS checkout (external/search_engines_data),
+# so it cannot carry a git patch - transformed here, before json_to_struct regen.
+# Applies to Android too: fresh profiles search with DuckDuckGo, not Google.
+python3 "$(cd "$(dirname "$0")" && pwd)/set_default_search.py" "$SRC" || echo "Aegis DSE: transform failed (non-fatal)"

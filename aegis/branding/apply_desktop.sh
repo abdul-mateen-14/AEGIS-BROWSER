@@ -110,4 +110,9 @@ copy_set "$HERE/icons/desktop/extra/2x" "$P200" \
   webstore_icon.png webstore_icon_16.png webstore_icon_32.png \
   favicon_password_manager.png
 
+# --- Default search engine: DuckDuckGo first, Google demoted -------------
+# regional_settings.json lives in the DEPS checkout (external/search_engines_data),
+# so it cannot carry a git patch - transformed here, before json_to_struct regen.
+python3 "$HERE/set_default_search.py" "$SRC" || echo "Aegis DSE: transform failed (non-fatal)"
+
 echo "Desktop branding done."
