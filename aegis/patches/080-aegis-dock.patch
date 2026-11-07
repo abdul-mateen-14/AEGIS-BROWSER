@@ -156,7 +156,7 @@ new file mode 100644
 +        addView(mSliver, sliverLp);
 +
 +        // The pill is a capsule; the sliver a small rounded bar.
-+        setOutlineFor(mPill, corner);
++        setOutlineFor(mPill, res.getDimensionPixelSize(R.dimen.aegis_dock_height) / 2f);
 +        setOutlineFor(mSliver, res.getDimensionPixelSize(R.dimen.aegis_sliver_width) / 2);
 +
 +        expand();

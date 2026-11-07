@@ -389,7 +389,7 @@ diff --git a/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisIdMa
 new file mode 100644
 --- /dev/null
 +++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisIdManager.java
-@@ -0,0 +1,306 @@
+@@ -0,0 +1,305 @@
 +// Copyright 2026 The Aegis Browser Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -404,7 +404,6 @@ new file mode 100644
 +import android.os.Handler;
 +import android.os.Looper;
 +
-+import org.chromium.base.ContextUtils;
 +import org.chromium.build.annotations.NullMarked;
 +import org.chromium.build.annotations.Nullable;
 +import org.chromium.chrome.browser.aegis.sync.AegisCrypto;
@@ -478,7 +477,7 @@ new file mode 100644
 +    }
 +
 +    private AegisIdManager(Context context) {
-+        mPrefs = ContextUtils.getAppSharedPreferences(context, PREFS_NAME);
++        mPrefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
 +        mDeviceUuid = getOrCreateDeviceUuid();
 +        mDeviceName = sanitizeDeviceName(Build.MODEL);
 +    }
