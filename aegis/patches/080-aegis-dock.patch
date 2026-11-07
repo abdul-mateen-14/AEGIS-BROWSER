@@ -37,7 +37,7 @@ new file mode 100644
 +import android.widget.LinearLayout;
 +import android.widget.TextView;
 +
-+import org.chromium.base.supplier.Supplier;
++import java.util.function.Supplier;
 +import org.chromium.build.annotations.NullMarked;
 +import org.chromium.build.annotations.Nullable;
 +import org.chromium.chrome.R;
