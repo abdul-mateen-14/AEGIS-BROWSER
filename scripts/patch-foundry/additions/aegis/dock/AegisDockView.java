@@ -209,7 +209,7 @@ public class AegisDockView extends FrameLayout {
         ChromeTabbedActivity cta = (ChromeTabbedActivity) activity;
         Tab tab = cta.getActivityTab();
         String next;
-        if (tab == null || !tab.isLoaded()) {
+        if (tab == null || !tab.isLoading()) {
             next = getContext().getString(R.string.aegis_dock_search_hint);
         } else {
             String title = tab.getTitle();
