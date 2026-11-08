@@ -6,10 +6,9 @@
 # NTP; URL tiles load in the current tab, settings tile opens the
 # Aegis ID page, private tile opens a private tab.
 
---- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java
+--- /dev/null
 +++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java
-@@ -1 +1,248 @@
--
+@@ -0,0 +1,248 @@
 +// Copyright 2026 The Aegis Browser Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
