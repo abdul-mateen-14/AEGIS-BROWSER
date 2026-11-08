@@ -80,6 +80,7 @@ Design tokens live in one XML file per spec Table 5–8, so visual fine-tuning i
 | DSE adoption | (r44 defect) | `100-aegis-r44-dse-migration.patch` | **DONE** — one-time marker-gated heal of stale Google defaults on pre-098 profiles |
 | Settings hardening | (r44 defect) | `099-aegis-r44-settings-hardening.patch` + `104-aegis-settings-dedupe.patch` | **DONE** — try/catch guards, missing-key tolerance, 052 duplicate-fragment entry removed |
 | Launcher identity | (r44 defect) | branding assets (rounded mipmap set) + `103-aegis-r44-brand-sweep.patch` manifest label | **DONE** — rounded logo regenerated into res_chromium_base; label "Aegis" in the manifest template |
+| Gemini/Glic kill | (r44 defect) | `105-aegis-gemini-off.patch` | **DONE** — all `JNI_GlicEnabling_*` user-visible gates hard-return false (button, bottom sheet, menu row, settings page, IPH); complements 073 desktop defaults |
 
 Renumbering note: 099-104 are the r44 wave; 099/100/103 carry two patches each
 (dock-motion + settings-hardening / glass-sheets + DSE-migration / home +

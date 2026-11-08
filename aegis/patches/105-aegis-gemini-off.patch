@@ -1,0 +1,77 @@
+# Aegis 105: Gemini/Glic fully disabled on Android
+# all JNI_GlicEnabling_* user-visible gates hard-return false (defenestrates
+# the toolbar button, bottom sheet, menu row, settings page and IPH promos)
+# complements 073 (desktop C++ feature defaults) at the Android choke point
+
+--- a/chrome/browser/glic/android/glic_enabling_android.cc
++++ b/chrome/browser/glic/android/glic_enabling_android.cc
+@@ -31,37 +31,39 @@
+ }  // namespace
+ 
+ bool JNI_GlicEnabling_IsEnabledByFlags(JNIEnv* env) {
+-  return GlicEnabling::IsEnabledByGlobalCriteria();
++  // Aegis: Gemini/Glic is fully disabled on Android.
++  return false;
+ }
+ bool JNI_GlicEnabling_IsProfileEligible(JNIEnv* env, Profile* profile) {
+-  return GlicEnabling::IsProfileEligible(profile);
++  // Aegis: Gemini/Glic is fully disabled on Android.
++  return false;
+ }
+ bool JNI_GlicEnabling_IsEnabledForProfile(JNIEnv* env, Profile* profile) {
+-  return GlicEnabling::IsEnabledForProfile(profile);
++  // Aegis: Gemini/Glic is fully disabled on Android.
++  return false;
+ }
+ bool JNI_GlicEnabling_WasPreviouslyNotAllowed(JNIEnv* env, Profile* profile) {
+-  return GlicEnabling::WasPreviouslyNotAllowed(profile);
++  // Aegis: Gemini/Glic is fully disabled on Android.
++  return false;
+ }
+ bool JNI_GlicEnabling_ShouldShowSettingsPage(JNIEnv* env, Profile* profile) {
+-  return GlicEnabling::ShouldShowSettingsPage(profile);
++  // Aegis: Gemini/Glic is fully disabled on Android.
++  return false;
+ }
+ bool JNI_GlicEnabling_IsReadyForProfile(JNIEnv* env, Profile* profile) {
+-  return GlicEnabling::IsReadyForProfile(profile);
++  // Aegis: Gemini/Glic is fully disabled on Android.
++  return false;
+ }
+ bool JNI_GlicEnabling_ShouldShowWebActuationToggle(JNIEnv* env,
+                                                    Profile* profile) {
+-  auto* glic_service =
+-      glic::GlicKeyedServiceFactory::GetGlicKeyedService(profile);
+-  return glic_service &&
+-         glic_service->enabling().ShouldShowWebActuationToggle();
++  // Aegis: Gemini/Glic is fully disabled on Android.
++  return false;
+ }
+ 
+ bool JNI_GlicEnabling_ShouldShowExperimentalTriggeringToggle(JNIEnv* env,
+                                                              Profile* profile) {
+-  auto* glic_service =
+-      glic::GlicKeyedServiceFactory::GetGlicKeyedService(profile);
+-  return glic_service &&
+-         glic_service->enabling().ShouldShowExperimentalTriggeringToggle();
++  // Aegis: Gemini/Glic is fully disabled on Android.
++  return false;
+ }
+ 
+ bool JNI_GlicEnabling_IsDisabledByPolicy(JNIEnv* env, Profile* profile) {
+@@ -96,13 +98,8 @@
+ 
+ jboolean JNI_GlicEnabling_ExperimentalOptInIsNeeded(JNIEnv* env,
+                                                     Profile* profile) {
+-  CHECK(glic::GlicEnabling::IsEnabledForProfile(profile));
+-
+-  auto* glic_service =
+-      glic::GlicKeyedServiceFactory::GetGlicKeyedService(profile);
+-  CHECK(glic_service);
+-  return glic_service->enabling().GetRequiredExperimentalOptIn() !=
+-         glic::RequiredExperimentalOptIn::kNotNeeded;
++  // Aegis: Gemini/Glic is fully disabled on Android.
++  return false;
+ }
+ 
+ }  // namespace glic
