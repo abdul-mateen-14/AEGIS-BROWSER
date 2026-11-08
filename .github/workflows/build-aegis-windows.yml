@@ -104,16 +104,49 @@ jobs:
       - name: Install Windows SDK 10.0.28000 (Chromium 156 pins this exact version)
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           $root = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10'
           $inc = Join-Path $root 'Include\10.0.28000.0'
-          if (-not (Test-Path $inc)) {
-            Write-Host "SDK 10.0.28000 not present - installing via winget (~10 min)"
-            winget install -e --id Microsoft.WindowsSDK.10.0.28000 `
-              --accept-package-agreements --accept-source-agreements --silent
-            if (-not (Test-Path $inc)) {
-              Write-Host "::error::SDK 10.0.28000.0 still missing after install"
-              exit 1
+          # Official winsdksetup.exe (burn bundle) for 10.0.28000.2957, URL and
+          # SHA256 pinned from the winget-pkgs manifest
+          # manifests/m/Microsoft/WindowsSDK/10/0/28000/10.0.28000.2957/.
+          # Path B bypasses winget entirely: runs 42443669594 and
+          # 42443936293 both died when the winget MSI handler crashed with
+          # 0x80070057 before installing anything.
+          $sdkSetupExe = Join-Path $env:RUNNER_TEMP 'winsdksetup_28000.exe'
+          $sdkSetupSha = 'E8E264ACA8BC34ABDF592352BF09F986A85CDB96DB0EFBA405CA9E149181FE61'
+          $sdkSetupUrl = 'https://download.microsoft.com/download/e6cfffdc-0d3e-4c6c-96d7-d491da459a07/KIT_BUNDLE_WINDOWSSDK_MEDIACREATION/winsdksetup.exe'
+          function Get-SdkSetup {
+            if (Test-Path $sdkSetupExe) { return $true }
+            Write-Host "Downloading official winsdksetup.exe (10.0.28000.2957)..."
+            curl.exe -L --fail --retry 3 -o $sdkSetupExe $sdkSetupUrl 2>&1 | ForEach-Object { Write-Host $_ }
+            if (-not (Test-Path $sdkSetupExe)) { return $false }
+            $h = (Get-FileHash -Algorithm SHA256 $sdkSetupExe).Hash
+            if ($h -ne $sdkSetupSha) {
+              Write-Host "::warning::winsdksetup hash mismatch ($h) - discarding"
+              Remove-Item $sdkSetupExe -Force
+              return $false
             }
+            return $true
+          }
+          if (-not (Test-Path $inc)) {
+            Write-Host "SDK 10.0.28000 not present - attempt 1: winget (~10 min)"
+            winget install -e --id Microsoft.WindowsSDK.10.0.28000 `
+              --accept-package-agreements --accept-source-agreements `
+              --disable-interactivity --silent
+            Write-Host "winget exit: $LASTEXITCODE"
+          }
+          if (-not (Test-Path $inc)) {
+            Write-Host "winget did not produce the SDK - attempt 2: direct winsdksetup.exe /q"
+            if (Get-SdkSetup) {
+              $p = Start-Process -FilePath $sdkSetupExe `
+                     -ArgumentList '/q', '/norestart' -Wait -PassThru
+              Write-Host "winsdksetup exit: $($p.ExitCode) (3010 = ok, reboot pending)"
+            }
+          }
+          if (-not (Test-Path $inc)) {
+            Write-Host "::error::SDK 10.0.28000.0 still missing after winget + direct installer"
+            exit 1
           }
           Write-Host "SDK 10.0.28000 present at $inc"
           # vs_toolchain.py (gn gen -> copy_dlls) resolves WINDOWSSDKDIR and
@@ -124,17 +157,28 @@ jobs:
           # _CopyDebugger; dbghelp.dll is non-optional.
           "WINDOWSSDKDIR=$root" >> $env:GITHUB_ENV
           "WindowsSDKDir=$root" >> $env:GITHUB_ENV
-          # The winget SDK package does not install the "Debugging Tools for
-          # Windows" feature. Try adding it; if winget refuses (package
-          # already installed), seed the two DLLs from System32 - dbghelp is
-          # only used for local stack symbolization, and chrome falls back to
-          # the system copy at runtime anyway. Deterministic either way.
+          # The default SDK install does not include "Debugging Tools for
+          # Windows". Add the feature directly via winsdksetup (most
+          # reliable), then winget, then seed the two DLLs from System32 -
+          # dbghelp is only used for local stack symbolization, and chrome
+          # falls back to the system copy at runtime anyway.
           $dbgdir = Join-Path $root 'Debuggers\x64'
           if (-not (Test-Path (Join-Path $dbgdir 'dbghelp.dll'))) {
-            Write-Host "Debugging Tools for Windows missing - adding Debuggers feature"
+            Write-Host "Debugging Tools for Windows missing - adding via winsdksetup"
+            if (Get-SdkSetup) {
+              $p = Start-Process -FilePath $sdkSetupExe `
+                     -ArgumentList '/features', 'OptionId.WindowsDesktopDebuggers', '/q', '/norestart' `
+                     -Wait -PassThru
+              Write-Host "winsdksetup debuggers exit: $($p.ExitCode)"
+            }
+          }
+          if (-not (Test-Path (Join-Path $dbgdir 'dbghelp.dll'))) {
+            Write-Host "Debuggers feature unavailable via setup - trying winget --custom"
             winget install -e --id Microsoft.WindowsSDK.10.0.28000 `
               --custom "/features OptionId.WindowsDesktopDebuggers" `
-              --accept-package-agreements --accept-source-agreements --silent
+              --accept-package-agreements --accept-source-agreements `
+              --disable-interactivity --silent
+            Write-Host "winget debuggers exit: $LASTEXITCODE"
           }
           if (-not (Test-Path (Join-Path $dbgdir 'dbghelp.dll'))) {
             Write-Host "Debuggers feature unavailable - seeding dbghelp/dbgcore from System32"
