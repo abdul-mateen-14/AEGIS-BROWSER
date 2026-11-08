@@ -215,7 +215,7 @@
          String trimmed = query.trim();
          if (trimmed.startsWith("http://") || trimmed.startsWith("https://")
                  || trimmed.startsWith("about:") || trimmed.startsWith("chrome://")) {
-@@ -193,13 +236,22 @@
+@@ -193,12 +236,21 @@
          }
          boolean looksLikeUrl = !trimmed.contains(" ") && trimmed.indexOf('.') > 0;
          if (looksLikeUrl) return "https://" + trimmed;
@@ -244,4 +244,3 @@
 +        return null;
      }
  }
- 

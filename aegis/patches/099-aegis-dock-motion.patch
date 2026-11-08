@@ -584,7 +584,7 @@
  
      <!-- Dock / sheet strings -->
      <string name="aegis_dock_menu">Menu</string>
-@@ -49,5 +71,22 @@
+@@ -49,4 +71,21 @@
      <string name="aegis_dock_search_hint">Search or type URL</string>
      <string name="aegis_dock_recall">Show dock</string>
      <string name="aegis_sheet_search">Search %1$s or type a URL</string>
@@ -606,7 +606,6 @@
 +    <string name="aegis_home_quick">Quick shields</string>
 +    <string name="aegis_hosts_blocked">92,957</string>
  </resources>
- 
 
 --- /dev/null
 +++ b/chrome/android/java/res/values-night/aegis_tokens.xml

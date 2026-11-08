@@ -8,7 +8,7 @@
 
 --- a/chrome/android/java/res/xml/main_preferences.xml
 +++ b/chrome/android/java/res/xml/main_preferences.xml
-@@ -142,17 +142,4 @@
+@@ -142,16 +142,4 @@
          android:order="31"
          android:title="@string/prefs_about_chrome"/>
  
@@ -25,4 +25,3 @@
 -    </org.chromium.components.browser_ui.settings.ChromeBasePreferenceCategory>
 -
  </PreferenceScreen>
--
