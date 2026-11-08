@@ -1,0 +1,81 @@
+# 100 - r44: one-time default-search-engine adoption (java side).
+#
+# 098 patches the prepopulated data correctly (aegis first in all 134 regional
+# lists + GetPrepopulatedFallbackSearch -> id 118) and run 43's log proves the
+# structs regenerated (CXX .../search_engines_data/prepopulated_engines.o,
+# regional_settings.o). Yet devices upgraded from pre-098 Aegis builds keep
+# searching with Google: their profile pref kDefaultSearchProviderDataPrefName
+# was persisted while Google was the prepopulated default, and
+# DefaultSearchManager reads that pref BEFORE the prepopulated fallback - so
+# patched engine data alone can never re-teach those profiles Aegis Search.
+#
+# This hook runs once per install (marker in app-wide prefs) when the service
+# reports a change: if the current DSE is still Google, select the Aegis
+# engine (keyword from patch 098's prepopulated_engines.json entry, id 118).
+# A DSE the user picks AFTER the marker exists is never overridden.
+#
+# "already migrated" fresh profiles: default is already Aegis Search, the
+# check is a no-op and only the marker is written.
+
+--- a/components/search_engines/android/java/src/org/chromium/components/search_engines/TemplateUrlService.java
++++ b/components/search_engines/android/java/src/org/chromium/components/search_engines/TemplateUrlService.java
+@@ -7,5 +7,7 @@
+ package org.chromium.components.search_engines;
+ 
++import android.content.SharedPreferences;
++
+ import android.text.TextUtils;
+ 
+ import androidx.annotation.VisibleForTesting;
+@@ -14,5 +16,6 @@
+ import org.jni_zero.NativeMethods;
+ 
++import org.chromium.base.ContextUtils;
+ import org.chromium.base.ObserverList;
+ import org.chromium.base.ThreadUtils;
+ import org.chromium.base.task.PostTask;
+@@ -149,11 +152,43 @@
+     @CalledByNative
+     private void onTemplateURLServiceChanged() {
++        // Aegis (de-Googled, r44): one-time DSE adoption for profiles that
++        // predate patch 098 (see class comment above the marker).
++        try {
++            ensureAegisDefaultSearchEngine();
++        } catch (RuntimeException e) {
++            // Never let the migration break the search engine service.
++        }
+         for (TemplateUrlServiceObserver observer : mObservers) {
+             observer.onTemplateURLServiceChanged();
+         }
+     }
++
++    /**
++     * Aegis (de-Googled, r44): adopt Aegis Search as the default engine once
++     * per install if the profile still points at Google. Runs only before
++     * the marker pref exists, so later manual choices are respected.
++     */
++    private void ensureAegisDefaultSearchEngine() {
++        if (!isLoaded()) return;
++        SharedPreferences appPrefs = ContextUtils.getAppSharedPreferences();
++        if (appPrefs == null) return;
++        if (appPrefs.getBoolean(AEGIS_DSE_MARKER, false)) return;
++        // Mark BEFORE migrating: setUserSelectedDefaultSearchProvider fires a
++        // service-change callback, and the marker makes any nested call a
++        // no-op (single attempt, no loops).
++        appPrefs.edit().putBoolean(AEGIS_DSE_MARKER, true).apply();
++        if (isDefaultSearchEngineGoogle()) {
++            setSearchEngine(AEGIS_SEARCH_KEYWORD);
++        }
++    }
++
++    /** The prepopulated Aegis Search keyword (patch 098, engine id 118). */
++    private static final String AEGIS_SEARCH_KEYWORD =
++            "aegis-search.aegis-search.workers.dev";
++    /** One-time adoption marker, app-wide (survives profile churn). */
++    private static final String AEGIS_DSE_MARKER = "aegis_dse_adopted_v1";
+ 
+     /**
+      * @return {@link TemplateUrl} for the default search engine. This can be null if DSEs are
+      *     disabled entirely by administrators.
+      */
+

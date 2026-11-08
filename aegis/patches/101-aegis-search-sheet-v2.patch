@@ -1,0 +1,247 @@
+# 101 - aegis-search-sheet v2
+# Engine-neutral hint ('Search or type URL', spec section 2.2);
+# word queries resolve through TemplateUrlService.getUrlForSearchQuery
+# (fixes 'dock works with URLs but not queries' - the old sheet
+# silently dropped words when the default engine lookup returned
+# null); engine chips (default + DuckDuckGo/Startpage/Wikipedia when
+# prepopulated) switch the engine on tap, once the service loads.
+
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisSearchSheet.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisSearchSheet.java
+@@ -4,11 +4,8 @@
+ 
+ package org.chromium.chrome.browser.aegis.dock;
+ 
+-import static org.chromium.build.NullUtil.assumeNonNull;
+-
+ import android.app.Activity;
+ import android.content.Context;
+-import android.graphics.Color;
+ import android.graphics.drawable.GradientDrawable;
+ import android.text.TextUtils;
+ import android.view.Gravity;
+@@ -26,7 +23,6 @@
+ import org.chromium.chrome.R;
+ import org.chromium.chrome.browser.ChromeTabbedActivity;
+ import org.chromium.chrome.browser.profiles.Profile;
+-import org.chromium.chrome.browser.profiles.ProfileProvider;
+ import org.chromium.chrome.browser.search_engines.TemplateUrlServiceFactory;
+ import org.chromium.chrome.browser.tab.Tab;
+ import org.chromium.chrome.browser.tab.TabLaunchType;
+@@ -34,16 +30,24 @@
+ import org.chromium.components.search_engines.TemplateUrlService;
+ import org.chromium.content_public.browser.LoadUrlParams;
+ 
++import java.util.ArrayList;
++import java.util.List;
++
+ /**
+- * Aegis glass search sheet (patch 081): the dock's URL-pill tap target. A
+- * translucent full-screen overlay with a bottom sheet that carries a single
+- * query field and the current default search engine as a chip. Typing a
+- * domain navigates the current tab (a URL load); typing words searches with
+- * the default engine (kept functional by design in Aegis). Suggestions and
+- * per-engine chips land in a later sheet iteration.
++ * Aegis glass search sheet (patch 101, v2): the dock's URL-pill tap target.
++ * The query field is engine-neutral ("Search or type URL", spec section
++ * 2.2); typed domains load in the current tab, typed words search with the
++ * default engine through the service's own URL resolution. Engine chips
++ * (default + DuckDuckGo / Startpage / Wikipedia when prepopulated) switch
++ * the engine on tap. Suggestions land in a later sheet iteration.
+  */
+ @NullMarked
+ public class AegisSearchSheet extends FrameLayout {
++    /** Keywords surfaced as engine chips when present (spec Table 4). */
++    private static final String[] CHIP_KEYWORDS = {
++        "duckduckgo.com", "startpage.com", "wikipedia.org"
++    };
++
+     private AegisSearchSheet(Context context) {
+         super(context);
+     }
+@@ -73,13 +77,11 @@
+         int pad = context.getResources().getDimensionPixelSize(R.dimen.aegis_sheet_padding);
+         panel.setPadding(pad, pad, pad, pad);
+ 
+-        TemplateUrl engine = defaultEngine(activity);
+-        String engineName =
+-                engine != null ? engine.getShortName()
+-                               : context.getString(R.string.aegis_dock_search);
+         EditText input = new EditText(context);
+         input.setId(R.id.aegis_search_input);
+-        input.setHint(context.getString(R.string.aegis_sheet_search, engineName));
++        // Engine-neutral hint (spec section 2.2): the pill never names a
++        // provider; the chip row below carries the active engine.
++        input.setHint(context.getString(R.string.aegis_dock_search_hint));
+         input.setSingleLine(true);
+         input.setTextSize(16);
+         input.setTextColor(context.getColor(R.color.aegis_glass_text));
+@@ -103,22 +105,14 @@
+                 });
+         panel.addView(input);
+ 
+-        TextView chip = new TextView(context);
+-        chip.setText(engineName);
+-        chip.setTextSize(12);
+-        chip.setTextColor(context.getColor(R.color.aegis_glass_chip_text));
+-        GradientDrawable chipBg = new GradientDrawable();
+-        chipBg.setColor(context.getColor(R.color.aegis_glass_chip));
+-        float chipCorner = pad / 2f;
+-        chipBg.setCornerRadius(chipCorner);
+-        chip.setPadding(pad / 2, pad / 4, pad / 2, pad / 4);
+-        chip.setBackground(chipBg);
+-        LinearLayout.LayoutParams chipLp =
++        LinearLayout chipRow = new LinearLayout(context);
++        chipRow.setOrientation(LinearLayout.HORIZONTAL);
++        chipRow.setGravity(Gravity.CENTER_VERTICAL);
++        panel.addView(
++                chipRow,
+                 new LinearLayout.LayoutParams(
+-                        ViewGroup.LayoutParams.WRAP_CONTENT,
+-                        ViewGroup.LayoutParams.WRAP_CONTENT);
+-        chipLp.topMargin = pad / 2;
+-        panel.addView(chip, chipLp);
++                        ViewGroup.LayoutParams.MATCH_PARENT,
++                        ViewGroup.LayoutParams.WRAP_CONTENT));
+ 
+         content.addView(
+                 sheet,
+@@ -132,6 +126,11 @@
+                         ViewGroup.LayoutParams.WRAP_CONTENT,
+                         Gravity.BOTTOM));
+ 
++        // Engine chips + live engine name land once the service is loaded.
++        TemplateUrlService service =
++                TemplateUrlServiceFactory.getForProfile(Profile.getLastUsedRegularProfile());
++        service.runWhenLoaded(() -> buildChips(context, chipRow, service));
++
+         input.requestFocus();
+         input.post(
+                 () -> {
+@@ -142,6 +141,60 @@
+                 });
+     }
+ 
++    /** Renders the active-engine chip plus the prepopulated alternates. */
++    private static void buildChips(
++            Context context, LinearLayout chipRow, TemplateUrlService service) {
++        if (!(context instanceof Activity)) return;
++        Activity activity = (Activity) context;
++        if (activity.isFinishing() || activity.isDestroyed()) return;
++        chipRow.removeAllViews();
++        int pad = context.getResources().getDimensionPixelSize(R.dimen.aegis_sheet_padding);
++        TemplateUrl dse = service.getDefaultSearchEngineTemplateUrl();
++        List<TemplateUrl> chips = new ArrayList<>();
++        if (dse != null) chips.add(dse);
++        for (TemplateUrl engine : service.getTemplateUrls()) {
++            if (engine == null || dse == null) continue;
++            String keyword = engine.getKeyword();
++            if (keyword == null || keyword.equals(dse.getKeyword())) continue;
++            for (String wanted : CHIP_KEYWORDS) {
++                if (keyword.contains(wanted)) {
++                    chips.add(engine);
++                    break;
++                }
++            }
++        }
++        for (TemplateUrl engine : chips) {
++            TextView chip = new TextView(context);
++            String name = engine.getShortName();
++            boolean active = dse != null
++                    && engine.getKeyword() != null
++                    && engine.getKeyword().equals(dse.getKeyword());
++            chip.setText(name != null ? name : "");
++            chip.setTextSize(12);
++            chip.setTextColor(context.getColor(
++                    active ? R.color.aegis_accent_on : R.color.aegis_glass_chip_text));
++            GradientDrawable chipBg = new GradientDrawable();
++            chipBg.setColor(context.getColor(
++                    active ? R.color.aegis_glass_chip_active : R.color.aegis_glass_chip));
++            float chipCorner = pad / 2f;
++            chipBg.setCornerRadius(chipCorner);
++            chip.setPadding(pad / 2, pad / 4, pad / 2, pad / 4);
++            chip.setBackground(chipBg);
++            chip.setOnClickListener(
++                    v -> {
++                        String keyword = engine.getKeyword();
++                        if (keyword == null) return;
++                        service.setSearchEngine(keyword);
++                    });
++            LinearLayout.LayoutParams chipLp =
++                    new LinearLayout.LayoutParams(
++                            ViewGroup.LayoutParams.WRAP_CONTENT,
++                            ViewGroup.LayoutParams.WRAP_CONTENT);
++            chipLp.rightMargin = pad / 2;
++            chipRow.addView(chip, chipLp);
++        }
++    }
++
+     private static void dismiss(AegisSearchSheet sheet) {
+         InputMethodManager imm =
+                 (InputMethodManager)
+@@ -157,7 +210,7 @@
+         Activity activity = (Activity) sheet.getContext();
+         if (!(activity instanceof ChromeTabbedActivity)) return;
+         ChromeTabbedActivity cta = (ChromeTabbedActivity) activity;
+-        String url = resolve(query, defaultEngine(activity));
++        String url = resolve(query, cta);
+         if (url == null) return;
+         dismiss(sheet);
+         Tab tab = cta.getActivityTab();
+@@ -170,22 +223,12 @@
+         }
+     }
+ 
+-    private static @Nullable TemplateUrl defaultEngine(Activity activity) {
+-        if (!(activity instanceof ChromeTabbedActivity)) return null;
+-        ChromeTabbedActivity cta = (ChromeTabbedActivity) activity;
+-        ProfileProvider provider = cta.getProfileProviderSupplier().get();
+-        if (provider == null) return null;
+-        Profile profile = provider.getOriginalProfile();
+-        TemplateUrlService service = TemplateUrlServiceFactory.getForProfile(profile);
+-        return service.getDefaultSearchEngineTemplateUrl();
+-    }
+-
+     /**
+-     * Resolves the typed text to a URL: explicit schemes and about: pass
+-     * through; a no-space dotted host becomes https://; anything else is a
+-     * search with the default engine's template URL ({searchTerms}).
++     * Resolves the typed text: explicit schemes and chrome:// pass through;
++     * a no-space dotted host becomes https://; anything else is a search
++     * with the default engine (service-side resolution, load-tolerant).
+      */
+-    private static @Nullable String resolve(String query, @Nullable TemplateUrl engine) {
++    private static @Nullable String resolve(String query, ChromeTabbedActivity cta) {
+         String trimmed = query.trim();
+         if (trimmed.startsWith("http://") || trimmed.startsWith("https://")
+                 || trimmed.startsWith("about:") || trimmed.startsWith("chrome://")) {
+@@ -193,13 +236,22 @@
+         }
+         boolean looksLikeUrl = !trimmed.contains(" ") && trimmed.indexOf('.') > 0;
+         if (looksLikeUrl) return "https://" + trimmed;
+-        if (engine == null) return null;
+-        String template = engine.getURL();
+-        if (TextUtils.isEmpty(template)) return null;
+-        return template
+-                .replace("{searchTerms}", android.net.Uri.encode(trimmed))
+-                .replace("{inputEncoding}", "UTF-8")
+-                .replace("{outputEncoding}", "UTF-8");
++        Profile profile = Profile.getLastUsedRegularProfile();
++        TemplateUrlService service = TemplateUrlServiceFactory.getForProfile(profile);
++        if (service.isLoaded()) return service.getUrlForSearchQuery(trimmed);
++        // Service still warming up: load, then land the query on a new tab.
++        service.load();
++        service.runWhenLoaded(
++                () -> {
++                    String url = service.getUrlForSearchQuery(trimmed);
++                    if (url == null) return;
++                    cta.getTabCreator(false)
++                            .createNewTab(
++                                    new LoadUrlParams(url),
++                                    TabLaunchType.FROM_LINK,
++                                    /* parent= */ null);
++                });
++        return null;
+     }
+ }
+ 

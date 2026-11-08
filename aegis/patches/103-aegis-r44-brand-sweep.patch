@@ -1,0 +1,70 @@
+# 103 - r44: brand sweep - remove the remaining user-visible Gemini wording
+# (bottom-bar intro, toolbar promo, tab/task helper, notification category)
+# and stamp the launcher/application label as "Aegis" directly in the
+# manifest template (apply.sh v1.3 could not find @string/app_name in the
+# 156 layout - the label now does not depend on that resource at all).
+# Feature-flag removals shipped earlier in 073 keep the surfaces inert.
+
+--- a/chrome/browser/ui/android/strings/android_chrome_strings.grd
++++ b/chrome/browser/ui/android/strings/android_chrome_strings.grd
+@@ -263,7 +263,7 @@
+       </message>
+       <!-- TODO(crbug.com/489124317): Update translation. -->
+       <message name="IDS_NOTIFICATION_CATEGORY_ACTOR" desc="Label for actor-related notifications, within a list of notification categories. [CHAR_LIMIT=32]">
+-        Gemini in Aegis
++        Aegis assistant
+       </message>
+       <message name="IDS_NOTIFICATION_CATEGORY_SCREEN_CAPTURE" desc="Label for notifications shown when screen is sharing or recording, within a list of notification categories. [CHAR_LIMIT=32]">
+         Screen Capture
+@@ -6201,13 +6201,13 @@
+         Right click here to show tabs vertically
+       </message>
+       <message name="IDS_IPH_TAB_STRIP_GLIC_PROMO_TEXT" desc="The in-product-help promotion message to try Glic, shown on the tab strip button.">
+-        Try Gemini in Aegis to get answers, key takeaways and more
++        Try Aegis assistant to get answers, key takeaways and more
+       </message>
+       <message name="IDS_IPH_GLIC_PROMO_TEXT" desc="The in-product-help promotion message to try Glic, shown on the toolbar button.">
+-        Get the best of Gemini from your Chrome toolbar. Long-press to customize.
++        Aegis tools live on your toolbar. Long-press to customize.
+       </message>
+       <message name="IDS_IPH_GLIC_PROMO_ACCESSIBILITY_TEXT" desc="The in-product-help accessibility text to try Glic.">
+-        Gemini is now on your toolbar. To change your pinned tool anytime, long-press the icon.
++        Aegis tools are on your toolbar. To change your pinned tool anytime, long-press the icon.
+       </message>
+       <message name="IDS_IPH_DOWNLOAD_PAGE_FOR_OFFLINE_USAGE_TEXT" desc="The in-product-help message after a successful navigation prompting user to download the pages to view offline.">
+         Download pages to use them offline
+@@ -6252,6 +6252,6 @@
+       <!-- Bottom bar IPH strings. -->
+       <message name="IDS_IPH_ANDROID_BOTTOM_BAR_GLIC" desc="The in-product-help message for the GLIC button in the bottom bar.">
+-        Ask Gemini to help with your tabs and tasks
++        Ask Aegis assistant to help with your tabs and tasks
+       </message>
+       <message name="IDS_IPH_ANDROID_BOTTOM_BAR_NEW_TAB" desc="The in-product-help message for the New Tab button in the bottom bar.">
+         Open a new tab
+@@ -6260,13 +6260,13 @@
+         Search with AI Mode
+       </message>
+       <message name="IDS_IPH_ANDROID_BOTTOM_BAR_DIALOG_TITLE" desc="Title for the in-product help dialog introducing Gemini in the bottom bar.">
+-        Introducing Gemini in Aegis
++        Introducing Aegis assistant
+       </message>
+       <message name="IDS_IPH_ANDROID_BOTTOM_BAR_AIM_DIALOG_TITLE" desc="Title for the in-product help dialog introducing AI Mode in the bottom bar.">
+         Introducing AI Mode in Chrome
+       </message>
+       <message name="IDS_IPH_ANDROID_BOTTOM_BAR_DIALOG_DESCRIPTION" desc="Description for the bottom bar Gemini introduction dialog.">
+-        Some tools have moved to give you easy access to Gemini while you browse
++        Some tools have moved to give you easy access to Aegis while you browse
+       </message>
+       <message name="IDS_IPH_ANDROID_BOTTOM_BAR_AIM_DIALOG_DESCRIPTION" desc="Description for the bottom bar AI Mode introduction dialog.">
+         Some tools have moved to help you search with AI Mode
+--- a/chrome/android/java/AndroidManifest.xml
++++ b/chrome/android/java/AndroidManifest.xml
+@@ -221,7 +221,7 @@
+       <application android:name="{% block application_name %}org.chromium.chrome.browser.base.SplitChromeApplication{% endblock %}"
+         android:icon="@drawable/ic_launcher"
+         android:roundIcon="@drawable/ic_launcher_round"
+-        android:label="{% block application_label %}@string/app_name{% endblock %}"
++        android:label="Aegis"
+         android:memtagMode="async"
+         android:largeHeap="false"
+         android:manageSpaceActivity="@string/manage_space_activity"

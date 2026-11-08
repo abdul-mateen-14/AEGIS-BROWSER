@@ -1,0 +1,525 @@
+# 100 - aegis-glass-sheets (mobile M3)
+# AegisGlassSheet base: bottom panel in the dock's glass recipe,
+# 380 ms rise, 75%-height cap with an internal scroll, scrim tap +
+# downward-fling dismiss. AegisMenuSheet: page-context header
+# (domain + hardened pill) over a 4x2 quick-action grid that reuses
+# the browser's menu action ids. AegisTabGridSheet: two-column tab
+# cards, private tabs inverted, new-tab pill.
+
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisGlassSheet.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisGlassSheet.java
+@@ -1 +1,174 @@
++// Copyright 2026 The Aegis Browser Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
+ 
++package org.chromium.chrome.browser.aegis.dock;
++
++import android.app.Activity;
++import android.graphics.drawable.GradientDrawable;
++import android.view.Gravity;
++import android.view.MotionEvent;
++import android.view.ViewGroup;
++import android.view.ViewTreeObserver;
++import android.view.animation.PathInterpolator;
++import android.widget.FrameLayout;
++import android.widget.LinearLayout;
++import android.widget.ScrollView;
++
++import org.chromium.build.annotations.NullMarked;
++import org.chromium.chrome.R;
++
++/**
++ * Aegis glass sheet base (patch 100, spec section 04): the one material all
++ * overlays are made of. A translucent full-screen scrim over the activity
++ * content with a bottom panel in the same glass recipe as the dock. Sheets
++ * rise from the bottom edge (380 ms), cap at 75% of the viewport (content
++ * scrolls inside the panel), and dismiss on a downward fling or scrim tap.
++ */
++@NullMarked
++public abstract class AegisGlassSheet extends FrameLayout {
++    /** Sheet rise duration, in ms (spec Table 9). */
++    private static final long RISE_MS = 380;
++    private static final long FALL_MS = 240;
++    /** Sheets cap at 75% of the viewport height (spec Table 4). */
++    private static final float CAP_FRACTION = 0.75f;
++
++    /** The currently showing sheet, or null. Holds the dock open under it. */
++    private static AegisGlassSheet sShowing;
++
++    protected final LinearLayout mPanel;
++    private final AegisDockView mDock;
++    private float mDownY;
++    private boolean mDismissed;
++
++    protected AegisGlassSheet(AegisDockView dock) {
++        super(dock.getContext());
++        mDock = dock;
++        setBackgroundColor(getContext().getColor(R.color.aegis_glass_scrim));
++        setClickable(true);
++        setOnClickListener(v -> dismiss());
++
++        mPanel = new LinearLayout(getContext());
++        mPanel.setOrientation(LinearLayout.VERTICAL);
++        GradientDrawable bg = new GradientDrawable();
++        bg.setColor(getContext().getColor(R.color.aegis_glass_sheet));
++        float corner = getContext().getResources().getDimension(R.dimen.aegis_sheet_corner);
++        bg.setCornerRadii(new float[] {corner, corner, corner, corner, 0f, 0f, 0f, 0f});
++        bg.setStroke(1, getContext().getColor(R.color.aegis_glass_stroke));
++        mPanel.setBackground(bg);
++        int pad = getContext().getResources().getDimensionPixelSize(R.dimen.aegis_sheet_padding);
++        mPanel.setPadding(pad, pad, pad, pad);
++        addView(
++                mPanel,
++                new FrameLayout.LayoutParams(
++                        ViewGroup.LayoutParams.MATCH_PARENT,
++                        ViewGroup.LayoutParams.WRAP_CONTENT,
++                        Gravity.BOTTOM));
++    }
++
++    /** True while any glass sheet covers the page. */
++    public static boolean isAnySheetShowing() {
++        return sShowing != null;
++    }
++
++    /**
++     * Attaches and rises the sheet over the dock's activity content root.
++     * Subclasses build their content into a {@link ScrollView} and pass it
++     * via {@link #sheetContent()} before calling this.
++     */
++    protected static void present(AegisDockView dock, AegisGlassSheet sheet) {
++        Activity activity = (Activity) dock.getContext();
++        ViewGroup content = activity.findViewById(android.R.id.content);
++        if (content == null) return;
++        if (sShowing != null) sShowing.dismiss();
++        sShowing = sheet;
++        sheet.setId(R.id.aegis_search_sheet);
++        content.addView(
++                sheet,
++                new FrameLayout.LayoutParams(
++                        ViewGroup.LayoutParams.MATCH_PARENT,
++                        ViewGroup.LayoutParams.MATCH_PARENT));
++        // Cap the panel at 75% of the viewport before the first draw so the
++        // inner scroll view owns anything longer than the cap.
++        ViewTreeObserver.OnPreDrawListener capListener =
++                new ViewTreeObserver.OnPreDrawListener() {
++                    @Override
++                    public boolean onPreDraw() {
++                        sheet.getViewTreeObserver().removeOnPreDrawListener(this);
++                        int cap = (int) (sheet.getHeight() * CAP_FRACTION);
++                        if (sheet.mPanel.getHeight() > cap) {
++                            sheet.mPanel.getLayoutParams().height = cap;
++                            sheet.mPanel.requestLayout();
++                        }
++                        return true;
++                    }
++                };
++        sheet.getViewTreeObserver().addOnPreDrawListener(capListener);
++        // Rise: from below the bottom edge; fast departure, gentle landing.
++        sheet.mPanel.setTranslationY(
++                Math.max(400, sheet.getResources().getDisplayMetrics().heightPixels / 3));
++        sheet.mPanel.animate()
++                .translationY(0f)
++                .setDuration(RISE_MS)
++                .setInterpolator(new PathInterpolator(0.25f, 1f, 0.5f, 1f))
++                .start();
++    }
++
++    /** The scrollable content strip subclasses hand to {@link #present}. */
++    protected abstract ScrollView sheetContent();
++
++    /** Removes the sheet (240 ms fall). */
++    public void dismiss() {
++        if (mDismissed) return;
++        mDismissed = true;
++        if (sShowing == this) sShowing = null;
++        ViewGroup parent = (ViewGroup) getParent();
++        if (parent == null) return;
++        Runnable remove = () -> parent.removeView(AegisGlassSheet.this);
++        if (mAnimate()) {
++            animate().alpha(0f).setDuration(FALL_MS).withEndAction(remove).start();
++        } else {
++            remove.run();
++        }
++    }
++
++    private boolean mAnimate() {
++        return android.provider.Settings.Global.getFloat(
++                        getContext().getContentResolver(),
++                        android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
++                > 0f;
++    }
++
++    protected AegisDockView dock() {
++        return mDock;
++    }
++
++    /** Downward fling dismisses (spec Table 4). */
++    @Override
++    public boolean dispatchTouchEvent(MotionEvent event) {
++        switch (event.getActionMasked()) {
++            case MotionEvent.ACTION_DOWN:
++                mDownY = event.getY();
++                break;
++            case MotionEvent.ACTION_UP:
++                if (event.getY() - mDownY > 260 && !isPointInsidePanel(event)) {
++                    dismiss();
++                    return true;
++                }
++                break;
++            default:
++                break;
++        }
++        return super.dispatchTouchEvent(event);
++    }
++
++    private boolean isPointInsidePanel(MotionEvent event) {
++        // A fling that starts inside the scroll content scrolls the content;
++        // flings on the scrim area dismiss the sheet.
++        int[] xy = new int[2];
++        mPanel.getLocationOnScreen(xy);
++        float y = event.getRawY();
++        return y >= xy[1] && y <= xy[1] + mPanel.getHeight();
++    }
++}
++
+
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisMenuSheet.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisMenuSheet.java
+@@ -1 +1,155 @@
++// Copyright 2026 The Aegis Browser Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
+ 
++package org.chromium.chrome.browser.aegis.dock;
++
++import android.graphics.Typeface;
++import android.view.Gravity;
++import android.view.ViewGroup;
++import android.widget.GridLayout;
++import android.widget.LinearLayout;
++import android.widget.ScrollView;
++import android.widget.TextView;
++
++import org.chromium.build.annotations.NullMarked;
++import org.chromium.chrome.R;
++import org.chromium.chrome.browser.ChromeTabbedActivity;
++
++/**
++ * Aegis glass menu sheet (patch 100, spec Table 4): the page context header
++ * (domain + hardened pill) over a 4 x 2 grid of quiet, monochrome quick
++ * actions. The dock menu button is its only entry point; a downward fling on
++ * the scrim dismisses it. Each tile reuses the browser's own menu action
++ * ids, so behavior and metrics stay stock.
++ */
++@NullMarked
++public class AegisMenuSheet extends AegisGlassSheet {
++    private AegisMenuSheet(AegisDockView dock) {
++        super(dock);
++    }
++
++    /** Opens the menu sheet over {@code dock}'s activity. */
++    public static void show(AegisDockView dock) {
++        AegisMenuSheet sheet = new AegisMenuSheet(dock);
++        sheet.buildPanel();
++        present(dock, sheet);
++    }
++
++    private void buildPanel() {
++        // Page context header: domain + hardened-by-default pill (spec 2.2:
++        // the URL pill is the only chrome allowed to speak about trust).
++        TextView domain = new TextView(getContext());
++        domain.setText(currentDomain());
++        domain.setTextSize(16);
++        domain.setTypeface(domain.getTypeface(), Typeface.BOLD);
++        domain.setTextColor(getContext().getColor(R.color.aegis_text_primary));
++        mPanel.addView(domain);
++
++        TextView status = new TextView(getContext());
++        status.setText(getContext().getString(R.string.aegis_menu_status));
++        status.setTextSize(10);
++        status.setLetterSpacing(0.08f);
++        status.setAllCaps(true);
++        status.setTypeface(status.getTypeface(), Typeface.BOLD);
++        status.setTextColor(getContext().getColor(R.color.aegis_text_secondary));
++        status.setPadding(0, 4, 0, 12);
++        mPanel.addView(status);
++
++        ScrollView scroll = new ScrollView(getContext());
++        scroll.setVerticalScrollBarEnabled(false);
++        GridLayout grid = new GridLayout(getContext());
++        grid.setColumnCount(4);
++        int gap = (int) (6 * getResources().getDisplayMetrics().density);
++        addTile(grid, R.string.aegis_menu_new_tab, R.drawable.aegis_ic_plus,
++                () -> fire(R.id.new_tab_menu_id));
++        addTile(grid, R.string.aegis_menu_private_tab, R.drawable.aegis_ic_incognito,
++                () -> fire(R.id.new_incognito_tab_menu_id));
++        addTile(grid, R.string.aegis_menu_history, R.drawable.aegis_ic_history,
++                () -> fire(R.id.open_history_menu_id));
++        addTile(grid, R.string.aegis_menu_downloads, R.drawable.aegis_ic_download,
++                () -> fire(R.id.downloads_menu_id));
++        addTile(grid, R.string.aegis_menu_bookmarks, R.drawable.aegis_ic_bookmark,
++                () -> fire(R.id.all_bookmarks_menu_id));
++        addTile(grid, R.string.aegis_menu_reading_list, R.drawable.aegis_ic_reading,
++                () -> fire(R.id.show_reading_list_menu_id));
++        addTile(grid, R.string.aegis_menu_desktop_site, R.drawable.aegis_ic_desktop,
++                () -> fire(R.id.request_desktop_site_id));
++        addTile(grid, R.string.aegis_menu_settings, R.drawable.aegis_ic_settings,
++                () -> {
++                    dismiss();
++                    org.chromium.chrome.browser.settings.SettingsNavigationFactory
++                            .createSettingsNavigation()
++                            .startSettings(
++                                    (android.app.Activity) dock().getContext(),
++                                    org.chromium.chrome.browser.settings.MainSettings.class);
++                });
++        scroll.addView(grid);
++        mPanel.addView(
++                scroll,
++                new LinearLayout.LayoutParams(
++                        ViewGroup.LayoutParams.MATCH_PARENT,
++                        ViewGroup.LayoutParams.WRAP_CONTENT));
++    }
++
++    private void addTile(GridLayout grid, int labelRes, int iconRes, Runnable action) {
++        int density = (int) getResources().getDisplayMetrics().density;
++        LinearLayout tile = new LinearLayout(getContext());
++        tile.setOrientation(LinearLayout.VERTICAL);
++        tile.setGravity(Gravity.CENTER);
++        tile.setPadding(density * 4, density * 10, density * 4, density * 10);
++        tile.setClickable(true);
++        tile.setFocusable(true);
++        tile.setOnClickListener(v -> action.run());
++
++        android.widget.ImageView icon = new android.widget.ImageView(getContext());
++        icon.setImageResource(iconRes);
++        LinearLayout.LayoutParams iconLp =
++                new LinearLayout.LayoutParams(density * 21, density * 21);
++        iconLp.gravity = Gravity.CENTER_HORIZONTAL;
++        icon.setLayoutParams(iconLp);
++        tile.addView(icon);
++
++        TextView label = new TextView(getContext());
++        label.setText(labelRes);
++        label.setTextSize(11);
++        label.setTextColor(getContext().getColor(R.color.aegis_text_secondary));
++        label.setGravity(Gravity.CENTER);
++        label.setMaxLines(2);
++        LinearLayout.LayoutParams labelLp =
++                new LinearLayout.LayoutParams(
++                        ViewGroup.LayoutParams.WRAP_CONTENT,
++                        ViewGroup.LayoutParams.WRAP_CONTENT);
++        labelLp.topMargin = density * 6;
++        tile.addView(label, labelLp);
++
++        GridLayout.LayoutParams glp = new GridLayout.LayoutParams(
++                GridLayout.spec(GridLayout.UNDEFINED, 1f),
++                GridLayout.spec(GridLayout.UNDEFINED, 1f));
++        tile.setLayoutParams(glp);
++        grid.addView(tile);
++    }
++
++    private void fire(int menuId) {
++        dismiss();
++        ChromeTabbedActivity cta = (ChromeTabbedActivity) dock().getContext();
++        cta.onMenuOrKeyboardAction(
++                menuId, /* fromMenu= */ false,
++                /* menuItemData= */ null, /* triggeringMotion= */ null);
++    }
++
++    private String currentDomain() {
++        ChromeTabbedActivity cta = (ChromeTabbedActivity) dock().getContext();
++        android.content.Context ctx = dock().getContext();
++        try {
++            if (cta.getActivityTab() != null && cta.getActivityTab().getUrl() != null) {
++                String host = cta.getActivityTab().getUrl().getHost();
++                if (host != null && !host.isEmpty()) return host;
++            }
++        } catch (Exception e) {
++            // The header falls back to the product name off-browser.
++        }
++        return ctx.getString(R.string.aegis_menu_home);
++    }
++}
++
+
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisTabGridSheet.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisTabGridSheet.java
+@@ -1 +1,164 @@
++// Copyright 2026 The Aegis Browser Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
+ 
++package org.chromium.chrome.browser.aegis.dock;
++
++import android.graphics.drawable.GradientDrawable;
++import android.view.Gravity;
++import android.view.View;
++import android.view.ViewGroup;
++import android.widget.GridLayout;
++import android.widget.LinearLayout;
++import android.widget.ScrollView;
++import android.widget.TextView;
++
++import org.chromium.build.annotations.NullMarked;
++import org.chromium.chrome.R;
++import org.chromium.chrome.browser.ChromeTabbedActivity;
++import org.chromium.chrome.browser.tab.Tab;
++import org.chromium.chrome.browser.tab.TabSelectionType;
++import org.chromium.chrome.browser.tabmodel.TabModel;
++import org.chromium.chrome.browser.tabmodel.TabModelUtils;
++
++/**
++ * Aegis glass tab grid (patch 100, spec Table 4): two-column cards over the
++ * live page, private tabs inverted, a "New tab" pill in the footer. Entry:
++ * swipe up on the dock or the Tabs tile in the menu sheet; dismiss with a
++ * downward fling on the scrim or tapping a card (switches to that tab).
++ */
++@NullMarked
++public class AegisTabGridSheet extends AegisGlassSheet {
++    private AegisTabGridSheet(AegisDockView dock) {
++        super(dock);
++    }
++
++    /** Opens the tab grid over {@code dock}'s activity. */
++    public static void show(AegisDockView dock) {
++        AegisTabGridSheet sheet = new AegisTabGridSheet(dock);
++        sheet.buildPanel();
++        present(dock, sheet);
++    }
++
++    private void buildPanel() {
++        TextView title = new TextView(getContext());
++        title.setText(getContext().getString(R.string.aegis_sheet_tabs_title));
++        title.setTextSize(16);
++        title.setTypeface(title.getTypeface(), android.graphics.Typeface.BOLD);
++        title.setTextColor(getContext().getColor(R.color.aegis_text_primary));
++        title.setPadding(0, 0, 0, 12);
++        mPanel.addView(title);
++
++        ScrollView scroll = new ScrollView(getContext());
++        scroll.setVerticalScrollBarEnabled(false);
++        GridLayout grid = new GridLayout(getContext());
++        grid.setColumnCount(2);
++        int gap = (int) (8 * getResources().getDisplayMetrics().density);
++        ChromeTabbedActivity cta = (ChromeTabbedActivity) dock().getContext();
++        int added = 0;
++        for (int modelIndex = 0; modelIndex < 2; modelIndex++) {
++            TabModel model = cta.getTabModelSelector().getModel(modelIndex == 1);
++            if (model == null) continue;
++            boolean private_ = model.isIncognito();
++            int count = model.getTabCountSupplier().get();
++            for (int i = 0; i < count; i++) {
++                Tab tab = model.getTabAt(i);
++                if (tab == null) continue;
++                GridLayout.LayoutParams glp = new GridLayout.LayoutParams(
++                        GridLayout.spec(GridLayout.UNDEFINED, 1f),
++                        GridLayout.spec(GridLayout.UNDEFINED, 1f));
++                glp.setMargins(gap / 2, gap / 2, gap / 2, gap / 2);
++                grid.addView(tabCard(tab, private_), glp);
++                added++;
++            }
++        }
++        if (added == 0) {
++            TextView empty = new TextView(getContext());
++            empty.setText(getContext().getString(R.string.aegis_sheet_tabs_empty));
++            empty.setTextSize(13);
++            empty.setTextColor(getContext().getColor(R.color.aegis_text_secondary));
++            empty.setPadding(0, 8, 0, 8);
++            grid.addView(empty, new GridLayout.LayoutParams(
++                    GridLayout.spec(GridLayout.UNDEFINED, 2),
++                    GridLayout.spec(GridLayout.UNDEFINED, 1)));
++        }
++        scroll.addView(grid);
++        mPanel.addView(
++                scroll,
++                new LinearLayout.LayoutParams(
++                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
++
++        mPanel.addView(newTabPill());
++    }
++
++    private View tabCard(Tab tab, boolean private_) {
++        LinearLayout card = new LinearLayout(getContext());
++        card.setOrientation(LinearLayout.VERTICAL);
++        card.setPadding(12, 12, 12, 12);
++        card.setClickable(true);
++        card.setFocusable(true);
++        GradientDrawable bg = new GradientDrawable();
++        bg.setColor(getContext().getColor(
++                private_ ? R.color.aegis_surface_inverted : R.color.aegis_surface));
++        bg.setCornerRadius(getResources().getDisplayMetrics().density * 16);
++        bg.setStroke(1, getContext().getColor(R.color.aegis_hairline));
++        card.setBackground(bg);
++        card.setMinimumHeight((int) (88 * getResources().getDisplayMetrics().density));
++
++        TextView title = new TextView(getContext());
++        title.setText(tab.getTitle());
++        title.setTextSize(13);
++        title.setTextColor(getContext().getColor(
++                private_ ? R.color.aegis_text_primary_inverted : R.color.aegis_text_primary));
++        title.setMaxLines(2);
++        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
++        card.addView(title);
++
++        TextView host = new TextView(getContext());
++        String url = tab.getUrl() != null ? tab.getUrl().getHost() : "";
++        host.setText(url.isEmpty() ? getContext().getString(R.string.aegis_dock_search_hint)
++                                   : url);
++        host.setTextSize(11);
++        host.setTextColor(getContext().getColor(
++                private_ ? R.color.aegis_text_secondary_inverted : R.color.aegis_text_secondary));
++        card.addView(host);
++
++        card.setOnClickListener(v -> {
++            TabModelUtils.selectTabById(
++                    ((ChromeTabbedActivity) dock().getContext()).getTabModelSelector(),
++                    tab.getId(),
++                    TabSelectionType.FROM_USER);
++            dismiss();
++        });
++        return card;
++    }
++
++    private View newTabPill() {
++        TextView pill = new TextView(getContext());
++        pill.setText(getContext().getString(R.string.aegis_dock_new_tab));
++        pill.setTextSize(13);
++        pill.setTextColor(getContext().getColor(R.color.aegis_accent_on));
++        pill.setGravity(Gravity.CENTER);
++        GradientDrawable bg = new GradientDrawable();
++        bg.setColor(getContext().getColor(R.color.aegis_accent));
++        bg.setCornerRadius(getResources().getDisplayMetrics().density * 24);
++        pill.setBackground(bg);
++        int pad = (int) (12 * getResources().getDisplayMetrics().density);
++        pill.setPadding(pad, pad / 2, pad, pad / 2);
++        LinearLayout.LayoutParams lp =
++                new LinearLayout.LayoutParams(
++                        ViewGroup.LayoutParams.WRAP_CONTENT,
++                        ViewGroup.LayoutParams.WRAP_CONTENT);
++        lp.gravity = Gravity.CENTER_HORIZONTAL;
++        lp.topMargin = pad;
++        pill.setOnClickListener(v -> {
++            ChromeTabbedActivity cta = (ChromeTabbedActivity) dock().getContext();
++            cta.onMenuOrKeyboardAction(
++                    R.id.new_tab_menu_id, /* fromMenu= */ false,
++                    /* menuItemData= */ null, /* triggeringMotion= */ null);
++            dismiss();
++        });
++        return pill;
++    }
++}
++
+
+--- a/chrome/android/chrome_java_sources.gni
++++ b/chrome/android/chrome_java_sources.gni
+@@ -59,6 +59,9 @@
+   "java/src/org/chromium/chrome/browser/about_settings/AboutChromePreferenceOSVersion.java",
+   "java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java",
+   "java/src/org/chromium/chrome/browser/aegis/dock/AegisSearchSheet.java",
++  "java/src/org/chromium/chrome/browser/aegis/dock/AegisGlassSheet.java",
++  "java/src/org/chromium/chrome/browser/aegis/dock/AegisMenuSheet.java",
++  "java/src/org/chromium/chrome/browser/aegis/dock/AegisTabGridSheet.java",
+   "java/src/org/chromium/chrome/browser/about_settings/AboutChromeSettings.java",
+   "java/src/org/chromium/chrome/browser/aegis/AegisEcosystemSettings.java",
+   "java/src/org/chromium/chrome/browser/aegis/AegisIdManager.java",

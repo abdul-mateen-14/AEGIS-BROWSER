@@ -1,0 +1,812 @@
+# 99 - aegis-dock-motion (mobile M2 + tokens v2)
+# Spec-faithful dock: three controls (URL/trust pill with shield
+# glyph, new tab, menu), 360 ms cubic-bezier(.32,.72,0,1) collapse
+# into a 5x120dp LEFT-edge sliver in a 24x140dp touch target (5->9dp
+# swell), 420 ms spring recall, auto-hide triggers (idle, 2.4 s peek
+# after navigation, keyboard-owns-the-bottom, fling down/left),
+# swipe-up on the dock opens the tab grid. Ships the full Table 5-8
+# token set for light + night themes and the menu/home drawables.
+
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
+@@ -4,18 +4,19 @@
+ 
+ package org.chromium.chrome.browser.aegis.dock;
+ 
+-import static org.chromium.build.NullUtil.assumeNonNull;
+-
+-import android.annotation.SuppressLint;
+ import android.app.Activity;
+ import android.content.res.Resources;
+ import android.graphics.Color;
+ import android.graphics.Outline;
+ import android.graphics.Rect;
++import android.view.GestureDetector;
+ import android.view.Gravity;
++import android.view.MotionEvent;
+ import android.view.View;
+ import android.view.ViewOutlineProvider;
+ import android.view.ViewGroup;
++import android.view.animation.OvershootInterpolator;
++import android.view.animation.PathInterpolator;
+ import android.widget.FrameLayout;
+ import android.widget.ImageView;
+ import android.widget.LinearLayout;
+@@ -30,36 +31,49 @@
+ import org.chromium.chrome.browser.ui.appmenu.AppMenuHandler;
+ 
+ /**
+- * Aegis Liquid Glass dock: the bottom-edge navigation pill that replaces the
+- * hidden native top toolbar (patch 080). The dock is a plain View overlay
+- * attached to the activity's content root, above all browser chrome and web
+- * content, so no compositor or rendering-pipeline changes are needed.
++ * Aegis Liquid Glass dock (patch 099, spec section 03): the browser chrome
++ * compressed into one 260x52dp capsule - URL/trust pill, new-tab, menu -
++ * that collapses into a 5x120dp sliver flush against the LEFT edge.
+  *
+- * Layout (spec Tables 5-11, aegis_tokens.xml):
+- *   [ menu ] [ URL / trust pill ] [ search ] [ new tab ] [ tabs ]
+- * The URL pill shows the current tab's page title with the URL as a subtitle
+- * ( refreshed at 1 Hz - no observer wiring into the tab model yet). Tapping
+- * the URL pill opens the glass search sheet (patch 081); the menu button
+- * opens the regular app menu anchored to the dock (bottom bar variant).
++ * Motion (spec Table 9): collapse 360 ms cubic-bezier(.32,.72,0,1); expand
++ * 420 ms spring with a 4 dp overshoot; the sliver appears 240 ms after the
++ * capsule leaves and swells 5->9 dp while a finger approaches it.
+  *
+- * Collapsed state: after 4 s without input the dock shrinks to a 24x140dp
+- * edge sliver on the trailing edge; touching it recalls the dock. Scroll-
+- * driven hiding is not wired yet (the sliver timer stands in for it).
++ * Auto-hide (spec section 3.1): idle collapse, a 2.4 s peek after each
++ * navigation completes, keyboard-owns-the-bottom-edge (stay hidden while a
++ * text field has focus), fling down/left to dismiss, tap or swipe-right on
++ * the sliver to recall.
+  */
+ @NullMarked
+ public class AegisDockView extends FrameLayout {
+-    /** Collapse delay after the last interaction, in ms. */
++    /** Idle collapse delay after the last interaction, in ms. */
+     private static final long COLLAPSE_DELAY_MS = 4000;
++    /** Peek duration after a navigation completes, in ms (spec 3.1). */
++    private static final long PEEK_DELAY_MS = 2400;
++    /** Sliver fade-in delay after the capsule leaves, in ms (Table 2). */
++    private static final long SLIVER_DELAY_MS = 240;
++    /** Collapse duration, in ms (spec: 360 ms emphasized). */
++    private static final long COLLAPSE_MS = 360;
++    /** Expand duration, in ms (spec: 420 ms spring). */
++    private static final long EXPAND_MS = 420;
+     /** URL refresh cadence, in ms. */
+     private static final long REFRESH_MS = 1000;
+ 
+     private final LinearLayout mPill;
+     private final TextView mUrlPill;
+-    private final View mSliver;
++    /** Touch container at the left edge (24x140dp); hosts the 5..9dp bar. */
++    private final FrameLayout mSliverTouch;
++    /** The visible sliver bar (width animates 5<->9dp as a live affordance). */
++    private final View mSliverBar;
+     private final Supplier<@Nullable AppMenuHandler> mMenuSupplier;
+     private final Runnable mCollapse = this::collapse;
+     private final Runnable mRefresh = this::refreshUrl;
++    private final Runnable mPeekEnd = this::collapse;
++    private final GestureDetector mDockGestures;
++    private final GestureDetector mSliverGestures;
+     private boolean mExpanded;
++    private boolean mImeOpen;
++    private boolean mWasLoading;
+     private @Nullable String mLastBound;
+     /** False when the OS asks for reduced motion or the device is low-RAM:
+      *  state changes are applied instantly without animation. */
+@@ -77,6 +91,10 @@
+         ViewGroup content = activity.findViewById(android.R.id.content);
+         if (content == null) return;
+         if (content.findViewById(R.id.aegis_dock) != null) return;
++        // Aegis Search is the product engine; the one-time DSE adoption for
++        // pre-098 profiles lives in patch 100 (TemplateUrlService marker).
++        // The new-tab home sits behind the dock (patch 103).
++        org.chromium.chrome.browser.aegis.home.AegisHomeView.install(activity);
+         AegisDockView dock = new AegisDockView(activity, menuSupplier);
+         dock.setId(R.id.aegis_dock);
+         content.addView(
+@@ -93,7 +111,9 @@
+         mMenuSupplier = menuSupplier;
+         Resources res = getResources();
+ 
+-        // Full-width hit surface; the pill is centered inside it.
++        // Full-width hit surface; the capsule is centered inside it. The pill
++        // carries exactly three controls (spec section 02): the URL/trust
++        // pill, new-tab and the menu.
+         mPill = new LinearLayout(getContext());
+         mPill.setOrientation(LinearLayout.HORIZONTAL);
+         mPill.setGravity(Gravity.CENTER_VERTICAL);
+@@ -103,26 +123,55 @@
+         int hpad = res.getDimensionPixelSize(R.dimen.aegis_dock_hpadding);
+         mPill.setPadding(hpad, 0, hpad, 0);
+ 
+-        mPill.addView(makeButton(R.drawable.aegis_ic_menu, R.string.aegis_dock_menu,
+-                this::onMenuClicked));
+         mUrlPill = new TextView(getContext());
+-        mUrlPill.setTextSize(13);
++        mUrlPill.setTextSize(11.5f);
+         mUrlPill.setTextColor(Color.WHITE);
+         mUrlPill.setSingleLine(true);
+         mUrlPill.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
+         mUrlPill.setContentDescription(getContext().getString(R.string.aegis_dock_search));
+         LinearLayout.LayoutParams urlLp =
+-                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
++                new LinearLayout.LayoutParams(0, res.getDimensionPixelSize(R.dimen.aegis_url_pill_height), 1f);
+         int vpad = res.getDimensionPixelSize(R.dimen.aegis_dock_url_padding);
+         mUrlPill.setPadding(vpad, 0, vpad, 0);
++        mUrlPill.setBackgroundResource(R.drawable.aegis_url_pill);
++        mUrlPill.setGravity(Gravity.CENTER_VERTICAL);
++        // Trust line (spec section 2.2): the shield glyph leads the pill.
++        mUrlPill.setCompoundDrawablesRelativeWithIntrinsicBounds(
++                R.drawable.aegis_ic_shield, 0, 0, 0);
++        mUrlPill.setCompoundDrawablePadding(vpad / 2);
+         mUrlPill.setOnClickListener(v -> openSearchOverlay());
+         mPill.addView(mUrlPill, urlLp);
+-        mPill.addView(makeButton(R.drawable.aegis_ic_search, R.string.aegis_dock_search,
+-                this::openSearchOverlay));
+         mPill.addView(makeButton(R.drawable.aegis_ic_plus, R.string.aegis_dock_new_tab,
+                 this::onNewTabClicked));
+-        mPill.addView(makeButton(R.drawable.aegis_ic_tabs, R.string.aegis_dock_tabs,
+-                this::onTabsClicked));
++        mPill.addView(makeButton(R.drawable.aegis_ic_menu, R.string.aegis_dock_menu,
++                this::onMenuClicked));
++
++        // Fling down/left dismisses the capsule (spec Table 3).
++        mDockGestures =
++                new GestureDetector(
++                        getContext(),
++                        new GestureDetector.SimpleOnGestureListener() {
++                            @Override
++                            public boolean onFling(
++                                    MotionEvent e1, MotionEvent e2, float vx, float vy) {
++                                if (e1 == null || e2 == null) return false;
++                                float dx = e2.getX() - e1.getX();
++                                float dy = e2.getY() - e1.getY();
++                                if (vy > 0 && dy > Math.abs(dx)) {
++                                    collapse(); // fling down
++                                    return true;
++                                }
++                                if (vy < 0 && -dy > Math.abs(dx)) {
++                                    openTabGrid(); // swipe up opens the tab grid
++                                    return true;
++                                }
++                                if (vx < 0 && Math.abs(dx) > Math.abs(dy)) {
++                                    collapse(); // fling left
++                                    return true;
++                                }
++                                return false;
++                            }
++                        });
+ 
+         FrameLayout.LayoutParams pillLp =
+                 new FrameLayout.LayoutParams(
+@@ -133,24 +182,74 @@
+         pillLp.bottomMargin = vmargin;
+         addView(mPill, pillLp);
+ 
+-        // Collapsed edge sliver: a thin rounded handle on the trailing edge.
+-        mSliver = new View(getContext());
+-        mSliver.setBackgroundResource(R.drawable.aegis_dock_sliver);
++        // Collapsed edge sliver (spec section 2.1): a 5x120dp bar flush
++        // against the LEFT edge, vertically centered, inside a generous
++        // 24x140dp touch target. Tap or swipe right recalls the dock.
++        mSliverTouch = new FrameLayout(getContext());
++        mSliverBar = new View(getContext());
++        mSliverBar.setBackgroundResource(R.drawable.aegis_dock_sliver);
++        FrameLayout.LayoutParams barLp =
++                new FrameLayout.LayoutParams(
++                        res.getDimensionPixelSize(R.dimen.aegis_sliver_idle),
++                        res.getDimensionPixelSize(R.dimen.aegis_sliver_bar_h),
++                        Gravity.CENTER_VERTICAL | Gravity.START);
++        mSliverBar.setVisibility(GONE);
++        mSliverTouch.addView(mSliverBar, barLp);
+         FrameLayout.LayoutParams sliverLp =
+                 new FrameLayout.LayoutParams(
+-                        res.getDimensionPixelSize(R.dimen.aegis_sliver_width),
+-                        res.getDimensionPixelSize(R.dimen.aegis_sliver_height),
+-                        Gravity.BOTTOM | Gravity.END);
+-        sliverLp.bottomMargin = vmargin + res.getDimensionPixelSize(R.dimen.aegis_dock_height) / 2
+-                - res.getDimensionPixelSize(R.dimen.aegis_sliver_height) / 2;
+-        mSliver.setVisibility(GONE);
+-        mSliver.setOnClickListener(v -> expand());
+-        mSliver.setContentDescription(getContext().getString(R.string.aegis_dock_recall));
+-        addView(mSliver, sliverLp);
+-
+-        // The pill is a capsule; the sliver a small rounded bar.
++                        res.getDimensionPixelSize(R.dimen.aegis_sliver_touch_w),
++                        res.getDimensionPixelSize(R.dimen.aegis_sliver_touch_h),
++                        Gravity.BOTTOM | Gravity.START);
++        sliverLp.bottomMargin =
++                vmargin + res.getDimensionPixelSize(R.dimen.aegis_dock_height) / 2
++                        - res.getDimensionPixelSize(R.dimen.aegis_sliver_touch_h) / 2;
++        mSliverTouch.setVisibility(GONE);
++        mSliverTouch.setContentDescription(getContext().getString(R.string.aegis_dock_recall));
++        mSliverTouch.setClickable(true);
++        mSliverTouch.setFocusable(true);
++        mSliverGestures =
++                new GestureDetector(
++                        getContext(),
++                        new GestureDetector.SimpleOnGestureListener() {
++                            @Override
++                            public boolean onSingleTapConfirmed(MotionEvent e) {
++                                expand();
++                                return true;
++                            }
++
++                            @Override
++                            public boolean onFling(
++                                    MotionEvent e1, MotionEvent e2, float vx, float vy) {
++                                if (e1 == null || e2 == null) return false;
++                                if (e2.getX() > e1.getX() && vx > 0) {
++                                    expand(); // swipe right recalls the dock
++                                    return true;
++                                }
++                                return false;
++                            }
++                        });
++        mSliverTouch.setOnTouchListener(
++                (v, event) -> {
++                    if (mSliverGestures.onTouchEvent(event)) return true;
++                    // Proximity swell: the bar swells 5 -> 9 dp while touched.
++                    switch (event.getActionMasked()) {
++                        case MotionEvent.ACTION_DOWN:
++                            swellSliver(true);
++                            break;
++                        case MotionEvent.ACTION_UP:
++                        case MotionEvent.ACTION_CANCEL:
++                            swellSliver(false);
++                            break;
++                        default:
++                            break;
++                    }
++                    return false;
++                });
++        addView(mSliverTouch, sliverLp);
++
++        // The pill is a capsule; the sliver a rounded bar with 4dp inner corners.
+         setOutlineFor(mPill, res.getDimensionPixelSize(R.dimen.aegis_dock_height) / 2f);
+-        setOutlineFor(mSliver, res.getDimensionPixelSize(R.dimen.aegis_sliver_width) / 2);
++        setOutlineFor(mSliverBar, res.getDimensionPixelSize(R.dimen.aegis_sliver_idle) / 2f);
+ 
+         expand();
+     }
+@@ -179,51 +278,118 @@
+         view.setClipToOutline(true);
+     }
+ 
+-    /** Collapses the dock to the edge sliver. */
++    private void swellSliver(boolean touched) {
++        Resources res = getResources();
++        int target = res.getDimensionPixelSize(
++                touched ? R.dimen.aegis_sliver_touch : R.dimen.aegis_sliver_idle);
++        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) mSliverBar.getLayoutParams();
++        if (lp.width == target) return;
++        if (!mAnimate) {
++            lp.width = target;
++            mSliverBar.setLayoutParams(lp);
++            return;
++        }
++        lp.width = target;
++        mSliverBar.setLayoutParams(lp);
++    }
++
++    /** Collapses the capsule into the left-edge sliver (360 ms emphasized). */
+     public void collapse() {
+         if (!mExpanded) return;
+         mExpanded = false;
++        removeCallbacks(mPeekEnd);
++        Resources res = getResources();
++        int sliverH = res.getDimensionPixelSize(R.dimen.aegis_sliver_touch_h);
++        int shiftX =
++                -(res.getDisplayMetrics().widthPixels / 2
++                        - res.getDimensionPixelSize(R.dimen.aegis_sliver_touch_w) / 2
++                        + res.getDimensionPixelSize(R.dimen.aegis_dock_width) / 2);
++        float scaleY = (float) sliverH / res.getDimensionPixelSize(R.dimen.aegis_dock_height);
+         if (!mAnimate) {
+             mPill.setVisibility(GONE);
+-            mSliver.setAlpha(1f);
+-            mSliver.setVisibility(VISIBLE);
++            mPill.setTranslationX(0f);
++            mPill.setScaleY(1f);
++            mPill.setAlpha(1f);
++            mSliverBar.setAlpha(1f);
++            mSliverTouch.setVisibility(VISIBLE);
+             return;
+         }
+-        mPill.animate().alpha(0f).setDuration(220).withEndAction(() -> {
+-            mPill.setVisibility(GONE);
+-            mSliver.setAlpha(0f);
+-            mSliver.setVisibility(VISIBLE);
+-            mSliver.animate().alpha(1f).setDuration(140).start();
+-        }).start();
+-    }
+-
+-    /** Expands the full dock pill. */
++        mPill.animate()
++                .translationX(shiftX)
++                .scaleY(scaleY)
++                .alpha(0f)
++                .setDuration(COLLAPSE_MS)
++                .setInterpolator(
++                        new PathInterpolator(0.32f, 0.72f, 0f, 1f))
++                .withEndAction(
++                        () -> {
++                            mPill.setVisibility(GONE);
++                            mPill.setTranslationX(0f);
++                            mPill.setScaleY(1f);
++                            mPill.setAlpha(1f);
++                            // Staggered: the sliver reads as the capsule
++                            // flowing into the edge (spec Table 2).
++                            postDelayed(
++                                    () -> {
++                                        if (mExpanded) return;
++                                        mSliverTouch.setVisibility(VISIBLE);
++                                        mSliverBar.setAlpha(0f);
++                                        mSliverBar.animate().alpha(1f).setDuration(140).start();
++                                    },
++                                    SLIVER_DELAY_MS);
++                        })
++                .start();
++    }
++
++    /** Expands the full dock capsule (420 ms spring, 4 dp overshoot). */
+     public void expand() {
+         if (mExpanded) return;
+         mExpanded = true;
++        removeCallbacks(mPeekEnd);
+         if (!mAnimate) {
+-            mSliver.setVisibility(GONE);
++            mSliverTouch.setVisibility(GONE);
+             mPill.setAlpha(1f);
+             mPill.setVisibility(VISIBLE);
+             refreshUrl();
+             scheduleCollapse();
+             return;
+         }
+-        mSliver.animate().alpha(0f).setDuration(120).withEndAction(() -> mSliver.setVisibility(GONE))
++        mSliverBar.animate()
++                .alpha(0f)
++                .setDuration(120)
++                .withEndAction(() -> mSliverTouch.setVisibility(GONE))
+                 .start();
+         mPill.setAlpha(0f);
++        mPill.setScaleY(0.9f);
+         mPill.setVisibility(VISIBLE);
+-        mPill.animate().alpha(1f).setDuration(180).start();
++        mPill.animate()
++                .alpha(1f)
++                .scaleY(1f)
++                .setDuration(EXPAND_MS)
++                .setInterpolator(new OvershootInterpolator(1.2f))
++                .start();
+         refreshUrl();
+         scheduleCollapse();
+     }
+ 
+     private void scheduleCollapse() {
+         removeCallbacks(mCollapse);
+-        // The dock never collapses while the app menu is open above it.
+-        AppMenuHandler handler = mMenuSupplier.get();
+-        if (handler != null && handler.isAppMenuShowing()) return;
++        // The dock never collapses while a glass sheet covers it.
++        if (AegisGlassSheet.isAnySheetShowing()) return;
++        // The keyboard owns the bottom edge (spec Table 11): stay hidden.
++        if (mImeOpen) return;
+         postDelayed(mCollapse, COLLAPSE_DELAY_MS);
++    }
++
++    /** Peeks after a navigation completes so the trust line is readable. */
++    private void schedulePeekAfterNavigation() {
++        if (!mExpanded) {
++            expand();
++        } else {
++            scheduleCollapse();
++        }
++        removeCallbacks(mPeekEnd);
++        postDelayed(mPeekEnd, COLLAPSE_DELAY_MS + PEEK_DELAY_MS);
+     }
+ 
+     private void refreshUrl() {
+@@ -232,7 +398,8 @@
+         ChromeTabbedActivity cta = (ChromeTabbedActivity) activity;
+         Tab tab = cta.getActivityTab();
+         String next;
+-        if (tab == null || !tab.isLoading()) {
++        boolean loading = tab != null && tab.isLoading();
++        if (tab == null || !loading) {
+             next = getContext().getString(R.string.aegis_dock_search_hint);
+         } else {
+             String title = tab.getTitle();
+@@ -245,6 +412,9 @@
+             mLastBound = next;
+             mUrlPill.setText(next);
+         }
++        // Auto-hide trigger (spec 3.1): navigation complete -> 2.4 s peek.
++        if (mWasLoading && !loading) schedulePeekAfterNavigation();
++        mWasLoading = loading;
+     }
+ 
+     private static String stripScheme(@Nullable String spec) {
+@@ -254,12 +424,9 @@
+         return spec;
+     }
+ 
++    /** Opens the Aegis glass menu sheet (patch 100). */
+     private void onMenuClicked() {
+-        AppMenuHandler handler = mMenuSupplier.get();
+-        if (handler != null) {
+-            handler.showAppMenu(mUrlPill, false, true);
+-        }
+-        scheduleCollapse();
++        AegisMenuSheet.show(this);
+     }
+ 
+     private void onNewTabClicked() {
+@@ -271,13 +438,9 @@
+                         /* menuItemData= */ null, /* triggeringMotion= */ null);
+     }
+ 
+-    private void onTabsClicked() {
+-        Activity activity = (Activity) getContext();
+-        if (!(activity instanceof ChromeTabbedActivity)) return;
+-        ((ChromeTabbedActivity) activity)
+-                .onMenuOrKeyboardAction(
+-                        R.id.tab_search, /* fromMenu= */ false,
+-                        /* menuItemData= */ null, /* triggeringMotion= */ null);
++    /** Opens the Aegis glass tab grid (patch 100). */
++    public void openTabGrid() {
++        AegisTabGridSheet.show(this);
+     }
+ 
+     /** Opens the glass search sheet (patch 081). */
+@@ -296,11 +459,12 @@
+         super.onDetachedFromWindow();
+         removeCallbacks(mRefresh);
+         removeCallbacks(mCollapse);
++        removeCallbacks(mPeekEnd);
+     }
+ 
+     @Override
+-    public boolean dispatchTouchEvent(android.view.MotionEvent event) {
+-        @SuppressLint("UnusedVariable")
++    public boolean dispatchTouchEvent(MotionEvent event) {
++        mDockGestures.onTouchEvent(event);
+         boolean result = super.dispatchTouchEvent(event);
+         scheduleCollapse();
+         return result;
+@@ -313,6 +477,17 @@
+         Rect insets = new Rect();
+         getWindowVisibleDisplayFrame(insets);
+         int bottomInset = Math.max(0, getRootView().getHeight() - insets.bottom);
++        // Keyboard layer (spec Table 11): the keyboard wins; the dock hides.
++        boolean imeNow = bottomInset > getRootView().getHeight() / 5;
++        if (imeNow != mImeOpen) {
++            mImeOpen = imeNow;
++            if (imeNow) {
++                removeCallbacks(mCollapse);
++                if (mExpanded) collapse();
++            } else if (!mExpanded) {
++                expand();
++            }
++        }
+         if (mPill.getLayoutParams() instanceof FrameLayout.LayoutParams) {
+             FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) mPill.getLayoutParams();
+             int wanted = getResources().getDimensionPixelSize(R.dimen.aegis_dock_bottom_margin)
+
+--- a/chrome/android/java/res/values/aegis_tokens.xml
++++ b/chrome/android/java/res/values/aegis_tokens.xml
+@@ -3,43 +3,65 @@
+      Use of this source code is governed by a BSD-style license that can be
+      found in the LICENSE file.
+ 
+-     Aegis Liquid Glass design tokens (spec Tables 5-8). Base set = light
+-     theme glass; values-night/aegis_tokens.xml (same resource names) carries
+-     the dark set. Everything the dock and glass sheets use is prefixed
+-     aegis_. -->
++     Aegis Liquid Glass design tokens v2 (spec Tables 5-8). Base set = light
++     theme (frosted paper); values-night/aegis_tokens.xml carries the dark set
++     (smoked ink). Everything the dock, sliver, sheets and home use is
++     prefixed aegis_. -->
+ <resources>
+-    <!-- Glass surfaces -->
+-    <color name="aegis_glass_pill">#D9F4F4F4</color>
+-    <color name="aegis_glass_stroke">#3A8A8A8A</color>
+-    <color name="aegis_glass_sheet">#F2F4F4F4</color>
+-    <color name="aegis_glass_scrim">#4D101114</color>
++    <!-- Core palette (Table 5) - light -->
++    <color name="aegis_bg">#FFF6F6F7</color>
++    <color name="aegis_surface">#FFFFFFFF</color>
++    <color name="aegis_text_primary">#F0101013</color>
++    <color name="aegis_text_secondary">#D952525B</color>
++    <color name="aegis_text_tertiary">#8E8E8E96</color>
++    <color name="aegis_hairline">#14101013</color>
++    <color name="aegis_accent">#FF0A0A0B</color>
++    <color name="aegis_accent_on">#FFF6F6F7</color>
++    <color name="aegis_text_primary_inverted">#FFF4F4F5</color>
++    <color name="aegis_text_secondary_inverted">#D9A1A1AA</color>
++    <color name="aegis_surface_inverted">#FF101013</color>
++
++    <!-- Glass recipe (Table 6) - light: 62% paper tint, ink hairline -->
++    <color name="aegis_glass_pill">#9EFFFFFF</color>
++    <color name="aegis_glass_stroke">#1F101114</color>
++    <color name="aegis_glass_sheet">#E8FFFFFF</color>
++    <color name="aegis_glass_scrim">#47101114</color>
+     <color name="aegis_glass_chip">#66FFFFFF</color>
++    <color name="aegis_glass_chip_active">#FF0A0A0B</color>
+     <color name="aegis_glass_chip_text">#DE101114</color>
+     <!-- Foreground -->
+     <color name="aegis_glass_text">#DE101114</color>
+     <color name="aegis_glass_text_secondary">#99101114</color>
+     <color name="aegis_glass_icon">#DE101114</color>
+     <color name="aegis_glass_icon_pressed">#40101114</color>
+-    <!-- Brand -->
+-    <color name="aegis_accent">#DE101114</color>
+ 
+-    <!-- Dock geometry (spec Table 9: pill 260x52dp, sliver 24x140dp) -->
++    <!-- Dock geometry (spec Table 1: 260x52 pill, 148x40 URL pill, 44dp
++         buttons, 4dp gaps; Table 2: 5x120 sliver in a 24x140 touch target) -->
+     <dimen name="aegis_dock_width">260dp</dimen>
+     <dimen name="aegis_dock_height">52dp</dimen>
+-    <dimen name="aegis_dock_hpadding">10dp</dimen>
+-    <dimen name="aegis_dock_url_padding">10dp</dimen>
+-    <dimen name="aegis_dock_button">32dp</dimen>
+-    <dimen name="aegis_dock_gap">6dp</dimen>
+-    <dimen name="aegis_dock_bottom_margin">12dp</dimen>
+-    <dimen name="aegis_sliver_width">24dp</dimen>
+-    <dimen name="aegis_sliver_height">140dp</dimen>
+-    <dimen name="aegis_sheet_corner">28dp</dimen>
++    <dimen name="aegis_dock_hpadding">4dp</dimen>
++    <dimen name="aegis_dock_url_padding">8dp</dimen>
++    <dimen name="aegis_dock_button">44dp</dimen>
++    <dimen name="aegis_dock_gap">4dp</dimen>
++    <dimen name="aegis_dock_bottom_margin">16dp</dimen>
++    <dimen name="aegis_url_pill_height">40dp</dimen>
++    <dimen name="aegis_sliver_idle">5dp</dimen>
++    <dimen name="aegis_sliver_touch">9dp</dimen>
++    <dimen name="aegis_sliver_bar_h">120dp</dimen>
++    <dimen name="aegis_sliver_touch_w">24dp</dimen>
++    <dimen name="aegis_sliver_touch_h">140dp</dimen>
++    <dimen name="aegis_sheet_corner">26dp</dimen>
+     <dimen name="aegis_sheet_padding">20dp</dimen>
++
++    <!-- Home (Plate 01): display clock 82dp/300, micro labels, tiles 22dp -->
++    <dimen name="aegis_home_clock">82dp</dimen>
++    <dimen name="aegis_home_tile">22dp</dimen>
+ 
+     <!-- Identifiers -->
+     <item name="aegis_dock" type="id"/>
+     <item name="aegis_search_sheet" type="id"/>
+     <item name="aegis_search_input" type="id"/>
++    <item name="aegis_home" type="id"/>
+ 
+     <!-- Dock / sheet strings -->
+     <string name="aegis_dock_menu">Menu</string>
+@@ -49,5 +71,22 @@
+     <string name="aegis_dock_search_hint">Search or type URL</string>
+     <string name="aegis_dock_recall">Show dock</string>
+     <string name="aegis_sheet_search">Search %1$s or type a URL</string>
++    <string name="aegis_sheet_tabs_title">Tabs</string>
++    <string name="aegis_sheet_tabs_empty">No tabs yet</string>
++    <!-- Menu sheet (spec Table 4): 4 x 2 quick actions + status line. -->
++    <string name="aegis_menu_status">Hardened by default</string>
++    <string name="aegis_menu_home">Aegis</string>
++    <string name="aegis_menu_new_tab">New tab</string>
++    <string name="aegis_menu_private_tab">Private tab</string>
++    <string name="aegis_menu_history">History</string>
++    <string name="aegis_menu_downloads">Downloads</string>
++    <string name="aegis_menu_bookmarks">Bookmarks</string>
++    <string name="aegis_menu_reading_list">Reading list</string>
++    <string name="aegis_menu_desktop_site">Desktop site</string>
++    <string name="aegis_menu_settings">Settings</string>
++    <!-- Home (Plate 01). %1$s = clock, %2$s = date, %3$s = blocked count. -->
++    <string name="aegis_home_status">Hardened · %1$s hosts blocked</string>
++    <string name="aegis_home_quick">Quick shields</string>
++    <string name="aegis_hosts_blocked">92,957</string>
+ </resources>
+ 
+
+--- a/chrome/android/java/res/values-night/aegis_tokens.xml
++++ b/chrome/android/java/res/values-night/aegis_tokens.xml
+@@ -1 +1,37 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Copyright 2026 The Aegis Browser Authors
++     Use of this source code is governed by a BSD-style license that can be
++     found in the LICENSE file.
+ 
++     Aegis Liquid Glass tokens - dark set (smoked ink, spec Tables 5-6).
++     Same resource names as values/aegis_tokens.xml; the glass stays faintly
++     translucent so the page reads through the controls. -->
++<resources>
++    <!-- Core palette (Table 5) - dark -->
++    <color name="aegis_bg">#FF0A0A0B</color>
++    <color name="aegis_surface">#FF141416</color>
++    <color name="aegis_text_primary">#FFF4F4F5</color>
++    <color name="aegis_text_secondary">#D9A1A1AA</color>
++    <color name="aegis_text_tertiary">#8E63636B</color>
++    <color name="aegis_hairline">#1AFFFFFF</color>
++    <color name="aegis_accent">#FFFFFFFF</color>
++    <color name="aegis_accent_on">#FF0A0A0B</color>
++    <color name="aegis_text_primary_inverted">#FF101013</color>
++    <color name="aegis_text_secondary_inverted">#D952525B</color>
++    <color name="aegis_surface_inverted">#FFF4F4F5</color>
++
++    <!-- Glass recipe (Table 6) - dark: 52% ink tint, white hairline -->
++    <color name="aegis_glass_pill">#85101012</color>
++    <color name="aegis_glass_stroke">#24FFFFFF</color>
++    <color name="aegis_glass_sheet">#C2141416</color>
++    <color name="aegis_glass_scrim">#75101114</color>
++    <color name="aegis_glass_chip">#33FFFFFF</color>
++    <color name="aegis_glass_chip_active">#FFFFFFFF</color>
++    <color name="aegis_glass_chip_text">#FFF4F4F5</color>
++    <!-- Foreground -->
++    <color name="aegis_glass_text">#F0F4F4F5</color>
++    <color name="aegis_glass_text_secondary">#99F4F4F5</color>
++    <color name="aegis_glass_icon">#F0F4F4F5</color>
++    <color name="aegis_glass_icon_pressed">#40FFFFFF</color>
++</resources>
++
+
+--- a/chrome/android/java/res/drawable/aegis_ic_bookmark.xml
++++ b/chrome/android/java/res/drawable/aegis_ic_bookmark.xml
+@@ -1 +1,11 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Copyright 2026 The Aegis Browser Authors
++     Use of this source code is governed by a BSD-style license that can be
++     found in the LICENSE file. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="21dp" android:height="21dp"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:fillColor="@color/aegis_glass_icon"
++        android:pathData="M17,3H7c-1.1,0 -1.99,0.9 -1.99,2L5,21l7,-3 7,3V5c0,-1.1 -0.9,-2 -2,-2zM17,18l-5,-2.18L7,18V5h10v13z"/>
++</vector>
+ 
+
+--- a/chrome/android/java/res/drawable/aegis_ic_desktop.xml
++++ b/chrome/android/java/res/drawable/aegis_ic_desktop.xml
+@@ -1 +1,11 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Copyright 2026 The Aegis Browser Authors
++     Use of this source code is governed by a BSD-style license that can be
++     found in the LICENSE file. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="21dp" android:height="21dp"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:fillColor="@color/aegis_glass_icon"
++        android:pathData="M21,3H3c-1.1,0 -2,0.9 -2,2v12c0,1.1 0.9,2 2,2h5v2h8v-2h5c1.1,0 2,-0.9 2,-2V5c0,-1.1 -0.9,-2 -2,-2zM21,17H3V5h18v12z"/>
++</vector>
+ 
+
+--- a/chrome/android/java/res/drawable/aegis_ic_download.xml
++++ b/chrome/android/java/res/drawable/aegis_ic_download.xml
+@@ -1 +1,11 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Copyright 2026 The Aegis Browser Authors
++     Use of this source code is governed by a BSD-style license that can be
++     found in the LICENSE file. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="21dp" android:height="21dp"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:fillColor="@color/aegis_glass_icon"
++        android:pathData="M19,9h-4V3H9v6H5l7,7 7,-7zM5,18v2h14v-2L5,18z"/>
++</vector>
+ 
+
+--- a/chrome/android/java/res/drawable/aegis_ic_history.xml
++++ b/chrome/android/java/res/drawable/aegis_ic_history.xml
+@@ -1 +1,11 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Copyright 2026 The Aegis Browser Authors
++     Use of this source code is governed by a BSD-style license that can be
++     found in the LICENSE file. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="21dp" android:height="21dp"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:fillColor="@color/aegis_glass_icon"
++        android:pathData="M13,3c-4.97,0 -9,4.03 -9,9L1,12l3.89,3.89 0.07,0.14L9,12L6,12c0,-3.87 3.13,-7 7,-7s7,3.13 7,7 -3.13,7 -7,7c-1.93,0 -3.68,-0.79 -4.94,-2.06l-1.42,1.42C8.27,19.99 10.51,21 13,21c4.97,0 9,-4.03 9,-9s-4.03,-9 -9,-9zM12,8v5l4.28,2.54 0.72,-1.21 -3.5,-2.08L13.5,8L12,8z"/>
++</vector>
+ 
+
+--- a/chrome/android/java/res/drawable/aegis_ic_incognito.xml
++++ b/chrome/android/java/res/drawable/aegis_ic_incognito.xml
+@@ -1 +1,11 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Copyright 2026 The Aegis Browser Authors
++     Use of this source code is governed by a BSD-style license that can be
++     found in the LICENSE file. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="21dp" android:height="21dp"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:fillColor="@color/aegis_glass_icon"
++        android:pathData="M17.06,13c-1.86,0 -3.42,1.33 -3.82,3.1 -0.95,-0.41 -1.82,-0.3 -2.48,-0.01C10.35,14.31 8.79,13 6.94,13 4.77,13 3,14.79 3,17s1.77,4 3.94,4c2.06,0 3.74,-1.62 3.9,-3.68 0.34,-0.24 1.23,-0.69 2.32,0.01 0.17,2.05 1.84,3.67 3.9,3.67 2.17,0 3.94,-1.79 3.94,-4s-1.77,-4 -3.94,-4zM6.94,20c-1.59,0 -2.88,-1.34 -2.88,-3s1.29,-3 2.88,-3 2.88,1.34 2.88,3 -1.29,3 -2.88,3zM17.06,20c-1.59,0 -2.88,-1.34 -2.88,-3s1.29,-3 2.88,-3 2.88,1.34 2.88,3 -1.29,3 -2.88,3zM22,10.5v1c-3.11,0.94 -6.51,1.42 -10,1.42S5.11,12.44 2,11.5v-1c2.65,0.8 5.46,1.26 8.34,1.38 -0.01,-0.44 0.05,-1.14 0.38,-2.02 -2.28,-0.46 -3.98,-2.46 -3.98,-4.86 0,-0.62 0.51,-1.12 1.12,-1.12h8.29c0.61,0 1.12,0.5 1.12,1.12 0,2.4 -1.7,4.4 -3.98,4.86 0.33,0.88 0.39,1.58 0.38,2.02 2.84,-0.12 5.64,-0.58 8.33,-1.38z"/>
++</vector>
+ 
+
+--- a/chrome/android/java/res/drawable/aegis_ic_reading.xml
++++ b/chrome/android/java/res/drawable/aegis_ic_reading.xml
+@@ -1 +1,11 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Copyright 2026 The Aegis Browser Authors
++     Use of this source code is governed by a BSD-style license that can be
++     found in the LICENSE file. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="21dp" android:height="21dp"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:fillColor="@color/aegis_glass_icon"
++        android:pathData="M4,6h10v2H4zM4,10h10v2H4zM4,14h7v2H4zM16,10v8.22c0,0.42 0.47,0.67 0.82,0.44l5.29,-3.51c0.32,-0.21 0.32,-0.68 0,-0.89l-5.29,-3.51c-0.35,-0.23 -0.82,0.02 -0.82,0.44z"/>
++</vector>
+ 
+
+--- a/chrome/android/java/res/drawable/aegis_ic_settings.xml
++++ b/chrome/android/java/res/drawable/aegis_ic_settings.xml
+@@ -1 +1,11 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Copyright 2026 The Aegis Browser Authors
++     Use of this source code is governed by a BSD-style license that can be
++     found in the LICENSE file. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="21dp" android:height="21dp"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:fillColor="@color/aegis_glass_icon"
++        android:pathData="M19.14,12.94c0.04,-0.3 0.06,-0.61 0.06,-0.94 0,-0.32 -0.02,-0.64 -0.07,-0.94l2.03,-1.58c0.18,-0.14 0.23,-0.41 0.12,-0.61l-1.92,-3.32c-0.12,-0.22 -0.37,-0.29 -0.59,-0.22l-2.39,0.96c-0.5,-0.38 -1.03,-0.7 -1.62,-0.94L14.4,2.81c-0.04,-0.24 -0.24,-0.41 -0.48,-0.41h-3.84c-0.24,0 -0.43,0.17 -0.47,0.41L9.25,5.35C8.66,5.59 8.12,5.92 7.63,6.29L5.24,5.33c-0.22,-0.08 -0.47,0 -0.59,0.22L2.74,8.87C2.62,9.08 2.66,9.34 2.86,9.48l2.03,1.58C4.84,11.36 4.8,11.69 4.8,12s0.02,0.64 0.07,0.94l-2.03,1.58c-0.18,0.14 -0.23,0.41 -0.12,0.61l1.92,3.32c0.12,0.22 0.37,0.29 0.59,0.22l2.39,-0.96c0.5,0.38 1.03,0.7 1.62,0.94l0.36,2.54c0.05,0.24 0.24,0.41 0.48,0.41h3.84c0.24,0 0.44,-0.17 0.47,-0.41l0.36,-2.54c0.59,-0.24 1.13,-0.56 1.62,-0.94l2.39,0.96c0.22,0.08 0.47,0 0.59,-0.22l1.92,-3.32c0.12,-0.22 0.07,-0.47 -0.12,-0.61L19.14,12.94zM12,15.6c-1.98,0 -3.6,-1.62 -3.6,-3.6s1.62,-3.6 3.6,-3.6 3.6,1.62 3.6,3.6 -1.62,3.6 -3.6,3.6z"/>
++</vector>
+ 
+
+--- a/chrome/android/java/res/drawable/aegis_ic_shield.xml
++++ b/chrome/android/java/res/drawable/aegis_ic_shield.xml
+@@ -1 +1,11 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Copyright 2026 The Aegis Browser Authors
++     Use of this source code is governed by a BSD-style license that can be
++     found in the LICENSE file. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="16dp" android:height="16dp"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:fillColor="@color/aegis_glass_icon"
++        android:pathData="M12,1L3,5v6c0,5.55 3.84,10.74 9,12 5.16,-1.26 9,-6.45 9,-12V5L12,1zM12,11.99h7c-0.53,4.12 -3.28,7.79 -7,8.94V12H5V6.3l7,-3.11v8.8z"/>
++</vector>
+ 
+
+--- a/chrome/android/java/res/drawable/aegis_url_pill.xml
++++ b/chrome/android/java/res/drawable/aegis_url_pill.xml
+@@ -1 +1,11 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Copyright 2026 The Aegis Browser Authors
++     Use of this source code is governed by a BSD-style license that can be
++     found in the LICENSE file. -->
++<shape xmlns:android="http://schemas.android.com/apk/res/android"
++    android:shape="rectangle">
++    <solid android:color="@color/aegis_glass_chip"/>
++    <corners android:radius="20dp"/>
++    <stroke android:width="1dp" android:color="@color/aegis_glass_stroke"/>
++</shape>
+ 
+
+--- a/chrome/android/chrome_java_resources.gni
++++ b/chrome/android/chrome_java_resources.gni
+@@ -241,6 +241,15 @@
+   "java/res/drawable/aegis_ic_plus.xml",
+   "java/res/drawable/aegis_ic_search.xml",
+   "java/res/drawable/aegis_ic_tabs.xml",
++  "java/res/drawable/aegis_ic_bookmark.xml",
++  "java/res/drawable/aegis_ic_desktop.xml",
++  "java/res/drawable/aegis_ic_download.xml",
++  "java/res/drawable/aegis_ic_history.xml",
++  "java/res/drawable/aegis_ic_incognito.xml",
++  "java/res/drawable/aegis_ic_reading.xml",
++  "java/res/drawable/aegis_ic_settings.xml",
++  "java/res/drawable/aegis_ic_shield.xml",
++  "java/res/drawable/aegis_url_pill.xml",
+   "java/res/drawable/adaptive_toolbar_preference_header.xml",
+   "java/res/drawable/add_link.xml",
+   "java/res/drawable/add_photo_alternate_24dp.xml",
+@@ -644,6 +653,7 @@
+   "java/res/values-land/styles.xml",
+   "java/res/values-large/drawables.xml",
+   "java/res/values-ldrtl/drawables.xml",
++  "java/res/values-night/aegis_tokens.xml",
+   "java/res/values-night/colors.xml",
+   "java/res/values-night/drawables.xml",
+   "java/res/values-sw600dp-v30/styles.xml",

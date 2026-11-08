@@ -68,14 +68,20 @@ Design tokens live in one XML file per spec Table 5–8, so visual fine-tuning i
 3. Montserrat licensing: OFL — bundle as APK asset (confirmed fine).
 4. Shield count source: patch 070's engine count API (reuse, no new C++).
 
-## 5. Status 2026-11-07 (reconciled against the shipped patch list)
+## 5. Status 2026-11-08 (r44 wave - Layer-2 complete)
 
 | Map milestone | Map patch # | Actual patch | Status |
 |---|---|---|---|
 | M1 dock | `080-aegis-dock.patch` | `080-aegis-dock.patch` (547 lines, 9 files) | **DONE** — shipped 97b4e11, GREEN through every APK banking leg since |
-| M2 collapse/auto-hide | `081-aegis-dock-collapse.patch` | — | **PENDING** (081 was reused by the search sheet) |
-| M3 glass sheets | `082-aegis-glass-sheets.patch` | `081-aegis-search-sheet.patch` (search overlay slice only) | **PARTIAL** — tab grid sheet + menu sheet still to write |
-| M4 parity | `083-aegis-glass-parity.patch` | `082-aegis-dock-parity.patch` (reduced-motion + low-RAM instant states) | **PARTIAL** — light/dark tokens shipped with 080 |
+| M2 collapse/auto-hide | `081-aegis-dock-collapse.patch` | `099-aegis-dock-motion.patch` (+ the pre-existing `099-aegis-r44-settings-hardening.patch`) | **DONE** — 360 ms emphasized collapse into the 5x120dp LEFT-edge sliver (24x140dp touch, 5->9dp swell), 420 ms spring recall, idle + nav-peek + keyboard + fling triggers |
+| M3 glass sheets | `082-aegis-glass-sheets.patch` | `100-aegis-glass-sheets.patch` (tab grid + menu sheet; search overlay = `081` + `101-aegis-search-sheet-v2.patch`) | **DONE** — AegisGlassSheet base (rise 380 ms, 75% cap, fling/scrim dismiss), AegisMenuSheet (domain header + hardened pill + 4x2 grid reusing menu ids), AegisTabGridSheet (2-col cards, private inverted, new-tab pill) |
+| M4 parity | `083-aegis-glass-parity.patch` | `082-aegis-dock-parity.patch` + tokens v2 in `099` (full Table 5-8 palette, light + night) | **DONE** — reduced-motion/low-RAM instant states + theme-paired tokens |
+| NTP home | (Plate 01) | `103-aegis-home.patch` | **DONE** — clock, hardened status pill, quick-shields tiles, monochrome gradient overlay on the new-tab page |
+| DSE adoption | (r44 defect) | `100-aegis-r44-dse-migration.patch` | **DONE** — one-time marker-gated heal of stale Google defaults on pre-098 profiles |
+| Settings hardening | (r44 defect) | `099-aegis-r44-settings-hardening.patch` + `104-aegis-settings-dedupe.patch` | **DONE** — try/catch guards, missing-key tolerance, 052 duplicate-fragment entry removed |
+| Launcher identity | (r44 defect) | branding assets (rounded mipmap set) + `103-aegis-r44-brand-sweep.patch` manifest label | **DONE** — rounded logo regenerated into res_chromium_base; label "Aegis" in the manifest template |
 
-Renumbering note: 081–083 drifted from the plan (081 = search sheet, 082 = dock parity, 083 unused).
-Next Android UI patches start at **099** to stay clear of the 090–098 de-google/branding chain.
+Renumbering note: 099-104 are the r44 wave; 099/100/103 carry two patches each
+(dock-motion + settings-hardening / glass-sheets + DSE-migration / home +
+brand-sweep). AegisSearchDefaults (dropped 102) was superseded by the 100 DSE
+migration; 101-aegis-r44-dock-search-fix was superseded by 101-v2.

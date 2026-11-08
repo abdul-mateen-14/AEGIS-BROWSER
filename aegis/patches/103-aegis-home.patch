@@ -1,0 +1,271 @@
+# 103 - aegis-home (proposal Plate 01)
+# New-tab home: 82dp light clock with tabular figures, date micro
+# label, 'hardened - 92,957 hosts blocked' status pill and six
+# quick-shield tiles over the monochrome gradient. A View overlay
+# behind the dock that becomes visible while the current tab is the
+# NTP; URL tiles load in the current tab, settings tile opens the
+# Aegis ID page, private tile opens a private tab.
+
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java
+@@ -1 +1,248 @@
+-
++// Copyright 2026 The Aegis Browser Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++package org.chromium.chrome.browser.aegis.home;
++
++import android.app.Activity;
++import android.graphics.Typeface;
++import android.graphics.drawable.GradientDrawable;
++import android.os.Handler;
++import android.os.Looper;
++import android.view.Gravity;
++import android.view.View;
++import android.view.ViewGroup;
++import android.widget.FrameLayout;
++import android.widget.GridLayout;
++import android.widget.LinearLayout;
++import android.widget.TextView;
++
++import org.chromium.build.annotations.NullMarked;
++import org.chromium.build.annotations.Nullable;
++import org.chromium.chrome.R;
++import org.chromium.chrome.browser.ChromeTabbedActivity;
++import org.chromium.chrome.browser.tab.Tab;
++
++import java.text.SimpleDateFormat;
++import java.util.Date;
++import java.util.Locale;
++
++/**
++ * Aegis new-tab home (patch 103, proposal Plate 01): clock, hardened status
++ * pill and quick-shields tiles over a monochrome gradient, edge to edge
++ * under the status bar. A View-layer overlay that becomes visible whenever
++ * the current tab is the new-tab page (the native NTP stays underneath);
++ * the glass dock floats above it. Tiles open URLs in the current tab; the
++ * sync tile opens the Aegis ID page, the private tile a private tab.
++ */
++@NullMarked
++public class AegisHomeView extends FrameLayout {
++    /** Clock refresh cadence, in ms. */
++    private static final long CLOCK_MS = 30_000;
++    private static final long CHECK_MS = 1000;
++
++    private final TextView mClock;
++    private final TextView mDate;
++    private final ChromeTabbedActivity mActivity;
++    private final Handler mHandler = new Handler(Looper.getMainLooper());
++    private final Runnable mTick = this::tick;
++    private final SimpleDateFormat mClockFormat =
++            new SimpleDateFormat("HH:mm", Locale.getDefault());
++    private final SimpleDateFormat mDateFormat =
++            new SimpleDateFormat("EEE, MMMM d", Locale.getDefault());
++
++    /** Installs the home overlay once, behind the dock. */
++    public static void install(ChromeTabbedActivity activity) {
++        ViewGroup content = activity.findViewById(android.R.id.content);
++        if (content == null) return;
++        if (content.findViewById(R.id.aegis_home) != null) return;
++        AegisHomeView home = new AegisHomeView(activity);
++        home.setId(R.id.aegis_home);
++        content.addView(home, 0);
++    }
++
++    private AegisHomeView(ChromeTabbedActivity activity) {
++        super(activity);
++        mActivity = activity;
++        setVisibility(GONE);
++        setClickable(false);
++
++        LinearLayout column = new LinearLayout(getContext());
++        column.setOrientation(LinearLayout.VERTICAL);
++        column.setGravity(Gravity.CENTER_HORIZONTAL);
++
++        mClock = new TextView(getContext());
++        mClock.setTextSize(82);
++        mClock.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
++        mClock.setFontFeatureSettings("tnum");
++        mClock.setTextColor(getContext().getColor(R.color.aegis_text_primary));
++        mClock.setLetterSpacing(-0.02f);
++        column.addView(mClock);
++
++        mDate = new TextView(getContext());
++        mDate.setTextSize(10);
++        mDate.setAllCaps(true);
++        mDate.setLetterSpacing(0.08f);
++        mDate.setTypeface(mDate.getTypeface(), Typeface.BOLD);
++        mDate.setTextColor(getContext().getColor(R.color.aegis_text_secondary));
++        int dateTop = (int) (6 * getResources().getDisplayMetrics().density);
++        column.setPadding(0, (int) (110 * getResources().getDisplayMetrics().density), 0, 0);
++        column.addView(mDate);
++        ((LinearLayout.LayoutParams) mDate.getLayoutParams()).topMargin = dateTop;
++
++        TextView status = new TextView(getContext());
++        status.setText(getContext().getString(
++                R.string.aegis_home_status,
++                getContext().getString(R.string.aegis_hosts_blocked)));
++        status.setTextSize(10);
++        status.setAllCaps(true);
++        status.setLetterSpacing(0.08f);
++        status.setTypeface(status.getTypeface(), Typeface.BOLD);
++        status.setTextColor(getContext().getColor(R.color.aegis_text_secondary));
++        GradientDrawable pill = new GradientDrawable();
++        pill.setColor(getContext().getColor(R.color.aegis_glass_pill));
++        pill.setCornerRadius(20 * getResources().getDisplayMetrics().density);
++        pill.setStroke(1, getContext().getColor(R.color.aegis_hairline));
++        status.setBackground(pill);
++        int spad = (int) (10 * getResources().getDisplayMetrics().density);
++        status.setPadding(spad, spad / 2, spad, spad / 2);
++        LinearLayout.LayoutParams statusLp =
++                new LinearLayout.LayoutParams(
++                        ViewGroup.LayoutParams.WRAP_CONTENT,
++                        ViewGroup.LayoutParams.WRAP_CONTENT);
++        statusLp.topMargin = (int) (18 * getResources().getDisplayMetrics().density);
++        column.addView(status, statusLp);
++
++        TextView quick = new TextView(getContext());
++        quick.setText(getContext().getString(R.string.aegis_home_quick));
++        quick.setTextSize(10);
++        quick.setAllCaps(true);
++        quick.setLetterSpacing(0.08f);
++        quick.setTypeface(quick.getTypeface(), Typeface.BOLD);
++        quick.setTextColor(getContext().getColor(R.color.aegis_text_secondary));
++        LinearLayout.LayoutParams quickLp =
++                new LinearLayout.LayoutParams(
++                        ViewGroup.LayoutParams.WRAP_CONTENT,
++                        ViewGroup.LayoutParams.WRAP_CONTENT);
++        quickLp.topMargin = (int) (44 * getResources().getDisplayMetrics().density);
++        quickLp.gravity = Gravity.START;
++        column.addView(quick, quickLp);
++
++        GridLayout grid = new GridLayout(getContext());
++        grid.setColumnCount(3);
++        int gap = (int) (10 * getResources().getDisplayMetrics().density);
++        addTile(grid, "aegis.dev", "https://aegis.dev");
++        addTile(grid, "wikipedia", "https://wikipedia.org");
++        addTile(grid, "github", "https://github.com");
++        addTile(grid, "duckduckgo", "https://duckduckgo.com");
++        addTile(grid, getContext().getString(R.string.aegis_menu_settings), null);
++        addTile(grid, getContext().getString(R.string.aegis_menu_private_tab),
++                "aegis:private");
++        LinearLayout.LayoutParams gridLp =
++                new LinearLayout.LayoutParams(
++                        ViewGroup.LayoutParams.MATCH_PARENT,
++                        ViewGroup.LayoutParams.WRAP_CONTENT);
++        gridLp.topMargin = gap;
++        column.addView(grid, gridLp);
++
++        FrameLayout.LayoutParams columnLp =
++                new FrameLayout.LayoutParams(
++                        ViewGroup.LayoutParams.MATCH_PARENT,
++                        ViewGroup.LayoutParams.WRAP_CONTENT,
++                        Gravity.CENTER_HORIZONTAL);
++        int side = (int) (30 * getResources().getDisplayMetrics().density);
++        columnLp.setMargins(side, 0, side, 0);
++        addView(column, columnLp);
++
++        GradientDrawable bg = new GradientDrawable(
++                GradientDrawable.Orientation.TOP_BOTTOM,
++                new int[] {getContext().getColor(R.color.aegis_bg),
++                        getContext().getColor(R.color.aegis_surface)});
++        setBackground(bg);
++    }
++
++    private void addTile(GridLayout grid, String label, @Nullable String target) {
++        int density = (int) getResources().getDisplayMetrics().density;
++        TextView tile = new TextView(getContext());
++        tile.setText(label);
++        tile.setTextSize(12);
++        tile.setTextColor(getContext().getColor(R.color.aegis_text_primary));
++        tile.setGravity(Gravity.CENTER);
++        tile.setClickable(true);
++        tile.setFocusable(true);
++        GradientDrawable bg = new GradientDrawable();
++        bg.setColor(getContext().getColor(R.color.aegis_glass_pill));
++        bg.setCornerRadius(22 * getResources().getDisplayMetrics().density);
++        bg.setStroke(1, getContext().getColor(R.color.aegis_hairline));
++        tile.setBackground(bg);
++        int tileH = (int) (64 * density);
++        tile.setMinimumHeight(tileH);
++        GridLayout.LayoutParams glp = new GridLayout.LayoutParams(
++                GridLayout.spec(GridLayout.UNDEFINED, 1f),
++                GridLayout.spec(GridLayout.UNDEFINED, 1f));
++        int gap = (int) (5 * density);
++        glp.setMargins(gap, gap, gap, gap);
++        tile.setLayoutParams(glp);
++        tile.setOnClickListener(
++                v -> {
++                    if (target == null) {
++                        // Settings tile: the Aegis ID / ecosystem page.
++                        org.chromium.chrome.browser.settings.SettingsNavigationFactory
++                                .createSettingsNavigation()
++                                .startSettings(mActivity,
++                                        org.chromium.chrome.browser.settings.MainSettings.class);
++                    } else if (target.equals("aegis:private")) {
++                        mActivity.onMenuOrKeyboardAction(
++                                R.id.new_incognito_tab_menu_id, /* fromMenu= */ false,
++                                /* menuItemData= */ null, /* triggeringMotion= */ null);
++                    } else {
++                        Tab tab = mActivity.getActivityTab();
++                        if (tab != null) {
++                            tab.loadUrl(
++                                    new org.chromium.content_public.browser.LoadUrlParams(
++                                            target));
++                        }
++                    }
++                });
++        grid.addView(tile);
++    }
++
++    private final Runnable mClockTick =
++            () -> {
++                mClock.setText(mClockFormat.format(new Date()));
++                mDate.setText(mDateFormat.format(new Date()).toUpperCase(Locale.getDefault()));
++                mHandler.postDelayed(mClockTick, CLOCK_MS);
++            };
++
++    private void tick() {
++        Tab tab = mActivity.getActivityTab();
++        boolean onNtp = false;
++        if (tab != null && tab.getUrl() != null) {
++            String spec = tab.getUrl().getSpec();
++            onNtp = spec != null && spec.startsWith("chrome://newtab");
++        }
++        if (onNtp) {
++            mClock.setText(mClockFormat.format(new Date()));
++            mDate.setText(mDateFormat.format(new Date()).toUpperCase(Locale.getDefault()));
++            if (getVisibility() != VISIBLE) setVisibility(VISIBLE);
++        } else if (getVisibility() != GONE) {
++            setVisibility(GONE);
++        }
++        mHandler.postDelayed(mTick, CHECK_MS);
++    }
++
++    @Override
++    protected void onAttachedToWindow() {
++        super.onAttachedToWindow();
++        tick();
++        mHandler.postDelayed(mClockTick, CLOCK_MS);
++    }
++
++    @Override
++    protected void onDetachedFromWindow() {
++        super.onDetachedFromWindow();
++        mHandler.removeCallbacks(mTick);
++        mHandler.removeCallbacks(mClockTick);
++    }
++}
++
+
+--- a/chrome/android/chrome_java_sources.gni
++++ b/chrome/android/chrome_java_sources.gni
+@@ -64,6 +64,7 @@
+   "java/src/org/chromium/chrome/browser/aegis/dock/AegisTabGridSheet.java",
+   "java/src/org/chromium/chrome/browser/about_settings/AboutChromeSettings.java",
+   "java/src/org/chromium/chrome/browser/aegis/AegisEcosystemSettings.java",
++  "java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java",
+   "java/src/org/chromium/chrome/browser/aegis/AegisIdManager.java",
+   "java/src/org/chromium/chrome/browser/aegis/sync/AegisCrypto.java",
+   "java/src/org/chromium/chrome/browser/aegis/sync/AegisSyncClient.java",

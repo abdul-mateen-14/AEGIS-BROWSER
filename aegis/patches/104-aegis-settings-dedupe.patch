@@ -1,0 +1,28 @@
+# 104 - aegis-settings-dedupe (r44)
+# Drop the trailing 'Aegis' settings section added by patch 052: it
+# registers AegisEcosystemSettings a second time in
+# main_preferences.xml (patch 091 already deep-links to the same page
+# from the top Aegis ID row). Duplicate fragment entries for one class
+# are the prime suspect for the settings-index/search crash on open;
+# with this, the ecosystem page stays reachable from the Aegis ID row.
+
+--- a/chrome/android/java/res/xml/main_preferences.xml
++++ b/chrome/android/java/res/xml/main_preferences.xml
+@@ -142,17 +142,4 @@
+         android:order="31"
+         android:title="@string/prefs_about_chrome"/>
+ 
+-    <org.chromium.components.browser_ui.settings.ChromeBasePreferenceCategory
+-        android:key="aegis_section"
+-        android:order="99"
+-        android:title="Aegis">
+-    <org.chromium.components.browser_ui.settings.ChromeBasePreference
+-        android:fragment="org.chromium.chrome.browser.aegis.AegisEcosystemSettings"
+-        android:key="aegis_ecosystem"
+-        android:order="1"
+-        android:title="Aegis Ecosystem"
+-        android:summary="AM Products · CoreX · AEGIS OS · AEGIS SOC" />
+-    </org.chromium.components.browser_ui.settings.ChromeBasePreferenceCategory>
+-
+ </PreferenceScreen>
+-

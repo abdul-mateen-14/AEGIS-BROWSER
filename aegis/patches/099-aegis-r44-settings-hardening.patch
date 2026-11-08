@@ -1,0 +1,62 @@
+# 99 - settings hardening (r44): the user-visible Settings crash could not be
+# reproduced statically - every patched file on the chrome://settings open
+# path was audited against the 156.0.8078.79 stock sources and the 088/091
+# MainSettings wiring is clean. These are the two Aegis-injected surfaces that
+# CAN throw at runtime (account-row refresh, ecosystem page inflation); both
+# are presentation-only and must never take Settings down. If Settings still
+# crashes after this, the crash is native and needs adb logcat.
+
+--- a/chrome/android/java/src/org/chromium/chrome/browser/settings/MainSettings.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/settings/MainSettings.java
+@@ -503,28 +503,37 @@
+     // Aegis: keep the top-of-settings Aegis ID entry in sync with the
+     // account state (sign-in / sign-up entry point vs. account manager
+     // row) - also refreshed on resume when returning from the Aegis
+     // Ecosystem page.
+     private void updateAegisIdPreference() {
++        try {
+         ChromeBasePreference aegisIdEntry = findPreference("aegis_id_entry");
+         if (aegisIdEntry == null || getContext() == null) {
+             return;
+         }
+         AegisIdManager aegisIdManager = AegisIdManager.getInstance(getContext());
+         if (aegisIdManager.isSignedIn()) {
+             aegisIdEntry.setTitle("Manage account");
+             String email = aegisIdManager.signedInEmail();
+             aegisIdEntry.setSummary(
+                     email.isEmpty() ? "Manage your Aegis ID account and devices"
+                                     : email);
+         } else {
+             aegisIdEntry.setTitle("Sign in or create account");
+             aegisIdEntry.setSummary("Sync your encrypted data across devices");
+         }
++        } catch (RuntimeException e) {
++            // Aegis (de-Googled): the account row is presentation-only; a
++            // failure here must never crash Settings itself.
++        }
+     }
+ 
+     @Override
+     public void onResume() {
+         super.onResume();
+-        updateAegisIdPreference();
++        try {
++            updateAegisIdPreference();
++        } catch (RuntimeException e) {
++            // Aegis (de-Googled): same guarantee as onCreate.
++        }
+     }
+ 
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisEcosystemSettings.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisEcosystemSettings.java
+@@ -72,7 +72,9 @@
+         mIdManager = AegisIdManager.getInstance(requireContext());
+         for (String key : new String[] {PREF_PRODUCTS, PREF_COREX, PREF_OS, PREF_SOC,
+                 PREF_ID_SIGNIN, PREF_ID_DEVICES, PREF_ID_SIGNOUT, PREF_IMPORT_BOOKMARKS}) {
+             Preference preference = findPreference(key);
+-            assumeNonNull(preference);
++            // Aegis (de-Googled): a missing key must hide its row, not crash
++            // the page (r44 hardening).
++            if (preference == null) continue;
+             preference.setOnPreferenceClickListener(this);
+         }
