@@ -48,3 +48,15 @@ proprietary_codecs = true
 # the free-runner RAM, so CFI must be explicitly off.
 is_cfi = false
 cc_wrapper = "/usr/local/bin/aegis_atomic_cc"
+
+# use_siso = false : the bank/resume design (aegis/ci/bank.sh v6 mtime
+# contract) requires NINJA state - v6 .ninja_log + real .ninja_deps.
+# Chromium 156 defaults to SISO (infra PSA switched the default), which
+# writes a v5-compat .ninja_log ninja>=1.12 discards and NO .ninja_deps,
+# so every restored tree replans 100% dirty every window (observed:
+# linux plan-at-start pinned at 96.3k across #41/#42, win 58.5k full-dirty
+# per [why-dirty]; bank warned ".ninja_log is v5 / no usable .ninja_deps").
+# Siso burned 29-45k edges/window without ever shrinking the next plan -
+# no window can ever reach the graph end that way. Forcing ninja makes
+# the v6 contract hold: window N+1 resumes with only genuinely dirty edges.
+use_siso = false

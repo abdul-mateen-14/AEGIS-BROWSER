@@ -204,6 +204,16 @@ DLEOF
   fi
   [ -d "$OUT_DIR/obj" ] || { log "tree dropped - seed run"; exit 0; }
 
+  # Switch-to-ninja cleanup (2026-11-09): trees built while Chromium's default
+  # was SISO carry out/.siso_deps, and depot_tools ninja.py REFUSES to run
+  # ninja while that marker exists ("contains Siso state file"). With
+  # use_siso=false in gn args the tree is a ninja tree; a stale siso marker
+  # from an older banked generation would silently bounce the build back to
+  # siso (or block the [why-dirty] dry-run). Remove every siso leftover -
+  # they are pure state for siso runs and have no meaning under ninja.
+  SISO_LEFT=$(find "$OUT_DIR" -maxdepth 1 -name '.siso*' -print -delete | wc -l)
+  [ "$SISO_LEFT" -gt 0 ] && log "removed $SISO_LEFT stale siso state file(s) (tree is use_siso=false)"
+
   # Informational: ninja >= 1.12 (build log v6, kOldestSupportedVersion=6)
   # discards v5 logs wholesale ("build log version is too old; starting
   # over") and a missing deps log forces a full recompile too. v5 logs are
@@ -267,9 +277,17 @@ if [ "$CMD" = save ]; then
   if [ "${EDGES:-0}" -lt 500 ]; then
     log "only $EDGES banked edges - not worth a bank"; exit 0
   fi
-  # .aegis_head must exist for the next run's tag gate
-  [ -f "$OUT_DIR/.aegis_head" ] || \
-    echo "${WANT_CHROMIUM_TAG:-unknown} ${AEGIS_HEAD_SHA:-unknown}" > "$OUT_DIR/.aegis_head"
+  # .aegis_head must exist for the next run's tag gate.
+  # STAMP EVERY SAVE (2026-11-09 treadmill fix): the tree being banked was
+  # JUST built from WANT_CHROMIUM_TAG + AEGIS_HEAD_SHA in this very window,
+  # so the marker must always carry those values. The old only-if-missing
+  # write froze the marker at the SEED sha forever (83310a88e6), so every
+  # restore_tree.py diffed seed->HEAD, always saw the r44 branding changes,
+  # and dropped the whole bank at the "branding hooks changed" rule -
+  # linux #41 AND #42 both logged "build tree dropped" 60s after a clean
+  # 1.2 GB restore. Stamping here is safe: restore_tree.py already consumed
+  # the OLD marker earlier this window (it runs before this save step).
+  echo "${WANT_CHROMIUM_TAG:-unknown} ${AEGIS_HEAD_SHA:-unknown}" > "$OUT_DIR/.aegis_head"
 
   OBJ_MB=$(du -sm "$OUT_DIR/obj" | cut -f1)
   GEN_MB=$(du -sm "$OUT_DIR/gen" 2>/dev/null | cut -f1); GEN_MB="${GEN_MB:-0}"
