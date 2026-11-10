@@ -8,7 +8,7 @@
 
 --- /dev/null
 +++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java
-@@ -0,0 +1,248 @@
+@@ -0,0 +1,249 @@
 +// Copyright 2026 The Aegis Browser Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -218,12 +218,13 @@
 +        grid.addView(tile);
 +    }
 +
-+    private final Runnable mClockTick =
-+            () -> {
-+                mClock.setText(mClockFormat.format(new Date()));
-+                mDate.setText(mDateFormat.format(new Date()).toUpperCase(Locale.getDefault()));
-+                mHandler.postDelayed(mClockTick, CLOCK_MS);
-+            };
++    private final Runnable mClockTick = this::clockTick;
++
++    private void clockTick() {
++        mClock.setText(mClockFormat.format(new Date()));
++        mDate.setText(mDateFormat.format(new Date()).toUpperCase(Locale.getDefault()));
++        mHandler.postDelayed(mClockTick, CLOCK_MS);
++    }
 +
 +    private void tick() {
 +        Tab tab = mActivity.getActivityTab();

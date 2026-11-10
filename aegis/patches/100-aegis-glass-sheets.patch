@@ -8,7 +8,7 @@
 
 --- /dev/null
 +++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisGlassSheet.java
-@@ -0,0 +1,174 @@
+@@ -0,0 +1,169 @@
 +// Copyright 2026 The Aegis Browser Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -24,7 +24,6 @@
 +import android.view.animation.PathInterpolator;
 +import android.widget.FrameLayout;
 +import android.widget.LinearLayout;
-+import android.widget.ScrollView;
 +
 +import org.chromium.build.annotations.NullMarked;
 +import org.chromium.chrome.R;
@@ -84,8 +83,7 @@
 +
 +    /**
 +     * Attaches and rises the sheet over the dock's activity content root.
-+     * Subclasses build their content into a {@link ScrollView} and pass it
-+     * via {@link #sheetContent()} before calling this.
++     * Subclasses build their panel content before calling this.
 +     */
 +    protected static void present(AegisDockView dock, AegisGlassSheet sheet) {
 +        Activity activity = (Activity) dock.getContext();
@@ -124,9 +122,6 @@
 +                .setInterpolator(new PathInterpolator(0.25f, 1f, 0.5f, 1f))
 +                .start();
 +    }
-+
-+    /** The scrollable content strip subclasses hand to {@link #present}. */
-+    protected abstract ScrollView sheetContent();
 +
 +    /** Removes the sheet (240 ms fall). */
 +    public void dismiss() {
