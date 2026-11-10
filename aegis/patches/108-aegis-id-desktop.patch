@@ -1,0 +1,1570 @@
+# 108 - aegis-id-desktop
+# Desktop Aegis ID: a real aegis-sync account surface replacing the
+# profile menu's Google/GAIA sign-in flow in de-googled Aegis builds.
+#
+# - aegis_id_crypto: byte-exact C++ port of the client crypto (PBKDF2 over
+#   raw-byte passwords via crypto::hmac, HKDF via crypto::kdf, AES-256-GCM
+#   via crypto::aead), cross-validated against aegis-client.mjs and the
+#   Android AegisCrypto.java and against the LIVE worker end to end.
+# - aegis_id_manager: profile-keyed auth client (register/login/refresh/
+#   devices/logout) over SimpleURLLoader; state in
+#   aegis_id_state.json (signed_in + email + device uuid); tokens and the
+#   vault key stay volatile exactly like the Android client.
+# - aegis_id_dialog: the sign-in/account dialog (views).
+# - profile_menu_view: the "Sign in to Aegis?" promo button opens the Aegis
+#   ID dialog instead of signin_ui_util::EnableSyncFromSingleAccountPromo.
+#
+# The new source_set is scoped to is_win/is_mac/is_linux so android builds
+# never see it; profile_menu_view.cc already is desktop-only.
+
+
+diff --git a/chrome/browser/ui/views/profiles/aegis_id_crypto.h b/chrome/browser/ui/views/profiles/aegis_id_crypto.h
+new file mode 100644
+--- /dev/null
++++ b/chrome/browser/ui/views/profiles/aegis_id_crypto.h
+@@ -0,0 +1,94 @@
++// Copyright 2026 The Aegis Browser Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_VIEWS_PROFILES_AEGIS_ID_CRYPTO_H_
++#define CHROME_BROWSER_UI_VIEWS_PROFILES_AEGIS_ID_CRYPTO_H_
++
++#include <array>
++#include <cstdint>
++#include <optional>
++#include <string>
++#include <string_view>
++#include <utility>
++#include <vector>
++
++#include "base/containers/span.h"
++
++namespace aegis {
++
++// Client-side crypto for Aegis ID (the aegis-sync account system). This is a
++// byte-exact C++ port of the reference implementations the project already
++// ships and cross-validates: aegis-sync/client-example/aegis-client.mjs
++// (WebCrypto) and the Android client's AegisCrypto.java. All three implement
++// the v1 spec documented in aegis-sync/README.md section 5:
++//
++//   masterKey = PBKDF2-SHA256(utf8(password), kdf_salt, 600000)   [32 B]
++//   authKey   = HKDF-SHA256(masterKey, info="aegis-auth-v1")      [32 B]
++//   verifier  = PBKDF2-SHA256(authKey, "aegis-verifier-v1", 1e5)  [32 B, TLS only]
++//   kek       = HKDF-SHA256(masterKey, info="aegis-kek-v1")       [32 B]
++//   wrapped   = AES-256-GCM(kek, vaultKey)                        [stored on server]
++//
++// WHY HAND-ROLLED PBKDF2 (12 lines over crypto::hmac) instead of
++// crypto::kdf::Pbkdf2HmacSha1: the protocol needs HMAC-SHA256 and, more
++// importantly, the WebCrypto convention that the PASSWORD IS RAW BYTES -
++// KDF wrappers that take std::string keys would re-encode non-ASCII
++// passwords differently across platforms and break cross-device logins.
++// The Android client hand-rolls for the identical reason (documented in
++// AegisCrypto.java); both are validated against the same generated test
++// vectors in android-sync/test/ and aegis-sync/test/.
++
++inline constexpr uint32_t kDefaultIterations = 600000;
++inline constexpr uint32_t kVerifierIterations = 100000;
++inline constexpr size_t kVaultKeySize = 32;
++inline constexpr size_t kKdfSaltSize = 16;
++inline constexpr size_t kGcmNonceSize = 12;
++
++struct Credentials {
++  std::vector<uint8_t> verifier;  // sent to the server at login only
++  std::vector<uint8_t> kek;       // wraps/unwraps the vault key, never sent
++};
++
++// RFC 2898 PBKDF2-HMAC-SHA256 with a RAW-BYTE password (WebCrypto
++// semantics). Returns dk_len bytes.
++std::vector<uint8_t> Pbkdf2Sha256(base::span<const uint8_t> password,
++                                  base::span<const uint8_t> salt,
++                                  uint32_t iterations,
++                                  size_t dk_len);
++
++// RFC 5869 HKDF-SHA256 extract+expand with the reference implementation's
++// zero-filled 32-byte salt, producing `length` bytes. An empty salt and a
++// zero-filled salt are byte-equivalent (HMAC zero-pads keys), which is why
++// the JS reference's `salt: null` and the Java port's new byte[32] agree.
++std::vector<uint8_t> HkdfSha256(base::span<const uint8_t> ikm,
++                                base::span<const uint8_t> info,
++                                size_t length);
++
++// The full login preflight chain: master key -> auth key -> verifier, plus
++// the KEK. `kdf_salt_b64` is the padded-Base64 salt returned by
++// GET /v1/auth/kdf-params (or generated at registration).
++Credentials DeriveCredentials(const std::string& password,
++                              const std::string& kdf_salt_b64,
++                              uint32_t iterations);
++
++// AES-256-GCM with an empty AAD and a 12-byte nonce, matching the WebCrypto
++// default used by the reference clients. Seal returns {nonce, ct||tag};
++// Open returns nullopt for a wrong key/tampered ciphertext.
++std::pair<std::vector<uint8_t>, std::vector<uint8_t>> AesGcmSeal(
++    base::span<const uint8_t> key,
++    base::span<const uint8_t> plaintext);
++std::optional<std::vector<uint8_t>> AesGcmOpen(
++    base::span<const uint8_t> key,
++    base::span<const uint8_t> nonce,
++    base::span<const uint8_t> ciphertext);
++
++std::vector<uint8_t> RandomBytes(size_t n);
++
++// Standard padded Base64 (same alphabet as JS btoa/atob and Java
++// Base64.getEncoder()). Decode returns false on any padding/alphabet error.
++std::string Base64Encode(base::span<const uint8_t> bytes);
++bool Base64Decode(std::string_view text, std::vector<uint8_t>* out);
++
++}  // namespace aegis
++
++#endif  // CHROME_BROWSER_UI_VIEWS_PROFILES_AEGIS_ID_CRYPTO_H_
+
+diff --git a/chrome/browser/ui/views/profiles/aegis_id_crypto.cc b/chrome/browser/ui/views/profiles/aegis_id_crypto.cc
+new file mode 100644
+--- /dev/null
++++ b/chrome/browser/ui/views/profiles/aegis_id_crypto.cc
+@@ -0,0 +1,129 @@
++// Copyright 2026 The Aegis Browser Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/ui/views/profiles/aegis_id_crypto.h"
++
++#include <algorithm>
++#include <array>
++
++#include "base/base64.h"
++#include "base/check.h"
++#include "base/containers/span.h"
++#include "crypto/aead.h"
++#include "crypto/hash.h"
++#include "crypto/hmac.h"
++#include "crypto/kdf.h"
++#include "crypto/random.h"
++
++namespace aegis {
++
++namespace {
++
++base::span<const uint8_t> InfoSpan(std::string_view s) {
++  return base::span<const uint8_t>(
++      reinterpret_cast<const uint8_t*>(s.data()), s.size());
++}
++
++}  // namespace
++
++std::vector<uint8_t> Pbkdf2Sha256(base::span<const uint8_t> password,
++                                  base::span<const uint8_t> salt,
++                                  uint32_t iterations,
++                                  size_t dk_len) {
++  CHECK_GT(iterations, 0u);
++  CHECK_GT(dk_len, 0u);
++  std::vector<uint8_t> out(dk_len, 0);
++  size_t copied = 0;
++  uint32_t block = 1;
++  while (copied < dk_len) {
++    // U1 = PRF(P, S || INT_32_BE(block))
++    std::vector<uint8_t> salt_block(salt.begin(), salt.end());
++    salt_block.push_back((block >> 24) & 0xFF);
++    salt_block.push_back((block >> 16) & 0xFF);
++    salt_block.push_back((block >> 8) & 0xFF);
++    salt_block.push_back(block & 0xFF);
++    std::array<uint8_t, 32> u = crypto::hmac::SignSha256(password, salt_block);
++    std::array<uint8_t, 32> t = u;
++    for (uint32_t i = 2; i <= iterations; ++i) {
++      u = crypto::hmac::SignSha256(password, u);
++      for (size_t j = 0; j < t.size(); ++j) {
++        t[j] ^= u[j];
++      }
++    }
++    const size_t n = std::min<size_t>(t.size(), dk_len - copied);
++    for (size_t i = 0; i < n; ++i) {
++      out[copied + i] = t[i];
++    }
++    copied += n;
++    ++block;
++  }
++  return out;
++}
++
++std::vector<uint8_t> HkdfSha256(base::span<const uint8_t> ikm,
++                                base::span<const uint8_t> info,
++                                size_t length) {
++  // Zero-filled 32-byte salt, byte-equivalent to the JS reference's empty
++  // salt (HMAC zero-pads keys) - see the header comment.
++  static constexpr std::array<uint8_t, 32> kZeroSalt{};
++  std::vector<uint8_t> out(length);
++  crypto::kdf::Hkdf(crypto::hash::HashKind::kSha256, ikm, kZeroSalt, info,
++                    base::span<uint8_t>(out));
++  return out;
++}
++
++Credentials DeriveCredentials(const std::string& password,
++                              const std::string& kdf_salt_b64,
++                              uint32_t iterations) {
++  std::vector<uint8_t> salt;
++  CHECK(Base64Decode(kdf_salt_b64, &salt));
++  const std::vector<uint8_t> password_bytes(password.begin(), password.end());
++  const std::vector<uint8_t> master_key =
++      Pbkdf2Sha256(password_bytes, salt, iterations, 32);
++  Credentials creds;
++  const std::vector<uint8_t> auth_key =
++      HkdfSha256(master_key, InfoSpan("aegis-auth-v1"), 32);
++  creds.verifier = Pbkdf2Sha256(
++      auth_key, InfoSpan("aegis-verifier-v1"), kVerifierIterations, 32);
++  creds.kek = HkdfSha256(master_key, InfoSpan("aegis-kek-v1"), 32);
++  return creds;
++}
++
++std::pair<std::vector<uint8_t>, std::vector<uint8_t>> AesGcmSeal(
++    base::span<const uint8_t> key,
++    base::span<const uint8_t> plaintext) {
++  std::vector<uint8_t> nonce = crypto::RandBytesAsVector(kGcmNonceSize);
++  std::vector<uint8_t> ciphertext = crypto::aead::Seal(
++      crypto::aead::Algorithm::AES_256_GCM, key, plaintext, nonce,
++      /*associated_data=*/{});
++  CHECK(!ciphertext.empty());
++  return {std::move(nonce), std::move(ciphertext)};
++}
++
++std::optional<std::vector<uint8_t>> AesGcmOpen(
++    base::span<const uint8_t> key,
++    base::span<const uint8_t> nonce,
++    base::span<const uint8_t> ciphertext) {
++  return crypto::aead::Open(crypto::aead::Algorithm::AES_256_GCM, key,
++                            ciphertext, nonce, /*associated_data=*/{});
++}
++
++std::vector<uint8_t> RandomBytes(size_t n) {
++  return crypto::RandBytesAsVector(n);
++}
++
++std::string Base64Encode(base::span<const uint8_t> bytes) {
++  return base::Base64Encode(bytes);
++}
++
++bool Base64Decode(std::string_view text, std::vector<uint8_t>* out) {
++  std::optional<std::vector<uint8_t>> decoded = base::Base64Decode(text);
++  if (!decoded) {
++    return false;
++  }
++  *out = std::move(*decoded);
++  return true;
++}
++
++}  // namespace aegis
+
+diff --git a/chrome/browser/ui/views/profiles/aegis_id_manager.h b/chrome/browser/ui/views/profiles/aegis_id_manager.h
+new file mode 100644
+--- /dev/null
++++ b/chrome/browser/ui/views/profiles/aegis_id_manager.h
+@@ -0,0 +1,215 @@
++// Copyright 2026 The Aegis Browser Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_VIEWS_PROFILES_AEGIS_ID_MANAGER_H_
++#define CHROME_BROWSER_UI_VIEWS_PROFILES_AEGIS_ID_MANAGER_H_
++
++#include <cstdint>
++#include <memory>
++#include <optional>
++#include <string>
++#include <vector>
++
++#include "base/files/file_path.h"
++#include "base/functional/callback.h"
++#include "base/memory/raw_ptr.h"
++#include "base/memory/scoped_refptr.h"
++#include "base/strings/utf_string_conversions.h"
++#include "base/values.h"
++#include "url/gurl.h"
++
++class Profile;
++
++namespace network {
++class SharedURLLoaderFactory;
++class SimpleURLLoader;
++}  // namespace network
++
++namespace aegis {
++
++// One row of GET /v1/devices.
++struct AegisDeviceInfo {
++  std::string id;
++  std::string name;
++  std::string platform;
++  int64_t created_at = 0;
++  int64_t last_seen_at = 0;
++  bool current = false;
++};
++
++// A non-2xx reply, decoded exactly like AegisSyncClient.java does:
++// {"error": {"code": "...", "message": "..."}}.
++struct AegisApiError {
++  int status = 0;
++  std::string code;     // e.g. "invalid_credentials"; may be empty
++  std::string message;  // raw server message; may be empty
++};
++
++// Desktop Aegis ID client: account state + authentication + device
++// management against the aegis-sync worker (see aegis-sync/README.md).
++// C++ port of the Android AegisIdManager/AegisSyncClient pair, cross-checked
++// against a live end-to-end protocol run (register -> kdf-params -> login ->
++// vault-key unwrap -> devices -> logout).
++//
++// Threading model: all entry points are called on the UI thread (the dialog
++// owns this object). The 600k-iteration KDF chain and the state-file IO run
++// on a ThreadPool sequence; network requests run on the UI thread through a
++// SimpleURLLoader created from the browser-process factory. Requests are
++// serialized (one in-flight SimpleURLLoader); the dialog disables its
++// buttons while an operation runs.
++//
++// Persistence (aegis_id_state.json in the profile dir, mirroring the
++// Android client's prefs): signed_in + email + device uuid. Session tokens
++// and the vault key stay volatile like on Android - after a browser restart
++// the dialog shows the "session expired" state until the user signs in
++// again. Persisting the refresh token would fix that, but it would put a
++// usable credential into the profile file, which the Android client
++// deliberately does not do either.
++class AegisIdManager {
++ public:
++  // ok=true: |message| carries the signed-in email; ok=false: |message| is
++  // a user-presentable error.
++  using BoolCallback =
++      base::OnceCallback<void(bool ok, const std::u16string& message)>;
++  using DevicesCallback = base::OnceCallback<void(
++      bool ok, std::vector<AegisDeviceInfo>, const std::u16string& message)>;
++
++  // |profile| must outlive the manager (the owning dialog observes profile
++  // destruction and closes first).
++  explicit AegisIdManager(Profile* profile);
++  ~AegisIdManager();
++
++  AegisIdManager(const AegisIdManager&) = delete;
++  AegisIdManager& operator=(const AegisIdManager&) = delete;
++
++  // Loads the persisted state; |on_ready| runs on the UI thread once
++  // signed_in()/email() are trustworthy.
++  void Init(base::OnceClosure on_ready);
++
++  bool ready() const { return ready_; }
++  bool signed_in() const { return signed_in_; }
++  bool session_live() const {
++    return !access_token_.empty() || !refresh_token_.empty();
++  }
++  const std::u16string& email() const { return email_; }
++  const std::string& device_uuid() const { return device_uuid_; }
++
++  void SignIn(const std::u16string& email,
++              const std::u16string& password,
++              BoolCallback callback);
++  void CreateAccount(const std::u16string& email,
++                     const std::u16string& password,
++                     BoolCallback callback);
++  // Best-effort server logout; always succeeds locally.
++  void SignOut(BoolCallback callback);
++  void ListDevices(DevicesCallback callback);
++
++ private:
++  struct Credentials;
++
++  // --- init / persistence ---
++  void OnStateLoaded(base::OnceClosure on_ready,
++                     std::optional<base::DictValue> state);
++  void PersistState();
++
++  // --- network plumbing (UI thread) ---
++  void FetchJson(const GURL& url,
++                 const std::string& method,
++                 std::optional<std::string> body,
++                 bool auth,
++                 base::OnceCallback<void(int, std::optional<base::DictValue>)>
++                     callback);
++  // Like FetchJson with auth=true, but transparently refreshes the tokens
++  // once on a 401 (mirrors AegisSyncClient's retry) and retries the request.
++  void AuthedFetch(const GURL& url,
++                   const std::string& method,
++                   std::optional<std::string> body,
++                   base::OnceCallback<void(int, std::optional<base::DictValue>)>
++                       callback);
++  void MaybeRefreshAndRetry(
++      const GURL& url,
++      const std::string& method,
++      std::optional<std::string> body,
++      base::OnceCallback<void(int, std::optional<base::DictValue>)> callback,
++      int status,
++      std::optional<base::DictValue> data);
++  void OnRefreshReply(
++      const GURL& url,
++      const std::string& method,
++      std::optional<std::string> body,
++      base::OnceCallback<void(int, std::optional<base::DictValue>)> callback,
++      int status,
++      std::optional<base::DictValue> data);
++  void OnLoadComplete(
++      base::OnceCallback<void(int, std::optional<base::DictValue>)> callback,
++      std::optional<std::string> body);
++
++  // --- sign-in chain ---
++  void DoSignIn(const std::u16string& email,
++                const std::u16string& password,
++                BoolCallback callback);
++  void OnKdfParams(const std::u16string& email,
++                   const std::u16string& password,
++                   BoolCallback callback,
++                   int status,
++                   std::optional<base::DictValue> data);
++  void OnCredentialsDerived(const std::u16string& email,
++                            const std::u16string& password,
++                            std::unique_ptr<Credentials> creds,
++                            BoolCallback callback);
++  void OnLoginReply(const std::u16string& email,
++                    const std::u16string& password,
++                    std::unique_ptr<Credentials> creds,
++                    BoolCallback callback,
++                    int status,
++                    std::optional<base::DictValue> data);
++  void OnVaultKeyUnwrapped(const std::u16string& email,
++                           BoolCallback callback,
++                           std::vector<uint8_t> vault_key);
++
++  // --- registration chain ---
++  void OnRegisterBodyReady(const std::u16string& email,
++                           const std::u16string& password,
++                           std::string body,
++                           BoolCallback callback);
++  void OnRegisterReply(const std::u16string& email,
++                       const std::u16string& password,
++                       BoolCallback callback,
++                       int status,
++                       std::optional<base::DictValue> data);
++
++  // --- sign-out / devices ---
++  void OnSignOutReply(BoolCallback callback,
++                      int status,
++                      std::optional<base::DictValue> data);
++  void OnDevicesReply(DevicesCallback callback,
++                      int status,
++                      std::optional<base::DictValue> data);
++
++  // User-presentable error for a failed request (mirrors the Android
++  // describeApiError mapping).
++  std::u16string DescribeError(int status, const AegisApiError& error);
++
++  raw_ptr<Profile> profile_;
++  base::FilePath state_path_;
++  scoped_refptr<network::SharedURLLoaderFactory> loader_factory_;
++  std::unique_ptr<network::SimpleURLLoader> loader_;
++
++  // Volatile session (cleared when the browser exits).
++  std::string access_token_;
++  std::string refresh_token_;
++  std::vector<uint8_t> vault_key_;
++
++  // Persisted state.
++  bool ready_ = false;
++  bool signed_in_ = false;
++  std::u16string email_;
++  std::string device_uuid_;
++
++  base::WeakPtrFactory<AegisIdManager> weak_factory_{this};
++};
++
++}  // namespace aegis
++
++#endif  // CHROME_BROWSER_UI_VIEWS_PROFILES_AEGIS_ID_MANAGER_H_
+
+diff --git a/chrome/browser/ui/views/profiles/aegis_id_manager.cc b/chrome/browser/ui/views/profiles/aegis_id_manager.cc
+new file mode 100644
+--- /dev/null
++++ b/chrome/browser/ui/views/profiles/aegis_id_manager.cc
+@@ -0,0 +1,616 @@
++// Copyright 2026 The Aegis Browser Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/ui/views/profiles/aegis_id_manager.h"
++
++#include <utility>
++
++#include "base/base64.h"
++#include "base/files/file_util.h"
++#include "base/files/important_file_writer.h"
++#include "base/functional/bind.h"
++#include "base/json/json_reader.h"
++#include "base/json/json_writer.h"
++#include "base/logging.h"
++#include "base/strings/escape.h"
++#include "base/strings/stringprintf.h"
++#include "base/strings/utf_string_conversions.h"
++#include "base/task/thread_pool.h"
++#include "base/time/time.h"
++#include "base/uuid.h"
++#include "build/build_config.h"
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/ui/views/profiles/aegis_id_crypto.h"
++#include "content/public/browser/browser_context.h"
++#include "content/public/browser/storage_partition.h"
++#include "net/base/net_errors.h"
++#include "net/http/http_response_headers.h"
++#include "net/traffic_annotation/network_traffic_annotation.h"
++#include "services/network/public/cpp/resource_request.h"
++#include "services/network/public/cpp/shared_url_loader_factory.h"
++#include "services/network/public/cpp/simple_url_loader.h"
++#include "services/network/public/mojom/url_response_head.mojom.h"
++
++namespace aegis {
++
++namespace {
++
++constexpr char kBase[] = "https://aegis-sync.abdulmateen14.workers.dev";
++constexpr size_t kMaxResponseBytes = 1 << 20;  // devices lists only
++constexpr base::TimeDelta kRequestTimeout = base::Seconds(15);
++
++constexpr net::NetworkTrafficAnnotationTag kAegisSyncAnnotation =
++    net::DefineNetworkTrafficAnnotation("aegis_id_client", R"(
++      semantics {
++        sender: "Aegis ID sign-in"
++        description:
++          "Signs the browser profile in to an Aegis ID account on the "
++          "aegis-sync service. Sends the account email, a PBKDF2-derived "
++          "verifier (never the password), device metadata and opaque "
++          "end-to-end-encrypted sync blobs. Replaces the Google/GAIA "
++          "sign-in flow in de-googled Aegis builds."
++        trigger:
++          "User clicks the Aegis ID sign-in button in the profile menu, or "
++          "opens an Aegis ID surface."
++        data:
++          "Email, verifier, KDF salt parameters, device uuid/name/platform, "
++          "access/refresh tokens, and end-to-end-encrypted sync items. The "
++          "master password and vault key never leave the device."
++        destination: OTHER
++        destination_other: "The operator-provided aegis-sync service host"
++      }
++      policy {
++        cookies_allowed: NO
++        setting:
++          "Not enabled unless the user signs in to an Aegis ID account."
++        policy_exception_justification:
++          "Not implemented; the request only happens on explicit user "
++          "sign-in."
++      }
++    )");
++
++constexpr int kHttpOk = 200;
++constexpr int kHttpCreated = 201;
++constexpr int kHttpUnauthorized = 401;
++constexpr int kHttpConflict = 409;
++
++std::string JsonEncode(const base::DictValue& dict) {
++  std::string out;
++  base::JSONWriter::Write(dict, &out);
++  return out;
++}
++
++std::string Str(const std::string* s) {
++  return s ? *s : std::string();
++}
++
++std::optional<base::DictValue> JsonDecodeDict(const std::string& body) {
++  if (body.empty()) {
++    return base::DictValue();
++  }
++  return base::JSONReader::ReadDict(body);
++}
++
++AegisApiError DecodeApiError(int status, const base::DictValue* dict) {
++  AegisApiError error;
++  error.status = status;
++  if (dict) {
++    const base::DictValue* err = dict->FindDict("error");
++    if (err) {
++      if (const std::string* code = err->FindString("code")) {
++        error.code = *code;
++      }
++      if (const std::string* message = err->FindString("message")) {
++        error.message = *message;
++      }
++    }
++  }
++  return error;
++}
++
++#if BUILDFLAG(IS_WIN)
++constexpr char kPlatform[] = "windows";
++#elif BUILDFLAG(IS_LINUX)
++constexpr char kPlatform[] = "linux";
++#elif BUILDFLAG(IS_MAC)
++constexpr char kPlatform[] = "mac";
++#else
++constexpr char kPlatform[] = "desktop";
++#endif
++
++}  // namespace
++
++// The KDF chain result passed between the UI-thread network steps; the
++// master key is intentionally not kept. |algo|/|iterations| record the
++// params the credentials were derived with (the login reply may carry
++// migrated params; see OnLoginReply).
++struct AegisIdManager::Credentials {
++  std::vector<uint8_t> verifier;
++  std::vector<uint8_t> kek;
++  std::string algo;
++  int iterations = 0;
++};
++
++AegisIdManager::AegisIdManager(Profile* profile)
++    : profile_(profile),
++      state_path_(profile->GetPath().AppendASCII("aegis_id_state.json")),
++      loader_factory_(
++          content::GetDefaultStoragePartition(profile)
++              ->GetURLLoaderFactoryForBrowserProcess()) {}
++
++AegisIdManager::~AegisIdManager() = default;
++
++// ---------------------------------------------------------------- init
++
++void AegisIdManager::Init(base::OnceClosure on_ready) {
++  base::ThreadPool::PostTaskAndReplyWithResult(
++      FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
++      base::BindOnce(
++          [](base::FilePath path) -> std::optional<base::DictValue> {
++            std::string content;
++            if (!base::ReadFileToString(path, &content)) {
++              return std::nullopt;
++            }
++            return base::JSONReader::ReadDict(content);
++          },
++          state_path_),
++      base::BindOnce(&AegisIdManager::OnStateLoaded,
++                     weak_factory_.GetWeakPtr(), std::move(on_ready)));
++}
++
++void AegisIdManager::OnStateLoaded(base::OnceClosure on_ready,
++                                   std::optional<base::DictValue> state) {
++  if (state) {
++    signed_in_ = state->FindBool("signed_in").value_or(false);
++    email_ = base::UTF8ToUTF16(Str(state->FindString("email")));
++    device_uuid_ = Str(state->FindString("device_uuid"));
++  }
++  if (device_uuid_.empty()) {
++    device_uuid_ = base::Uuid::GenerateRandomV4().AsLowercaseString();
++    PersistState();
++  }
++  ready_ = true;
++  std::move(on_ready).Run();
++}
++
++void AegisIdManager::PersistState() {
++  base::DictValue state;
++  state.Set("signed_in", signed_in_);
++  state.Set("email", base::UTF16ToUTF8(email_));
++  state.Set("device_uuid", device_uuid_);
++  base::ThreadPool::PostTask(
++      FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
++      base::BindOnce(
++          [](base::FilePath path, std::string content) {
++            base::ImportantFileWriter::WriteFileAtomically(path, content);
++          },
++          state_path_, JsonEncode(state)));
++}
++
++// ------------------------------------------------------------- plumbing
++
++void AegisIdManager::FetchJson(
++    const GURL& url,
++    const std::string& method,
++    std::optional<std::string> body,
++    bool auth,
++    base::OnceCallback<void(int, std::optional<base::DictValue>)>
++        callback) {
++  CHECK(!loader_) << "Aegis ID requests must be serialized";
++  auto request = std::make_unique<network::ResourceRequest>();
++  request->url = url;
++  request->method = method;
++  request->headers.SetHeader("Accept", "application/json");
++  if (body) {
++    request->headers.SetHeader("Content-Type", "application/json");
++  }
++  if (auth && !access_token_.empty()) {
++    request->headers.SetHeader("Authorization", "Bearer " + access_token_);
++  }
++  loader_ = network::SimpleURLLoader::Create(
++      std::make_unique<net::NetworkTrafficAnnotationTag>(kAegisSyncAnnotation));
++  loader_->SetTimeoutDuration(kRequestTimeout);
++  if (body) {
++    loader_->AttachStringForUpload(*body, "application/json");
++  }
++  loader_->DownloadToString(
++      loader_factory_.get(),
++      base::BindOnce(&AegisIdManager::OnLoadComplete,
++                     weak_factory_.GetWeakPtr(), std::move(callback)),
++      kMaxResponseBytes);
++}
++
++void AegisIdManager::AuthedFetch(
++    const GURL& url,
++    const std::string& method,
++    std::optional<std::string> body,
++    base::OnceCallback<void(int, std::optional<base::DictValue>)>
++        callback) {
++  // The request consumes a copy of |body|; the original is kept for the
++  // 401-refresh retry.
++  FetchJson(url, method, body, /*auth=*/true,
++            base::BindOnce(&AegisIdManager::MaybeRefreshAndRetry,
++                           weak_factory_.GetWeakPtr(), url, method,
++                           std::move(body), std::move(callback)));
++}
++
++void AegisIdManager::MaybeRefreshAndRetry(
++    const GURL& url,
++    const std::string& method,
++    std::optional<std::string> body,
++    base::OnceCallback<void(int, std::optional<base::DictValue>)> callback,
++    int status,
++    std::optional<base::DictValue> data) {
++  if (status != kHttpUnauthorized || refresh_token_.empty()) {
++    std::move(callback).Run(status, std::move(data));
++    return;
++  }
++  // Rotate the tokens, then retry once without refresh.
++  base::DictValue refresh_body;
++  refresh_body.Set("refresh_token", refresh_token_);
++  FetchJson(GURL(std::string(kBase) + "/v1/auth/refresh"), "POST",
++            JsonEncode(refresh_body), /*auth=*/false,
++            base::BindOnce(&AegisIdManager::OnRefreshReply,
++                           weak_factory_.GetWeakPtr(), url, method,
++                           std::move(body), std::move(callback)));
++}
++
++void AegisIdManager::OnRefreshReply(
++    const GURL& url,
++    const std::string& method,
++    std::optional<std::string> body,
++    base::OnceCallback<void(int, std::optional<base::DictValue>)> callback,
++    int status,
++    std::optional<base::DictValue> data) {
++  if (status != kHttpOk || !data) {
++    // The volatile session died with the browser process; force sign-in.
++    access_token_.clear();
++    refresh_token_.clear();
++    vault_key_.clear();
++    std::move(callback).Run(status, std::move(data));
++    return;
++  }
++  access_token_ = Str(data->FindString("access_token"));
++  refresh_token_ = Str(data->FindString("refresh_token"));
++  FetchJson(url, method, std::move(body), /*auth=*/true, std::move(callback));
++}
++
++void AegisIdManager::OnLoadComplete(
++    base::OnceCallback<void(int, std::optional<base::DictValue>)> callback,
++    std::optional<std::string> body) {
++  std::unique_ptr<network::SimpleURLLoader> loader = std::move(loader_);
++  loader_.reset();
++
++  int status = 0;
++  if (loader->NetError() == net::OK && loader->ResponseInfo() &&
++      loader->ResponseInfo()->headers) {
++    status = loader->ResponseInfo()->headers->response_code();
++  }
++  std::optional<base::DictValue> dict;
++  if (status >= kHttpOk && body) {
++    dict = JsonDecodeDict(*body);
++  }
++  std::move(callback).Run(status, std::move(dict));
++}
++
++// ---------------------------------------------------------------- auth
++
++void AegisIdManager::SignIn(const std::u16string& email,
++                            const std::u16string& password,
++                            BoolCallback callback) {
++  DoSignIn(email, password, std::move(callback));
++}
++
++void AegisIdManager::DoSignIn(const std::u16string& email,
++                              const std::u16string& password,
++                              BoolCallback callback) {
++  const GURL url(base::StringPrintf(
++      "%s/v1/auth/kdf-params?email=%s", kBase,
++      base::EscapeQueryParamValue(base::UTF16ToUTF8(email), true).c_str()));
++  FetchJson(url, "GET", std::nullopt, /*auth=*/false,
++            base::BindOnce(&AegisIdManager::OnKdfParams,
++                           weak_factory_.GetWeakPtr(), email, password,
++                           std::move(callback)));
++}
++
++void AegisIdManager::OnKdfParams(const std::u16string& email,
++                                 const std::u16string& password,
++                                 BoolCallback callback,
++                                 int status,
++                                 std::optional<base::DictValue> data) {
++  if (status != kHttpOk || !data) {
++    std::move(callback).Run(
++        false,
++        DescribeError(status, DecodeApiError(status, data ? &*data : nullptr)));
++    return;
++  }
++  const std::string salt_b64 = Str(data->FindString("kdf_salt_b64"));
++  const base::DictValue* kdf = data->FindDict("kdf");
++  const std::string algo = kdf ? Str(kdf->FindString("algo")) : "";
++  const std::optional<int> iterations =
++      kdf ? kdf->FindInt("iterations") : std::nullopt;
++  if (salt_b64.empty() || algo != "PBKDF2-SHA256" || !iterations ||
++      *iterations < 1) {
++    std::move(callback).Run(
++        false, u"The sync service returned unsupported key parameters.");
++    return;
++  }
++  const std::string password_utf8 = base::UTF16ToUTF8(password);
++  base::ThreadPool::PostTaskAndReplyWithResult(
++      FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
++      base::BindOnce(
++          [](const std::string& password, const std::string& salt,
++             const std::string& algo,
++             int iterations) -> std::unique_ptr<Credentials> {
++            Credentials creds = DeriveCredentials(password, salt, iterations);
++            creds.algo = algo;
++            creds.iterations = iterations;
++            return std::make_unique<Credentials>(std::move(creds));
++          },
++          password_utf8, salt_b64, algo, *iterations),
++      base::BindOnce(&AegisIdManager::OnCredentialsDerived,
++                     weak_factory_.GetWeakPtr(), email, password,
++                     std::move(callback)));
++}
++
++void AegisIdManager::OnCredentialsDerived(
++    const std::u16string& email,
++    const std::u16string& password,
++    std::unique_ptr<Credentials> creds,
++    BoolCallback callback) {
++  base::DictValue device;
++  device.Set("id", device_uuid_);
++  device.Set("name", "Aegis Desktop");
++  device.Set("platform", kPlatform);
++  base::DictValue body;
++  body.Set("email", base::UTF16ToUTF8(email));
++  body.Set("verifier_b64", Base64Encode(creds->verifier));
++  body.Set("device", std::move(device));
++
++  FetchJson(GURL(std::string(kBase) + "/v1/auth/login"), "POST",
++            JsonEncode(body), /*auth=*/false,
++            base::BindOnce(&AegisIdManager::OnLoginReply,
++                           weak_factory_.GetWeakPtr(), email, password,
++                           std::move(creds), std::move(callback)));
++}
++
++void AegisIdManager::OnLoginReply(const std::u16string& email,
++                                  const std::u16string& password,
++                                  std::unique_ptr<Credentials> creds,
++                                  BoolCallback callback,
++                                  int status,
++                                  std::optional<base::DictValue> data) {
++  if (status != kHttpOk || !data) {
++    std::move(callback).Run(
++        false,
++        DescribeError(status, DecodeApiError(status, data ? &*data : nullptr)));
++    return;
++  }
++  access_token_ = Str(data->FindString("access_token"));
++  refresh_token_ = Str(data->FindString("refresh_token"));
++  base::DictValue* user = data->FindDict("user");
++  if (access_token_.empty() || refresh_token_.empty() || !user) {
++    std::move(callback).Run(false, u"The sync service sent a malformed reply.");
++    return;
++  }
++
++  // Unwrap the vault key on the pool, honoring migrated KDF params exactly
++  // like the Android client's unwrapVaultKey: if the account's CURRENT
++  // params (from the login reply) differ from the ones we derived with,
++  // re-derive the KEK once from the passphrase before unwrapping.
++  const std::string password_utf8 = base::UTF16ToUTF8(password);
++  base::DictValue user_copy = user->Clone();
++  // Copy the derived-with params before moving |creds| into the pool task
++  // (argument evaluation order is unspecified).
++  const std::string login_algo = creds->algo;
++  const int login_iterations = creds->iterations;
++  base::ThreadPool::PostTaskAndReplyWithResult(
++      FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
++      base::BindOnce(
++          [](const std::string& password, const std::string& login_algo,
++             int login_iterations, std::unique_ptr<Credentials> creds,
++             base::DictValue user) -> std::vector<uint8_t> {
++            const std::string user_salt =
++                Str(user.FindString("kdf_salt_b64"));
++            const base::DictValue* user_kdf = user.FindDict("kdf");
++            const std::string user_algo =
++                user_kdf ? Str(user_kdf->FindString("algo")) : "";
++            const std::optional<int> user_iterations =
++                user_kdf ? user_kdf->FindInt("iterations") : std::nullopt;
++            const std::string wrapped =
++                Str(user.FindString("wrapped_vault_key_b64"));
++            const std::string nonce =
++                Str(user.FindString("vault_nonce_b64"));
++            std::vector<uint8_t> wrapped_bytes, nonce_bytes;
++            if (user_salt.empty() || wrapped.empty() || nonce.empty() ||
++                !user_iterations || *user_iterations < 1 ||
++                !Base64Decode(wrapped, &wrapped_bytes) ||
++                !Base64Decode(nonce, &nonce_bytes)) {
++              return {};
++            }
++            Credentials local = std::move(*creds);
++            if (user_algo != login_algo ||
++                *user_iterations != login_iterations) {
++              local.kek = DeriveCredentials(password, user_salt,
++                                            *user_iterations)
++                              .kek;
++            }
++            std::optional<std::vector<uint8_t>> vault =
++                AesGcmOpen(local.kek, nonce_bytes, wrapped_bytes);
++            return vault.value_or(std::vector<uint8_t>{});
++          },
++          password_utf8, login_algo, login_iterations, std::move(creds),
++          std::move(user_copy)),
++      base::BindOnce(&AegisIdManager::OnVaultKeyUnwrapped,
++                     weak_factory_.GetWeakPtr(), email, std::move(callback)));
++}
++
++void AegisIdManager::OnVaultKeyUnwrapped(const std::u16string& email,
++                                         BoolCallback callback,
++                                         std::vector<uint8_t> vault_key) {
++  if (vault_key.size() != kVaultKeySize) {
++    // Tokens arrived but the vault could not be opened: treat as failure so
++    // the user is not left in a half-signed-in state.
++    std::move(callback).Run(false, u"Couldn't open your encrypted vault.");
++    return;
++  }
++  vault_key_ = std::move(vault_key);
++  signed_in_ = true;
++  email_ = email;
++  PersistState();
++  std::move(callback).Run(true, email);
++}
++
++void AegisIdManager::CreateAccount(const std::u16string& email,
++                                   const std::u16string& password,
++                                   BoolCallback callback) {
++  const std::string email_utf8 = base::UTF16ToUTF8(email);
++  const std::string password_utf8 = base::UTF16ToUTF8(password);
++  base::ThreadPool::PostTaskAndReplyWithResult(
++      FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
++      base::BindOnce(
++          [](const std::string& email,
++             const std::string& password) -> std::string {
++            const std::string salt_b64 =
++                Base64Encode(RandomBytes(kKdfSaltSize));
++            const Credentials creds =
++                DeriveCredentials(password, salt_b64, kDefaultIterations);
++            const std::vector<uint8_t> vault_key = RandomBytes(kVaultKeySize);
++            auto [nonce, wrapped] = AesGcmSeal(creds.kek, vault_key);
++            base::DictValue kdf;
++            kdf.Set("algo", "PBKDF2-SHA256");
++            kdf.Set("iterations", static_cast<int>(kDefaultIterations));
++            base::DictValue body;
++            body.Set("email", email);
++            body.Set("kdf_salt_b64", salt_b64);
++            body.Set("kdf", std::move(kdf));
++            body.Set("verifier_b64", Base64Encode(creds.verifier));
++            body.Set("wrapped_vault_key_b64", Base64Encode(wrapped));
++            body.Set("vault_nonce_b64", Base64Encode(nonce));
++            return JsonEncode(body);
++          },
++          email_utf8, password_utf8),
++      base::BindOnce(&AegisIdManager::OnRegisterBodyReady,
++                     weak_factory_.GetWeakPtr(), email, password,
++                     std::move(callback)));
++}
++
++void AegisIdManager::OnRegisterBodyReady(const std::u16string& email,
++                                         const std::u16string& password,
++                                         std::string body,
++                                         BoolCallback callback) {
++  FetchJson(GURL(std::string(kBase) + "/v1/auth/register"), "POST", body,
++            /*auth=*/false,
++            base::BindOnce(&AegisIdManager::OnRegisterReply,
++                           weak_factory_.GetWeakPtr(), email, password,
++                           std::move(callback)));
++}
++
++void AegisIdManager::OnRegisterReply(const std::u16string& email,
++                                     const std::u16string& password,
++                                     BoolCallback callback,
++                                     int status,
++                                     std::optional<base::DictValue> data) {
++  if (status != kHttpCreated && status != kHttpOk) {
++    std::move(callback).Run(
++        false,
++        DescribeError(status, DecodeApiError(status, data ? &*data : nullptr)));
++    return;
++  }
++  // Registration succeeded; run the normal sign-in flow.
++  DoSignIn(email, password, std::move(callback));
++}
++
++// ------------------------------------------------------- sign-out, devices
++
++void AegisIdManager::SignOut(BoolCallback callback) {
++  if (access_token_.empty() && refresh_token_.empty()) {
++    OnSignOutReply(std::move(callback), 0, std::nullopt);
++    return;
++  }
++  AuthedFetch(GURL(std::string(kBase) + "/v1/auth/logout"), "POST",
++              std::nullopt,
++              base::BindOnce(&AegisIdManager::OnSignOutReply,
++                             weak_factory_.GetWeakPtr(), std::move(callback)));
++}
++
++void AegisIdManager::OnSignOutReply(BoolCallback callback,
++                                    int status,
++                                    std::optional<base::DictValue> data) {
++  // Best effort: the server session also expires on its own.
++  access_token_.clear();
++  refresh_token_.clear();
++  vault_key_.clear();
++  signed_in_ = false;
++  email_.clear();
++  PersistState();
++  std::move(callback).Run(true, u"");
++}
++
++void AegisIdManager::ListDevices(DevicesCallback callback) {
++  if (access_token_.empty() && refresh_token_.empty()) {
++    std::move(callback).Run(false, {}, u"Your session expired. Sign in again.");
++    return;
++  }
++  AuthedFetch(GURL(std::string(kBase) + "/v1/devices"), "GET", std::nullopt,
++              base::BindOnce(&AegisIdManager::OnDevicesReply,
++                             weak_factory_.GetWeakPtr(), std::move(callback)));
++}
++
++void AegisIdManager::OnDevicesReply(DevicesCallback callback,
++                                    int status,
++                                    std::optional<base::DictValue> data) {
++  if (status != kHttpOk || !data) {
++    std::move(callback).Run(
++        false, {},
++        DescribeError(status, DecodeApiError(status, data ? &*data : nullptr)));
++    return;
++  }
++  std::vector<AegisDeviceInfo> devices;
++  const base::ListValue* list = data->FindList("devices");
++  if (list) {
++    for (const base::Value& entry : *list) {
++      const base::DictValue& d = entry.GetDict();
++      AegisDeviceInfo info;
++      info.id = Str(d.FindString("id"));
++      info.name = Str(d.FindString("name"));
++      info.platform = Str(d.FindString("platform"));
++      info.created_at = static_cast<int64_t>(d.FindDouble("created_at").value_or(0));
++      info.last_seen_at = static_cast<int64_t>(d.FindDouble("last_seen_at").value_or(0));
++      info.current = d.FindBool("current").value_or(false);
++      if (!info.id.empty()) {
++        devices.push_back(std::move(info));
++      }
++    }
++  }
++  std::move(callback).Run(true, std::move(devices), u"");
++}
++
++// ---------------------------------------------------------------- errors
++
++std::u16string AegisIdManager::DescribeError(int status,
++                                             const AegisApiError& error) {
++  if (status == 0) {
++    return u"Couldn't reach the Aegis sync service. Check your connection "
++           u"and try again.";
++  }
++  if (status == kHttpUnauthorized &&
++      (error.code == "invalid_credentials" || error.code.empty())) {
++    return u"Incorrect email or password.";
++  }
++  if (status == kHttpUnauthorized) {
++    return u"Your session expired. Sign in again.";
++  }
++  if (status == kHttpConflict) {
++    return u"An account with this email already exists.";
++  }
++  if (!error.message.empty()) {
++    return base::UTF8ToUTF16(error.message);
++  }
++  return base::UTF8ToUTF16(
++      base::StringPrintf("The sync service returned an error (HTTP %d).",
++                         status));
++}
++
++}  // namespace aegis
+
+diff --git a/chrome/browser/ui/views/profiles/aegis_id_dialog.h b/chrome/browser/ui/views/profiles/aegis_id_dialog.h
+new file mode 100644
+--- /dev/null
++++ b/chrome/browser/ui/views/profiles/aegis_id_dialog.h
+@@ -0,0 +1,20 @@
++// Copyright 2026 The Aegis Browser Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_VIEWS_PROFILES_AEGIS_ID_DIALOG_H_
++#define CHROME_BROWSER_UI_VIEWS_PROFILES_AEGIS_ID_DIALOG_H_
++
++class Profile;
++
++namespace aegis {
++
++// Opens the Aegis ID dialog for |profile|: a real aegis-sync account
++// surface (sign in / create account / device list / sign out) that replaces
++// the profile menu's Google/GAIA sign-in flow in de-googled Aegis builds.
++// Built programmatically, mirroring the Android client's Aegis ID dialog.
++void ShowAegisIdDialog(Profile* profile);
++
++}  // namespace aegis
++
++#endif  // CHROME_BROWSER_UI_VIEWS_PROFILES_AEGIS_ID_DIALOG_H_
+
+diff --git a/chrome/browser/ui/views/profiles/aegis_id_dialog.cc b/chrome/browser/ui/views/profiles/aegis_id_dialog.cc
+new file mode 100644
+--- /dev/null
++++ b/chrome/browser/ui/views/profiles/aegis_id_dialog.cc
+@@ -0,0 +1,369 @@
++// Copyright 2026 The Aegis Browser Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/ui/views/profiles/aegis_id_dialog.h"
++
++#include <utility>
++
++#include "base/functional/bind.h"
++#include "base/memory/raw_ptr.h"
++#include "base/memory/weak_ptr.h"
++#include "base/strings/utf_string_conversions.h"
++#include "base/time/time.h"
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/profiles/profile_observer.h"
++#include "chrome/browser/ui/views/profiles/aegis_id_manager.h"
++#include "ui/views/controls/button/md_text_button.h"
++#include "ui/views/controls/label.h"
++#include "ui/views/controls/textfield/textfield.h"
++#include "ui/views/layout/box_layout.h"
++#include "ui/views/style/typography.h"
++#include "ui/views/widget/widget.h"
++#include "ui/views/window/dialog_delegate.h"
++
++namespace aegis {
++
++namespace {
++
++constexpr char16_t kDialogTitle[] = u"Aegis ID";
++
++std::u16string FormatSeen(int64_t last_seen_at) {
++  if (last_seen_at <= 0) {
++    return u"";
++  }
++  const base::Time seen = base::Time::FromSecondsSinceUnixEpoch(last_seen_at);
++  const base::TimeDelta age = base::Time::Now() - seen;
++  if (age < base::Minutes(2)) {
++    return u"active now";
++  }
++  if (age < base::Hours(1)) {
++    return u"active in the last hour";
++  }
++  if (age < base::Hours(24)) {
++    return u"active in the last day";
++  }
++  return u"active in the last week";
++}
++
++}  // namespace
++
++// The widget owns the dialog view, the dialog owns the manager. Profile
++// destruction closes the dialog first (OnProfileWillBeDestroyed).
++//
++// Manager callbacks use base::Unretained(this): the manager is owned by the
++// dialog, so every manager reply runs only while the dialog is alive. The
++// dialog-closing paths (profile destruction) synchronously destroy the
++// manager, whose own replies are bound to the manager's WeakPtrFactory and
++// are therefore dropped.
++class AegisIdSignInDialog : public views::DialogDelegateView,
++                            public ProfileObserver {
++ public:
++  explicit AegisIdSignInDialog(Profile* profile);
++  ~AegisIdSignInDialog() override;
++
++  // views::DialogDelegate:
++  std::u16string GetWindowTitle() const override;
++
++  // ProfileObserver:
++  void OnProfileWillBeDestroyed(Profile* profile) override;
++
++ private:
++  void BuildLayout();
++  void OnManagerReady();
++  void RefreshState();
++  void ShowForm();
++  void ShowAccount();
++  void SetBusy(bool busy);
++  void ShowError(const std::u16string& message);
++  void ClearError();
++
++  void OnSignInClicked();
++  void OnCreateClicked();
++  void OnSignOutClicked();
++  void OnSignInDone(bool ok, const std::u16string& message);
++  void OnDevicesFetched(bool ok,
++                        std::vector<AegisDeviceInfo> devices,
++                        const std::u16string& message);
++
++  raw_ptr<Profile> profile_ = nullptr;
++  std::unique_ptr<AegisIdManager> manager_;
++
++  // View children (owned by the view tree).
++  raw_ptr<views::Label> status_label_ = nullptr;
++  raw_ptr<views::Label> error_label_ = nullptr;
++  raw_ptr<views::View> form_container_ = nullptr;
++  raw_ptr<views::Textfield> email_field_ = nullptr;
++  raw_ptr<views::Textfield> password_field_ = nullptr;
++  raw_ptr<views::MdTextButton> signin_button_ = nullptr;
++  raw_ptr<views::MdTextButton> create_button_ = nullptr;
++  raw_ptr<views::View> account_container_ = nullptr;
++  raw_ptr<views::View> devices_container_ = nullptr;
++  raw_ptr<views::MdTextButton> signout_button_ = nullptr;
++};
++
++AegisIdSignInDialog::AegisIdSignInDialog(Profile* profile)
++    : profile_(profile) {
++  profile_->AddObserver(this);
++  // The form carries its own action buttons; no dialog chrome buttons.
++  SetButtons(0);
++  BuildLayout();
++
++  manager_ = std::make_unique<AegisIdManager>(profile);
++  manager_->Init(base::BindOnce(&AegisIdSignInDialog::OnManagerReady,
++                                base::Unretained(this)));
++}
++
++AegisIdSignInDialog::~AegisIdSignInDialog() {
++  if (profile_) {
++    profile_->RemoveObserver(this);
++  }
++}
++
++std::u16string AegisIdSignInDialog::GetWindowTitle() const {
++  return kDialogTitle;
++}
++
++void AegisIdSignInDialog::OnProfileWillBeDestroyed(Profile* profile) {
++  profile_ = nullptr;
++  if (GetWidget()) {
++    GetWidget()->CloseNow();
++  }
++}
++
++void AegisIdSignInDialog::BuildLayout() {
++  views::BoxLayout* layout =
++      SetLayoutManager(std::make_unique<views::BoxLayout>(
++          views::BoxLayout::Orientation::kVertical, gfx::Insets::VH(16, 24),
++          8));
++  layout->set_cross_axis_alignment(
++      views::BoxLayout::CrossAxisAlignment::kStart);
++
++  status_label_ = AddChildView(std::make_unique<views::Label>(
++      u"Not signed in", views::style::CONTEXT_DIALOG_BODY_TEXT,
++      views::style::STYLE_PRIMARY));
++  status_label_->SetMultiLine(true);
++  status_label_->SetPreferredSize(gfx::Size(360, 0));
++
++  error_label_ = AddChildView(std::make_unique<views::Label>(
++      std::u16string(), views::style::CONTEXT_DIALOG_BODY_TEXT,
++      views::style::STYLE_INVALID));
++  error_label_->SetMultiLine(true);
++  error_label_->SetPreferredSize(gfx::Size(360, 0));
++  error_label_->SetVisible(false);
++
++  form_container_ = AddChildView(std::make_unique<views::View>());
++  form_container_->SetLayoutManager(std::make_unique<views::BoxLayout>(
++      views::BoxLayout::Orientation::kVertical, gfx::Insets(), 8));
++
++  auto email = std::make_unique<views::Textfield>();
++  email->SetPlaceholderText(u"you@example.com");
++  email->SetTextInputType(ui::TEXT_INPUT_TYPE_EMAIL);
++  email->SetAccessibleName(u"Email");
++  email->SetPreferredSize(gfx::Size(360, 0));
++  email_field_ = form_container_->AddChildView(std::move(email));
++
++  auto password = std::make_unique<views::Textfield>();
++  password->SetPlaceholderText(u"Master password");
++  password->SetTextInputType(ui::TEXT_INPUT_TYPE_PASSWORD);
++  password->SetAccessibleName(u"Master password");
++  password->SetPreferredSize(gfx::Size(360, 0));
++  password_field_ = form_container_->AddChildView(std::move(password));
++
++  auto button_row = std::make_unique<views::View>();
++  button_row->SetLayoutManager(std::make_unique<views::BoxLayout>(
++      views::BoxLayout::Orientation::kHorizontal, gfx::Insets(), 8));
++  signin_button_ = button_row->AddChildView(
++      std::make_unique<views::MdTextButton>(base::BindRepeating(
++          &AegisIdSignInDialog::OnSignInClicked, base::Unretained(this)),
++          u"Sign in"));
++  create_button_ = button_row->AddChildView(
++      std::make_unique<views::MdTextButton>(base::BindRepeating(
++          &AegisIdSignInDialog::OnCreateClicked, base::Unretained(this)),
++          u"Create account"));
++  form_container_->AddChildView(std::move(button_row));
++
++  account_container_ = AddChildView(std::make_unique<views::View>());
++  account_container_->SetLayoutManager(std::make_unique<views::BoxLayout>(
++      views::BoxLayout::Orientation::kVertical, gfx::Insets(), 8));
++
++  auto devices = std::make_unique<views::View>();
++  devices->SetLayoutManager(std::make_unique<views::BoxLayout>(
++      views::BoxLayout::Orientation::kVertical, gfx::Insets(), 4));
++  devices_container_ = account_container_->AddChildView(std::move(devices));
++
++  signout_button_ = account_container_->AddChildView(
++      std::make_unique<views::MdTextButton>(base::BindRepeating(
++          &AegisIdSignInDialog::OnSignOutClicked, base::Unretained(this)),
++          u"Sign out"));
++
++  account_container_->SetVisible(false);
++}
++
++void AegisIdSignInDialog::OnManagerReady() {
++  RefreshState();
++}
++
++void AegisIdSignInDialog::RefreshState() {
++  if (!manager_ || !manager_->ready()) {
++    return;
++  }
++  if (manager_->signed_in() && manager_->session_live()) {
++    ShowAccount();
++  } else if (manager_->signed_in()) {
++    status_label_->SetText(u"Session expired - sign in again");
++    ShowForm();
++  } else {
++    status_label_->SetText(u"Not signed in");
++    ShowForm();
++  }
++}
++
++void AegisIdSignInDialog::ShowForm() {
++  account_container_->SetVisible(false);
++  form_container_->SetVisible(true);
++  PreferredSizeChanged();
++}
++
++void AegisIdSignInDialog::ShowAccount() {
++  form_container_->SetVisible(false);
++  account_container_->SetVisible(true);
++  status_label_->SetText(u"Signed in as " + manager_->email());
++
++  devices_container_->RemoveAllChildViews();
++  auto loading = std::make_unique<views::Label>(
++      u"Loading devices...", views::style::CONTEXT_DIALOG_BODY_TEXT,
++      views::style::STYLE_HINT);
++  loading->SetMultiLine(true);
++  loading->SetPreferredSize(gfx::Size(360, 0));
++  devices_container_->AddChildView(std::move(loading));
++  PreferredSizeChanged();
++
++  manager_->ListDevices(base::BindOnce(&AegisIdSignInDialog::OnDevicesFetched,
++                                       base::Unretained(this)));
++}
++
++void AegisIdSignInDialog::SetBusy(bool busy) {
++  signin_button_->SetEnabled(!busy);
++  create_button_->SetEnabled(!busy);
++  signout_button_->SetEnabled(!busy);
++}
++
++void AegisIdSignInDialog::ShowError(const std::u16string& message) {
++  error_label_->SetText(message);
++  error_label_->SetVisible(!message.empty());
++  PreferredSizeChanged();
++}
++
++void AegisIdSignInDialog::ClearError() {
++  error_label_->SetVisible(false);
++}
++
++void AegisIdSignInDialog::OnSignInClicked() {
++  ClearError();
++  const std::u16string email(email_field_->GetText());
++  const std::u16string password(password_field_->GetText());
++  if (email.empty() || email.find(u'@') == std::u16string::npos) {
++    ShowError(u"Enter the email your Aegis ID was created with.");
++    return;
++  }
++  if (password.empty()) {
++    ShowError(u"Enter your master password.");
++    return;
++  }
++  SetBusy(true);
++  manager_->SignIn(email, password,
++                   base::BindOnce(&AegisIdSignInDialog::OnSignInDone,
++                                  base::Unretained(this)));
++}
++
++void AegisIdSignInDialog::OnCreateClicked() {
++  ClearError();
++  const std::u16string email(email_field_->GetText());
++  const std::u16string password(password_field_->GetText());
++  if (email.empty() || email.find(u'@') == std::u16string::npos) {
++    ShowError(u"Enter an email address to create your Aegis ID with.");
++    return;
++  }
++  if (password.size() < 8) {
++    ShowError(u"Choose a master password of at least 8 characters. There is "
++              u"no reset path: if you lose it, you lose your vault.");
++    return;
++  }
++  SetBusy(true);
++  manager_->CreateAccount(email, password,
++                          base::BindOnce(&AegisIdSignInDialog::OnSignInDone,
++                                         base::Unretained(this)));
++}
++
++void AegisIdSignInDialog::OnSignInDone(bool ok, const std::u16string& message) {
++  SetBusy(false);
++  if (!ok) {
++    ShowError(message);
++    return;
++  }
++  RefreshState();
++}
++
++void AegisIdSignInDialog::OnSignOutClicked() {
++  ClearError();
++  SetBusy(true);
++  manager_->SignOut(base::BindOnce(&AegisIdSignInDialog::OnSignInDone,
++                                   base::Unretained(this)));
++}
++
++void AegisIdSignInDialog::OnDevicesFetched(
++    bool ok,
++    std::vector<AegisDeviceInfo> devices,
++    const std::u16string& message) {
++  if (!account_container_->GetVisible()) {
++    return;  // user already signed out / dialog switched state
++  }
++  devices_container_->RemoveAllChildViews();
++  if (!ok) {
++    auto error = std::make_unique<views::Label>(
++        message, views::style::CONTEXT_DIALOG_BODY_TEXT, views::style::STYLE_HINT);
++    error->SetMultiLine(true);
++    error->SetPreferredSize(gfx::Size(360, 0));
++    devices_container_->AddChildView(std::move(error));
++    PreferredSizeChanged();
++    return;
++  }
++  for (const AegisDeviceInfo& device : devices) {
++    std::u16string row =
++        base::UTF8ToUTF16(device.name.empty() ? device.id : device.name);
++    if (!device.platform.empty()) {
++      row += u" \u2022 " + base::UTF8ToUTF16(device.platform);
++    }
++    if (device.current) {
++      row += u" \u2022 this device";
++    }
++    const std::u16string seen = FormatSeen(device.last_seen_at);
++    if (!seen.empty()) {
++      row += u" \u2022 " + seen;
++    }
++    auto label = std::make_unique<views::Label>(
++        row, views::style::CONTEXT_DIALOG_BODY_TEXT, views::style::STYLE_SECONDARY);
++    label->SetMultiLine(true);
++    label->SetPreferredSize(gfx::Size(360, 0));
++    devices_container_->AddChildView(std::move(label));
++  }
++  if (devices.empty()) {
++    auto empty = std::make_unique<views::Label>(
++        u"No other devices linked to this account.",
++        views::style::CONTEXT_DIALOG_BODY_TEXT, views::style::STYLE_HINT);
++    empty->SetMultiLine(true);
++    empty->SetPreferredSize(gfx::Size(360, 0));
++    devices_container_->AddChildView(std::move(empty));
++  }
++  PreferredSizeChanged();
++}
++
++void ShowAegisIdDialog(Profile* profile) {
++  auto* dialog = new AegisIdSignInDialog(profile);
++  views::DialogDelegate::CreateDialogWidget(dialog, /*context=*/nullptr,
++                                            /*parent=*/nullptr)
++      ->Show();
++}
++
++}  // namespace aegis
+
+diff --git a/chrome/browser/ui/views/profiles/BUILD.gn b/chrome/browser/ui/views/profiles/BUILD.gn
+--- a/chrome/browser/ui/views/profiles/BUILD.gn
++++ b/chrome/browser/ui/views/profiles/BUILD.gn
+@@ -413,6 +413,7 @@
+       "//ui/views",
+     ]
+     deps = [
++      ":aegis_id",
+       ":avatar_badge_view",
+       "//build:branding_buildflags",
+       "//chrome/app:branded_strings",
+@@ -466,6 +467,30 @@
+         "//chrome/browser/web_applications",
+       ]
+     }
++  }
++
++  source_set("aegis_id") {
++    sources = [
++      "aegis_id_crypto.cc",
++      "aegis_id_dialog.cc",
++      "aegis_id_manager.cc",
++    ]
++    public = [
++      "aegis_id_crypto.h",
++      "aegis_id_dialog.h",
++      "aegis_id_manager.h",
++    ]
++    public_deps = [ "//base" ]
++    deps = [
++      "//chrome/browser/profiles",
++      "//chrome/browser/profiles:profile",
++      "//content/public/browser",
++      "//crypto",
++      "//net",
++      "//services/network/public/cpp",
++      "//ui/base",
++      "//ui/views",
++    ]
+   }
+ 
+   source_set("badged_profile_photo") {
+
+diff --git a/chrome/browser/ui/views/profiles/profile_menu_view.cc b/chrome/browser/ui/views/profiles/profile_menu_view.cc
+--- a/chrome/browser/ui/views/profiles/profile_menu_view.cc
++++ b/chrome/browser/ui/views/profiles/profile_menu_view.cc
+@@ -63,6 +63,7 @@
+ #include "chrome/browser/ui/user_education/browser_user_education_interface.h"
+ #include "chrome/browser/ui/views/color_provider_browser_helper.h"
+ #include "chrome/browser/ui/views/controls/hover_button.h"
++#include "chrome/browser/ui/views/profiles/aegis_id_dialog.h"
+ #include "chrome/browser/ui/views/profiles/avatar_badge_view.h"
+ #include "chrome/browser/ui/web_applications/app_browser_controller.h"
+ #include "chrome/browser/ui/webui/signin/signin_ui_error.h"
+@@ -396,6 +397,15 @@
+     return;
+   }
+   GetWidget()->CloseWithReason(views::Widget::ClosedReason::kUnspecified);
++
++  // Aegis ID: the profile-menu sign-in promo opens the Aegis ID dialog
++  // (real aegis-sync accounts) instead of the Google/GAIA web flow. The
++  // reauth button below is unreachable in a de-googled profile until a
++  // Google account is actually signed in, so it stays as-is.
++  if (button_type == ActionableItem::kSigninButton) {
++    aegis::ShowAegisIdDialog(&profile());
++    return;
++  }
+ 
+   // Pending while the HistorySyncPillExperiment is in progress.
+   if (button_type == ActionableItem::kSigninReauthButton) {
+
