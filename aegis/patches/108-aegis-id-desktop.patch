@@ -135,6 +135,7 @@ new file mode 100644
 +#include "base/base64.h"
 +#include "base/check.h"
 +#include "base/containers/span.h"
++#include "base/logging.h"
 +#include "crypto/aead.h"
 +#include "crypto/hash.h"
 +#include "crypto/hmac.h"
@@ -146,8 +147,7 @@ new file mode 100644
 +namespace {
 +
 +base::span<const uint8_t> InfoSpan(std::string_view s) {
-+  return base::span<const uint8_t>(
-+      reinterpret_cast<const uint8_t*>(s.data()), s.size());
++  return base::as_bytes(base::make_span(s));
 +}
 +
 +}  // namespace
