@@ -1,0 +1,286 @@
+# 107 - Aegis desktop brand sweep part 2: remaining user-visible Chromium
+# strings (settings/profile/default-browser/autofill-payments/password-reset/
+# search-engine-choice/interstitials/ssl/send-tab) + first-run SVG logo swap
+# (profile picker, search engine choice dialog, intro, default-browser modal).
+# Generated against tag 156.0.8078.79 at build-time state upstream+074/089/094/095/096.
+# ChromiumOS/copyright/credits/omnibox-bookmark strings intentionally kept.
+diff --git a/chrome/app/theme/chromium/product_logo.svg b/chrome/app/theme/chromium/product_logo.svg
+index 5e0b254..65333f9 100644
+--- a/chrome/app/theme/chromium/product_logo.svg
++++ b/chrome/app/theme/chromium/product_logo.svg
+@@ -1 +1,7 @@
+-<svg viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg"><g clip-path="url(#a)"><path d="M128 191.995c35.346 0 64-28.654 64-64 0-35.347-28.654-64-64-64-35.346 0-64 28.654-64 64 0 35.346 28.654 64 64 64Z" fill="#fff"/><path d="M96.01 183.41a63.681 63.681 0 0 1-23.42-23.43l-.007.004-55.425-96a128.027 128.027 0 0 0 110.841 192.018l55.436-96.018a63.985 63.985 0 0 1-16.465 18.775 64.007 64.007 0 0 1-70.96 4.651Z" fill="#669DF6"/><path d="M191.991 127.984a63.683 63.683 0 0 1-8.581 31.996l.007.004-55.426 96a128.029 128.029 0 0 0 110.872-192H127.991a64 64 0 0 1 64 64Z" fill="#AECBFA"/><path d="M128 180c28.719 0 52-23.281 52-52s-23.281-52-52-52-52 23.281-52 52 23.281 52 52 52Z" fill="#1A73E8"/><path d="M95.99 72.59a63.684 63.684 0 0 1 32.001-8.566v-.008h110.851A128.035 128.035 0 0 0 127.991.026 128.028 128.028 0 0 0 17.13 63.999l55.436 96.018a64.003 64.003 0 0 1 4.65-70.961A64 64 0 0 1 95.991 72.59Z" fill="#1967D2"/></g><defs><clipPath id="a"><path fill="#fff" d="M0 0h256v256H0z"/></clipPath></defs></svg>
+\ No newline at end of file
++<svg viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
++  <!-- Aegis Browser product mark (monochrome, docs/BRAND.md) -->
++  <rect width="256" height="256" rx="56" fill="#070707"/>
++  <g transform="translate(-17.5,-17.55) scale(1.327)" fill="#FFFFFF" fill-rule="evenodd">
++    <path d="M53.91,23.99 L 23.00,83.92 L 68.98,83.92 L 56.58,57.92 L 62.52,46.21 L 80.95,83.92 L 84.83,83.92 L 63.04,41.64 L 48.49,70.49 L 36.35,70.49 L 56.93,30.19 Z M26.10,82.29 L 31.18,72.21 L 61.49,72.21 L 66.40,82.29 Z"/>
++  </g>
++</svg>
+diff --git a/chrome/app/theme/chromium/product_logo_animation.svg b/chrome/app/theme/chromium/product_logo_animation.svg
+index 3b0ebc6..c962ce5 100644
+--- a/chrome/app/theme/chromium/product_logo_animation.svg
++++ b/chrome/app/theme/chromium/product_logo_animation.svg
+@@ -1,43 +1,20 @@
+ <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+-  <g opacity="1" style="mix-blend-mode:normal">
+-    <defs>
+-      <clipPath id="a" width="200%" height="200%" x="-50%" y="-50%">
+-        <path fill="#fff" d="M0 160V0h160v160z" clip-rule="nonzero" />
+-      </clipPath>
+-    </defs>
+-    <g clip-path="url(#a)">
+-      <g transform="matrix(0 -1 1 0 .01 160)">
+-        <g id="b" opacity="0" style="mix-blend-mode:normal">
+-          <g style="mix-blend-mode:normal">
+-            <path fill="#669DF6" fill-opacity="1" fill-rule="nonzero" d="M59.994 74.641a39.8 39.8 0 0 1-14.637-14.643l-.004.002L10.712 0a80.017 80.017 0 0 0 69.275 120.011l34.648-60.01a39.99 39.99 0 0 1-24.288 18.637 40.004 40.004 0 0 1-30.353-3.997z" opacity="1" style="mix-blend-mode:NORMAL" transform="translate(0 39.973)" />
+-          </g>
+-          <g style="mix-blend-mode:normal">
+-            <path fill="#AECBFA" fill-opacity="1" fill-rule="nonzero" d="M40 40a39.802 39.802 0 0 1-5.363 19.998l.004.002L0 120A80.018 80.018 0 0 0 69.295 0H0a40 40 0 0 1 40 40z" opacity="1" style="mix-blend-mode:NORMAL" transform="translate(79.983 39.973)" />
+-          </g>
+-          <g style="mix-blend-mode:normal">
+-            <path fill="#1967D2" fill-opacity="1" fill-rule="nonzero" d="M49.288 45.352a39.802 39.802 0 0 1 20-5.354v-.005h69.282A80.022 80.022 0 0 0 69.288 0 80.017 80.017 0 0 0 0 39.982l34.647 60.011a40.002 40.002 0 0 1 14.641-54.64z" opacity="1" style="mix-blend-mode:NORMAL" transform="translate(10.694)" />
+-          </g>
+-        </g>
+-      </g>
+-      <g transform="translate(40 39.997)">
+-        <g id="c" opacity="0" style="mix-blend-mode:normal">
+-          <g style="mix-blend-mode:normal">
+-            <path fill="#FFF" fill-opacity="1" fill-rule="nonzero" d="M40 80c22.091 0 40-17.909 40-40S62.091 0 40 0 0 17.909 0 40s17.909 40 40 40z" opacity="1" style="mix-blend-mode:NORMAL" />
+-          </g>
+-          <g style="mix-blend-mode:normal">
+-            <path fill="#1A73E8" fill-opacity="1" fill-rule="nonzero" d="M32.5 65C50.45 65 65 50.45 65 32.5S50.45 0 32.5 0 0 14.55 0 32.5 14.55 65 32.5 65z" opacity="1" style="mix-blend-mode:NORMAL" transform="translate(7.5 7.503)" />
+-          </g>
+-        </g>
++  <!-- Aegis Browser animated product mark: gentle shield pulse -->
++  <defs>
++    <clipPath id="a">
++      <rect width="160" height="160" rx="35"/>
++    </clipPath>
++  </defs>
++  <g clip-path="url(#a)">
++    <rect width="160" height="160" fill="#070707"/>
++    <g transform="translate(18.5,18.45) scale(1.327)" fill="#FFFFFF" fill-rule="evenodd">
++      <g>
++        <animateTransform attributeName="transform" type="translate" additive="sum"
++                          values="0 0; 0 -3; 0 0" keyTimes="0;0.5;1" dur="2.4s"
++                          repeatCount="indefinite" calcMode="spline"
++                          keySplines="0.4 0 0.6 1; 0.4 0 0.6 1"/>
++        <path d="M53.91,23.99 L 23.00,83.92 L 68.98,83.92 L 56.58,57.92 L 62.52,46.21 L 80.95,83.92 L 84.83,83.92 L 63.04,41.64 L 48.49,70.49 L 36.35,70.49 L 56.93,30.19 Z M26.10,82.29 L 31.18,72.21 L 61.49,72.21 L 66.40,82.29 Z"/>
+       </g>
+     </g>
+   </g>
+-  <animateTransform additive="sum" attributeName="transform" fill="freeze" calcMode="spline" dur="1s" href="#b" keySplines="0.5 0.35 0.15 1;0.5 0.35 0.15 1" keyTimes="0;0.5;1" repeatCount="1" type="rotate" values="0 79.9912 79.9923;0 79.9912 79.9923;90 79.9912 79.9923" />
+-  <animateTransform additive="sum" attributeName="transform" fill="freeze" calcMode="spline" dur="1s" href="#b" keySplines="0.5 0.35 0.15 1;0.5 0.35 0.15 1" keyTimes="0;0.5;1" repeatCount="1" type="translate" values="79.9912 79.9923;79.9912 79.9923;79.9912 79.9923" />
+-  <animateTransform additive="sum" attributeName="transform" fill="freeze" calcMode="spline" dur="1s" href="#b" keySplines="0.5 0.35 0.15 1;0.5 0.35 0.15 1" keyTimes="0;0.5;1" repeatCount="1" type="scale" values="1 1;1 1;0.5625 0.5625" />
+-  <animateTransform additive="sum" attributeName="transform" fill="freeze" calcMode="spline" dur="1s" href="#b" keySplines="0.5 0.35 0.15 1;0.5 0.35 0.15 1" keyTimes="0;0.5;1" repeatCount="1" type="translate" values="-79.9912 -79.9923;-79.9912 -79.9923;-79.9912 -79.9923" />
+-  <animate attributeName="opacity" fill="freeze" calcMode="spline" dur="1s" href="#b" keySplines="0.5 0.35 0.15 1;0.5 0.35 0.15 1" keyTimes="0;0.5;1" repeatCount="1" values="0;0;1" />
+-  <animateTransform additive="sum" fill="freeze" attributeName="transform" calcMode="spline" dur="1s" href="#c" keySplines="0.5 0.35 0.15 1;0.5 0.35 0.15 1" keyTimes="0;0.5;1" repeatCount="1" type="translate" values="40 40.0001;40 40.0001;40 40.0001" />
+-  <animateTransform additive="sum" fill="freeze" attributeName="transform" calcMode="spline" dur="1s" href="#c" keySplines="0.5 0.35 0.15 1;0.5 0.35 0.15 1" keyTimes="0;0.5;1" repeatCount="1" type="scale" values="0.3 0.3;2 2;0.56 0.56" />
+-  <animateTransform additive="sum" fill="freeze" attributeName="transform" calcMode="spline" dur="1s" href="#c" keySplines="0.5 0.35 0.15 1;0.5 0.35 0.15 1" keyTimes="0;0.5;1" repeatCount="1" type="translate" values="-40 -40.0001;-40 -40.0001;-40 -40.0001" />
+-  <animate attributeName="opacity" fill="freeze" calcMode="spline" dur="1s" href="#c" keySplines="0.5 0.35 0.15 1;0.5 0.35 0.15 1" keyTimes="0;0.5;1" repeatCount="1" values="0;1;1" />
+ </svg>
+diff --git a/components/autofill_payments_strings.grdp b/components/autofill_payments_strings.grdp
+index 9d9f479..9c8fceb 100644
+--- a/components/autofill_payments_strings.grdp
++++ b/components/autofill_payments_strings.grdp
+@@ -284,13 +284,13 @@
+     </if>
+     <if expr="not _google_chrome">
+       <message name="IDS_AUTOFILL_SAVE_AND_FILL_DIALOG_EXPLANATION_LOCAL" desc="Explanation text for the Autofill Save and Fill dialog for cards that will be saved locally.">
+-        Autofill this card for purchases made in Chromium when it's saved on this device
++        Autofill this card for purchases made in Aegis when it's saved on this device
+       </message>
+       <message name="IDS_AUTOFILL_SAVE_AND_FILL_DIALOG_EXPLANATION_UPLOAD" desc="Explanation text for the Autofill Save and Fill dialog for cards that will be saved to the GPay server.">
+-        Autofill this card for purchases made in Chromium when it's saved to use with Google Pay
++        Autofill this card for purchases made in Aegis when it's saved to use with Google Pay
+       </message>
+       <message name="IDS_AUTOFILL_SAVE_AND_FILL_TO_WALLET_DIALOG_EXPLANATION_UPLOAD" desc="Explanation text for the Autofill Save and Fill dialog for cards that will be saved to Google Wallet.">
+-        Autofill this card for purchases made in Chromium when it's saved in Google Wallet
++        Autofill this card for purchases made in Aegis when it's saved in Google Wallet
+       </message>
+     </if>
+     <message name="IDS_AUTOFILL_SAVE_AND_FILL_DIALOG_CARD_NUMBER_LABEL" desc="The label text for the card number textfield.">
+@@ -603,13 +603,13 @@
+     </if>
+     <if expr="not _google_chrome">
+       <message name="IDS_PAYMENTS_AUTOFILL_FILLING_MANDATORY_REAUTH" desc="Text that appears in the payments autofill mandatory re-authentication popup as the sublabel, asking the user to authenticate using biometric or device unlock before filling.">
+-        Verify it's you so Chromium can fill in your payment info.
++        Verify it's you so Aegis can fill in your payment info.
+       </message>
+       <message name="IDS_PAYMENTS_AUTOFILL_SETTINGS_TOGGLE_MANDATORY_REAUTH" desc="Text that appears in the payments autofill mandatory re-authentication popup as the sublabel when users try to switch the mandatory reauth settings page toggle, asking the user to authenticate using biometric or device unlock before the toggle is switched.">
+-        Chromium is trying to modify settings for filling payment methods.
++        Aegis is trying to modify settings for filling payment methods.
+       </message>
+       <message name="IDS_PAYMENTS_AUTOFILL_SETTINGS_EDIT_MANDATORY_REAUTH" desc="Text that appears in the payments autofill mandatory re-authentication popup as the sublabel when users try to edit cards in the settings page, asking the user to authenticate using biometric or device unlock first.">
+-        Chromium is trying to edit payment methods.
++        Aegis is trying to edit payment methods.
+       </message>
+     </if>
+   </if>
+diff --git a/components/management_strings.grdp b/components/management_strings.grdp
+index 7c7f1dd..6b2760b 100644
+--- a/components/management_strings.grdp
++++ b/components/management_strings.grdp
+@@ -75,10 +75,10 @@
+       </if>
+       <if expr="not _google_chrome">
+         <message name="IDS_MANAGEMENT_BROWSER_NOTICE" desc="Message shown when the (non-Google-branded) Chromium browser is managed, it indicates what the administrator can do on the browser.">
+-        Your administrator can make changes to your profile and browser remotely, analyze information about the browser through reporting, and perform other necessary tasks. Activity on this device may also be managed outside of Chromium. <ph name="BEGIN_LINK">&lt;a target="_blank" href="$1" aria-label="$2"&gt;</ph>Learn more<ph name="END_LINK">&lt;/a&gt;</ph>
++        Your administrator can make changes to your profile and browser remotely, analyze information about the browser through reporting, and perform other necessary tasks. Activity on this device may also be managed outside of Aegis. <ph name="BEGIN_LINK">&lt;a target="_blank" href="$1" aria-label="$2"&gt;</ph>Learn more<ph name="END_LINK">&lt;/a&gt;</ph>
+         </message>
+         <message name="IDS_MANAGEMENT_NOT_MANAGED_NOTICE" desc="Message indicating that the (non-Google-branded) Chromium browser is not managed">
+-        This browser is not managed by a company or other organization. Activity on this device may be managed outside of Chromium. <ph name="BEGIN_LINK">&lt;a target="_blank" href="$1" aria-label="$2"&gt;</ph>Learn more<ph name="END_LINK">&lt;/a&gt;</ph>
++        This browser is not managed by a company or other organization. Activity on this device may be managed outside of Aegis. <ph name="BEGIN_LINK">&lt;a target="_blank" href="$1" aria-label="$2"&gt;</ph>Learn more<ph name="END_LINK">&lt;/a&gt;</ph>
+         </message>
+       </if>
+       <message name="IDS_MANAGEMENT_PROFILE_NOTICE" desc="Message shown when one profile from the Chrome browser is managed, it indicates what the administrator can do for that profile.">
+diff --git a/components/new_or_sad_tab_strings.grdp b/components/new_or_sad_tab_strings.grdp
+index 21a8aae..0c6f8c9 100644
+--- a/components/new_or_sad_tab_strings.grdp
++++ b/components/new_or_sad_tab_strings.grdp
+@@ -88,7 +88,7 @@
+       </if>
+       <if expr="not _google_chrome">
+         <message name="IDS_SAD_TAB_RELOAD_RESTART_BROWSER" desc="One of the bullet points displayed on the web page if a reload failed to fix the issue, advising the user to restart Chromium." formatter_data="android_java">
+-          Restart Chromium
++          Restart Aegis
+         </message>
+       </if>
+       <if expr="is_android or is_ios">
+@@ -177,7 +177,7 @@
+       </if>
+       <if expr="not _google_chrome">
+         <message name="IDS_NEW_TAB_OTR_NOT_SAVED" desc="Bullet points listing data that are not saved in the Incognito mode. 'Browsing history' means a history of visited websites. 'Cookies and site data' refers to data saved by websites on the user's device (e.g. sign-in state, preferences, etc.). 'Information entered in forms' refers to names, addresses, passwords etc. that users enter into forms on the web." formatter_data="android_java">
+-          Chromium <ph name="BEGIN_EMPHASIS">&lt;em&gt;</ph>won’t save<ph name="END_EMPHASIS">&lt;/em&gt;</ph>:
++          Aegis <ph name="BEGIN_EMPHASIS">&lt;em&gt;</ph>won’t save<ph name="END_EMPHASIS">&lt;/em&gt;</ph>:
+           <ph name="BEGIN_LIST">&lt;ul&gt;</ph>
+             <ph name="LIST_ITEM">&lt;li&gt;</ph>Your browsing history
+             <ph name="LIST_ITEM">&lt;li&gt;</ph>Cookies and site data
+diff --git a/components/reset_password_strings.grdp b/components/reset_password_strings.grdp
+index 5f58c26..4d7baa1 100644
+--- a/components/reset_password_strings.grdp
++++ b/components/reset_password_strings.grdp
+@@ -40,10 +40,10 @@
+   </if>
+   <if expr="not _google_chrome">
+      <message name="IDS_RESET_PASSWORD_EXPLANATION_PARAGRAPH" desc="The primary explanatory paragraph for the reset password page when the user manually navigates to this page.">
+-      Chromium recommends resetting your password if you reused it on other sites.
++      Aegis recommends resetting your password if you reused it on other sites.
+     </message>
+     <message name="IDS_RESET_PASSWORD_EXPLANATION_PARAGRAPH_WITH_ORG_NAME" desc="The primary explanatory paragraph for the reset password page when the user manually navigates to this page.">
+-      Chromium recommends resetting your <ph name="BEGIN_BOLD">&lt;strong&gt;</ph><ph name="ORG_NAME">$1<ex>Google</ex></ph><ph name="END_BOLD">&lt;/strong&gt;</ph> password if you reused it on other sites.
++      Aegis recommends resetting your <ph name="BEGIN_BOLD">&lt;strong&gt;</ph><ph name="ORG_NAME">$1<ex>Google</ex></ph><ph name="END_BOLD">&lt;/strong&gt;</ph> password if you reused it on other sites.
+     </message>
+   </if>
+ </grit-part>
+diff --git a/components/search_engine_choice_strings.grdp b/components/search_engine_choice_strings.grdp
+index cc85a72..04f340c 100644
+--- a/components/search_engine_choice_strings.grdp
++++ b/components/search_engine_choice_strings.grdp
+@@ -64,7 +64,7 @@
+     </if>
+     <if expr="not _google_chrome">
+       <message name="IDS_SEARCH_ENGINE_CHOICE_PAGE_SUBTITLE_INFO_LINK_A11Y_LABEL" desc="Accessibility label for the “Learn more” link in the search engine choice screen. Clicking the link will open a card that explains why users are being prompted to choose a search engine, and what a search engine does in Chromium.">
+-        Learn more about your search engine in Chromium
++        Learn more about your search engine in Aegis
+       </message>
+     </if>
+ 
+@@ -116,25 +116,25 @@
+     <if expr="not _google_chrome">
+       <if expr="use_titlecase">
+         <message name="IDS_SEARCH_ENGINE_CHOICE_INFO_DIALOG_TITLE" desc="This string is the heading of a card that explains why users are being prompted to choose a search engine, and what a search engine does in Chromium. (A search engine provides answers to search queries; this is different from a browser, which displays web pages. A search engine powers many experiences within a browser.) This screen appears when the user taps or clicks “Learn more” on the search engine choice screen. This string is before the “Based on a law in your region...” string. We want users to read this screen and understand that they can use any search engine with Chromium and what the impact of their choice might be.">
+-          Your Search Engine in Chromium
++          Your Search Engine in Aegis
+         </message>
+       </if>
+       <if expr="not use_titlecase">
+         <message name="IDS_SEARCH_ENGINE_CHOICE_INFO_DIALOG_TITLE" desc="This string is the heading of a card that explains why users are being prompted to choose a search engine, and what a search engine does in Chromium. (A search engine provides answers to search queries; this is different from a browser, which displays web pages. A search engine powers many experiences within a browser.) This screen appears when the user taps or clicks “Learn more” on the search engine choice screen. This string is before the “Based on a law in your region...” string. We want users to read this screen and understand that they can use any search engine with Chromium and what the impact of their choice might be.">
+-          Your search engine in Chromium
++          Your search engine in Aegis
+         </message>
+       </if>
+       <message name="IDS_SEARCH_ENGINE_CHOICE_INFO_DIALOG_BODY_FIRST_PARAGRAPH" desc="This is the first paragraph of the body text of a card that explains why users are being prompted to choose a search engine, and what a search engine does in Chrome. This screen provides the following details: 1. the list includes search engines that are popular in the user’s region and the order includes randomization (not in order of recommendation); 2. features may be unavailable if the chosen default search engine doesn’t support them; 3. the user can change their mind at any time. This card appears when the user taps or clicks “Learn more” on the search engine choice screen. The headline for this card is “Your search engine in Chromium”.">
+-        Based on a law in your region, Chromium asks you to choose your default search engine. These search engines are popular in your region and are shown in random order.
++        Based on a law in your region, Aegis asks you to choose your default search engine. These search engines are popular in your region and are shown in random order.
+       </message>
+       <message name="IDS_SEARCH_ENGINE_CHOICE_INFO_DIALOG_BODY_SECOND_PARAGRAPH" desc="This is the second paragraph of the body text of a card that explains why users are being prompted to choose a search engine, and what a search engine does in Chromium. This screen provides the following details: 1. the list includes search engines that are popular in the user’s region and the order includes randomization (not in order of recommendation); 2. features may be unavailable if the chosen default search engine doesn’t support them; 3. the user can change their mind at any time. This card appears when the user taps or clicks “Learn more” on the search engine choice screen. The headline for this card is “Your search engine in Chromium”.">
+-        <ph name="BEGIN_BOLD">&lt;b&gt;</ph>Your default search engine lets you search the web and powers Chromium features<ph name="END_BOLD">&lt;/b&gt;</ph> like searching from the address bar and from images on web pages. A feature might not be available if your search engine doesn’t support it.
++        <ph name="BEGIN_BOLD">&lt;b&gt;</ph>Your default search engine lets you search the web and powers Aegis features<ph name="END_BOLD">&lt;/b&gt;</ph> like searching from the address bar and from images on web pages. A feature might not be available if your search engine doesn’t support it.
+       </message>
+       <message name="IDS_SEARCH_ENGINE_CHOICE_INFO_DIALOG_BODY_THIRD_PARAGRAPH" desc="This is the third paragraph of the body text of a card that explains why users are being prompted to choose a search engine, and what a search engine does in Chromium. This screen provides the following details: 1. the list includes search engines that are popular in the user’s region and the order includes randomization (not in order of recommendation); 2. features may be unavailable if the chosen default search engine doesn’t support them; 3. the user can change their mind at any time. This card appears when the user taps or clicks “Learn more” on the search engine choice screen. The headline for this card is “Your search engine in Chromium”.">
+-        You can change your search engine anytime in Chromium’s settings.
++        You can change your search engine anytime in Aegis’s settings.
+       </message>
+       <message name="IDS_SEARCH_ENGINE_CHOICE_INFO_DIALOG_BODY_THIRD_PARAGRAPH_INSTRUCTIVE" desc="This is the third paragraph of the body text of a card that explains why users are being prompted to choose a search engine, and what a search engine does in Chromium. This screen provides the following details: 1. the list includes search engines that are popular in the user’s region and the order includes randomization (not in order of recommendation); 2. features may be unavailable if the chosen default search engine doesn’t support them; 3. the user can change their mind at any time. For JSA, we add more information on how to add non-regional search engines. This card appears when the user taps or clicks “Learn more” on the search engine choice screen. The headline for this card is “Your search engine in Chromium”.">
+-        You can change your search engine anytime in Chromium’s settings. If you don’t see your preferred search engine, you can perform a search from their site. You’ll see it listed as a recently visited search engine in Chromium settings, and you can make it your default.
++        You can change your search engine anytime in Aegis’s settings. If you don’t see your preferred search engine, you can perform a search from their site. You’ll see it listed as a recently visited search engine in Aegis settings, and you can make it your default.
+       </message>
+     </if>
+ 
+diff --git a/components/security_interstitials_strings.grdp b/components/security_interstitials_strings.grdp
+index 690bb1b..d067785 100644
+--- a/components/security_interstitials_strings.grdp
++++ b/components/security_interstitials_strings.grdp
+@@ -174,7 +174,7 @@
+   </if>
+   <if expr="not _google_chrome">
+     <message name="IDS_CLOCK_ERROR_EXPLANATION" desc="Body text under an 'Advanced' button. Context: error shown when the browser can't load a page because the device's clock is wrong. This paragraph explains why a correct clock is necessary.">
+-      To establish a secure connection, your clock needs to be set correctly. This is because the certificates that websites use to identify themselves are only valid for specific periods of time. Since your device's clock is incorrect, Chromium cannot verify these certificates.
++      To establish a secure connection, your clock needs to be set correctly. This is because the certificates that websites use to identify themselves are only valid for specific periods of time. Since your device's clock is incorrect, Aegis cannot verify these certificates.
+     </message>
+   </if>
+ 
+@@ -223,10 +223,10 @@
+   </if>
+   <if expr="not _google_chrome">
+     <message name="IDS_SSL_NONOVERRIDABLE_MORE" desc="Body text for the explanation shown if user clicks on the Details button.">
+-      <ph name="SITE">$1<ex>google.com</ex></ph> normally uses encryption to protect your information. When Chromium tried to connect to <ph name="SITE">$1<ex>google.com</ex></ph> this time, the website sent back unusual and incorrect credentials. This may happen when an attacker is trying to pretend to be <ph name="SITE">$1<ex>google.com</ex></ph>, or a Wi-Fi sign-in screen has interrupted the connection. Your information is still secure because Chromium stopped the connection before any data was exchanged.
++      <ph name="SITE">$1<ex>google.com</ex></ph> normally uses encryption to protect your information. When Aegis tried to connect to <ph name="SITE">$1<ex>google.com</ex></ph> this time, the website sent back unusual and incorrect credentials. This may happen when an attacker is trying to pretend to be <ph name="SITE">$1<ex>google.com</ex></ph>, or a Wi-Fi sign-in screen has interrupted the connection. Your information is still secure because Aegis stopped the connection before any data was exchanged.
+     </message>
+     <message name="IDS_SSL_NONOVERRIDABLE_INVALID" desc="A sentence to explain why the user can't proceed.">
+-      You cannot visit <ph name="SITE">$1<ex>google.com</ex></ph> right now because the website sent scrambled credentials that Chromium cannot process. Network errors and attacks are usually temporary, so this page will probably work later.
++      You cannot visit <ph name="SITE">$1<ex>google.com</ex></ph> right now because the website sent scrambled credentials that Aegis cannot process. Network errors and attacks are usually temporary, so this page will probably work later.
+     </message>
+   </if>
+ 
+@@ -444,7 +444,7 @@
+     </if>
+     <if expr="not _google_chrome">
+       <message name="IDS_KNOWN_INTERCEPTION_BODY2" desc="Second body text for the chrome://connection-monitoring-detected/ page with more details">
+-        This problem happens because of a certificate you or someone else installed on your device. The certificate is known to be used to monitor and intercept networks, and is not trusted by Chromium. While some legitimate cases for monitoring do exist, like on a school or company network, Chromium wants to make sure you're aware it's happening, even if you can't stop it. Monitoring may happen in any browser or application that accesses the web.
++        This problem happens because of a certificate you or someone else installed on your device. The certificate is known to be used to monitor and intercept networks, and is not trusted by Aegis. While some legitimate cases for monitoring do exist, like on a school or company network, Aegis wants to make sure you're aware it's happening, even if you can't stop it. Monitoring may happen in any browser or application that accesses the web.
+       </message>
+     </if>
+ 
+diff --git a/components/ssl_errors_strings.grdp b/components/ssl_errors_strings.grdp
+index b071895..ce30de1 100644
+--- a/components/ssl_errors_strings.grdp
++++ b/components/ssl_errors_strings.grdp
+@@ -158,7 +158,7 @@
+   <if expr="not _google_chrome">
+     <if expr="is_ios">
+       <message name="IDS_CERT_ERROR_AUTHORITY_INVALID_DETAILS" desc="Details for an X509 certificate with an invalid authority">
+-        This server could not prove that it is <ph name="DOMAIN">&lt;strong&gt;$1<ex>paypal.com</ex>&lt;/strong&gt;</ph>; its security certificate is not trusted by Chromium. This may be caused by a misconfiguration or an attacker intercepting your connection.
++        This server could not prove that it is <ph name="DOMAIN">&lt;strong&gt;$1<ex>paypal.com</ex>&lt;/strong&gt;</ph>; its security certificate is not trusted by Aegis. This may be caused by a misconfiguration or an attacker intercepting your connection.
+       </message>
+     </if>
+     <if expr="is_android">
+@@ -188,12 +188,12 @@
+   <if expr="not _google_chrome">
+     <if expr="is_ios or is_android">
+       <message name="IDS_CERT_ERROR_AUTHORITY_INVALID_DETAILS_V2" desc="Details for an X509 certificate with an invalid authority, V2.">
+-        This server could not prove that it is <ph name="DOMAIN">&lt;strong&gt;$1<ex>paypal.com</ex>&lt;/strong&gt;</ph> because it is using a security certificate that is not trusted by Chromium or your system configuration for web traffic encryption. This may be caused by a misconfiguration, or an attacker intercepting your connection.
++        This server could not prove that it is <ph name="DOMAIN">&lt;strong&gt;$1<ex>paypal.com</ex>&lt;/strong&gt;</ph> because it is using a security certificate that is not trusted by Aegis or your system configuration for web traffic encryption. This may be caused by a misconfiguration, or an attacker intercepting your connection.
+       </message>
+     </if>
+     <if expr="not is_ios and not is_android">
+       <message name="IDS_CERT_ERROR_AUTHORITY_INVALID_DETAILS_V2" desc="Details for an X509 certificate with an invalid authority, V2.">
+-        This server could not prove that it is <ph name="DOMAIN">&lt;strong&gt;$1<ex>paypal.com</ex>&lt;/strong&gt;</ph> because it is using a security certificate that is not trusted by Chromium or your system configuration for web traffic encryption. This may be caused by a misconfiguration, or an attacker intercepting your connection. <ph name="BEGIN_VIEW_CERTIFICATE_LINK">&lt;a href="#" id="view-certificate-link"&gt;</ph>View Certificate<ph name="END_VIEW_CERTIFICATE_LINK">&lt;/a&gt;</ph>
++        This server could not prove that it is <ph name="DOMAIN">&lt;strong&gt;$1<ex>paypal.com</ex>&lt;/strong&gt;</ph> because it is using a security certificate that is not trusted by Aegis or your system configuration for web traffic encryption. This may be caused by a misconfiguration, or an attacker intercepting your connection. <ph name="BEGIN_VIEW_CERTIFICATE_LINK">&lt;a href="#" id="view-certificate-link"&gt;</ph>View Certificate<ph name="END_VIEW_CERTIFICATE_LINK">&lt;/a&gt;</ph>
+       </message>
+     </if>
+   </if>
+

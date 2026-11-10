@@ -41,3 +41,8 @@ gen:resources.pak
 gen:chrome_100_percent.pak
 gen:chrome_200_percent.pak
 gen:installer
+gen:chrome/branded_strings_en-US.pak
+gen:chrome/branded_strings_en-GB.pak
+gen:chrome/generated_resources_en-US.pak
+gen:chrome/generated_resources_en-GB.pak
+gen:chrome/chrome_unscaled_resources.pak
