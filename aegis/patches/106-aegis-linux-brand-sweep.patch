@@ -282,7 +282,7 @@
 +                    pathlib.Path("usr/share/icons/hicolor")
 +                    / f"{size}x{size}"
 +                    / "apps"
-+                    / f"{self.config.desktop_icon}.png",
++                    / f"{self.desktop_icon}.png",
 +                    ArtifactType.ICON,
 +                    StandardPermissions.REGULAR,
 +                    dst_base="staging_dir",
