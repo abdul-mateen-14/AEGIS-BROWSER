@@ -27,3 +27,17 @@ third_party/search_engines_data/resources/definitions/regional_settings.json
 # (APK RED 42388197815: banked prepopulated_engines.h predated patch 098.)
 gen:third_party/search_engines_data/prepopulated_engines
 gen:third_party/search_engines_data/regional_settings
+
+# DURABLE (2026-11-10, patch 106 brand sweep): grd->pak and packaging ACTION
+# edges are invisible to ninja -t deps, so the sweep's string grd edits, the
+# version-page PNG swaps and the installer.py hicolor change delete their
+# generated outputs directly. Cost per window: grit re-encodes ~3 pak sets
+# (~2 min) + deb/zip packaging re-run; no C++ recompiles, no chrome relink.
+gen:chrome/app/resources
+gen:components/resources
+gen:components/strings
+gen:locales
+gen:resources.pak
+gen:chrome_100_percent.pak
+gen:chrome_200_percent.pak
+gen:installer

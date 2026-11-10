@@ -9,7 +9,12 @@ On resume, compare with the current values:
   * chromium tag differs          -> drop the tree (wrong version; rebuild)
   * aegis repo sha identical      -> tree is exactly consistent; do nothing
   * aegis/ci/** changed           -> gn args / wrapper changed; drop the tree
-  * aegis/branding/** changed     -> apply scripts edit sources in place; drop
+  * aegis/branding/** changed    -> desktop lanes (linux_x64/win_x64): delete
+                                    the theme-pak outputs the apply scripts
+                                    feed (grit ACTION edges are invisible to
+                                    ninja -t deps) and keep the bank;
+                                    android (arm64): drop the tree (the res
+                                    graph has no safe output mapping yet)
   * aegis/patches/*.patch changed -> map the chromium files those patches
     touch via `ninja -t deps` and delete ONLY the outputs that depend on
     them (a fix commit costs seconds of recompile, not the whole bank)
@@ -44,6 +49,27 @@ def sh(args, cwd=None, check=True, timeout=180):
 
 MANIFEST_FILES = ("build.ninja", "build.ninja.d", "toolchain.ninja",
                   "build.ninja.stamp")
+
+# grit/repack ACTION-edge outputs fed (directly or via copy) by the branding
+# apply scripts. ninja -t deps cannot map them (ACTION edges, not depfiles),
+# so a branding change deletes these explicitly on the desktop lanes instead
+# of dropping the whole bank. Pak repack + (windows) mini_installer relink is
+# minutes; the chrome binary itself never embeds pak content.
+BRANDING_PAK_OUTPUTS = (
+    "gen/chrome/app/theme/theme_resources_100_percent.pak",
+    "gen/chrome/app/theme/theme_resources_200_percent.pak",
+    "gen/chrome/app/theme/theme_resources_300_percent.pak",
+    "gen/chrome/app/theme/webui_theme_resources_100_percent.pak",
+    "gen/chrome/app/theme/webui_theme_resources_200_percent.pak",
+    "gen/chrome/app/theme/webui_theme_resources_300_percent.pak",
+    "gen/chrome/app/theme/chrome_unscaled_resources.pak",
+    "gen/components/resources/components_resources_100_percent.pak",
+    "gen/components/resources/components_resources_200_percent.pak",
+    "gen/components/resources/components_resources_300_percent.pak",
+    "chrome_100_percent.pak",
+    "chrome_200_percent.pak",
+    "chrome_300_percent.pak",
+)
 
 
 def find_gn(src):
@@ -186,9 +212,20 @@ def main():
         drop_tree(out, src, odir)
         return
     if any(p.startswith("aegis/branding/") for p in changed):
-        print("branding hooks changed - dropping bank for safety")
-        drop_tree(out, src, odir)
-        return
+        if odir == "arm64":
+            print("branding hooks changed - dropping bank for safety "
+                  "(android res graph has no safe output mapping yet)")
+            drop_tree(out, src, odir)
+            return
+        print(f"branding hooks changed - surgical pak invalidation "
+              f"({len(BRANDING_PAK_OUTPUTS)} outputs); bank kept")
+        for rel in BRANDING_PAK_OUTPUTS:
+            p = os.path.join(out, rel)
+            if os.path.isdir(p):
+                shutil.rmtree(p, ignore_errors=True)
+            elif os.path.exists(p):
+                os.remove(p)
+        # fall through: patch changes (if any) are mapped as usual below
 
     patch_files = [p for p in changed if p.startswith("aegis/patches/")]
     targets = set()
