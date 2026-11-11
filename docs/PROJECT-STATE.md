@@ -140,6 +140,13 @@ Historical (older waves, summarized — details in git log): marker-bug stalenes
 `invalidation_extra.txt`), drop_tree half-wipe (fixed 0746e88), bank volume OOM
 (PART_MB=700), 093 duplicate-field + Profile API, 080 Supplier/isLoaded, 087 JSONObject.
 
+**NOTE — Actions history cleared 2026-11-11 ~07:40Z (user request):** all 46
+completed/cancelled/failed runs deleted via `scripts/clean_workflow_runs.py`; only live
+runs remain. The Actions list will look almost empty — that is normal. Run-level history
+is NOT evidence of anything; drafts + banks (releases) are the real ledger. If you need
+old run logs, they are gone — rely on this file and git log instead. Re-run the same
+script any time the list gets cluttered (never deletes live runs, never touches releases).
+
 ## 9. Known traps (do not rediscover these)
 
 1. **Cron one_time format:** pure-digit expr is parsed as epoch-millis → year 58814. ALWAYS
