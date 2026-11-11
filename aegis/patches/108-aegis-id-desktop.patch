@@ -478,7 +478,7 @@ diff --git a/chrome/browser/ui/views/profiles/aegis_id_manager.cc b/chrome/brows
 new file mode 100644
 --- /dev/null
 +++ b/chrome/browser/ui/views/profiles/aegis_id_manager.cc
-@@ -0,0 +1,616 @@
+@@ -0,0 +1,622 @@
 +// Copyright 2026 The Aegis Browser Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -570,7 +570,7 @@ new file mode 100644
 +  if (body.empty()) {
 +    return base::DictValue();
 +  }
-+  return base::JSONReader::ReadDict(body);
++  return base::JSONReader::ReadDict(body, base::JSON_PARSE_RFC);
 +}
 +
 +AegisApiError DecodeApiError(int status, const base::DictValue* dict) {
@@ -617,7 +617,7 @@ new file mode 100644
 +    : profile_(profile),
 +      state_path_(profile->GetPath().AppendASCII("aegis_id_state.json")),
 +      loader_factory_(
-+          content::GetDefaultStoragePartition(profile)
++          profile->GetDefaultStoragePartition()
 +              ->GetURLLoaderFactoryForBrowserProcess()) {}
 +
 +AegisIdManager::~AegisIdManager() = default;
@@ -633,7 +633,7 @@ new file mode 100644
 +            if (!base::ReadFileToString(path, &content)) {
 +              return std::nullopt;
 +            }
-+            return base::JSONReader::ReadDict(content);
++            return base::JSONReader::ReadDict(content, base::JSON_PARSE_RFC);
 +          },
 +          state_path_),
 +      base::BindOnce(&AegisIdManager::OnStateLoaded,
@@ -689,8 +689,8 @@ new file mode 100644
 +  if (auth && !access_token_.empty()) {
 +    request->headers.SetHeader("Authorization", "Bearer " + access_token_);
 +  }
-+  loader_ = network::SimpleURLLoader::Create(
-+      std::make_unique<net::NetworkTrafficAnnotationTag>(kAegisSyncAnnotation));
++  loader_ = network::SimpleURLLoader::Create(std::move(request),
++                                             kAegisSyncAnnotation);
 +  loader_->SetTimeoutDuration(kRequestTimeout);
 +  if (body) {
 +    loader_->AttachStringForUpload(*body, "application/json");
@@ -824,10 +824,16 @@ new file mode 100644
 +          [](const std::string& password, const std::string& salt,
 +             const std::string& algo,
 +             int iterations) -> std::unique_ptr<Credentials> {
-+            Credentials creds = DeriveCredentials(password, salt, iterations);
-+            creds.algo = algo;
-+            creds.iterations = iterations;
-+            return std::make_unique<Credentials>(std::move(creds));
++            // aegis::Credentials (crypto.h) -> AegisIdManager::Credentials:
++            // record the KDF params the login reply may migrate from.
++            aegis::Credentials derived =
++                DeriveCredentials(password, salt, iterations);
++            auto creds = std::make_unique<Credentials>();
++            creds->verifier = std::move(derived.verifier);
++            creds->kek = std::move(derived.kek);
++            creds->algo = algo;
++            creds->iterations = iterations;
++            return creds;
 +          },
 +          password_utf8, salt_b64, algo, *iterations),
 +      base::BindOnce(&AegisIdManager::OnCredentialsDerived,
@@ -955,7 +961,7 @@ new file mode 100644
 +             const std::string& password) -> std::string {
 +            const std::string salt_b64 =
 +                Base64Encode(RandomBytes(kKdfSaltSize));
-+            const Credentials creds =
++            const aegis::Credentials creds =
 +                DeriveCredentials(password, salt_b64, kDefaultIterations);
 +            const std::vector<uint8_t> vault_key = RandomBytes(kVaultKeySize);
 +            auto [nonce, wrapped] = AesGcmSeal(creds.kek, vault_key);
@@ -1095,7 +1101,6 @@ new file mode 100644
 +}
 +
 +}  // namespace aegis
-
 diff --git a/chrome/browser/ui/views/profiles/aegis_id_dialog.h b/chrome/browser/ui/views/profiles/aegis_id_dialog.h
 new file mode 100644
 --- /dev/null
@@ -1126,7 +1131,7 @@ diff --git a/chrome/browser/ui/views/profiles/aegis_id_dialog.cc b/chrome/browse
 new file mode 100644
 --- /dev/null
 +++ b/chrome/browser/ui/views/profiles/aegis_id_dialog.cc
-@@ -0,0 +1,369 @@
+@@ -0,0 +1,371 @@
 +// Copyright 2026 The Aegis Browser Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -1232,7 +1237,9 @@ new file mode 100644
 +};
 +
 +AegisIdSignInDialog::AegisIdSignInDialog(Profile* profile)
-+    : profile_(profile) {
++    : views::DialogDelegateView(
++          views::DialogDelegateView::CreatePassKey()),
++      profile_(profile) {
 +  profile_->AddObserver(this);
 +  // The form carries its own action buttons; no dialog chrome buttons.
 +  SetButtons(0);
@@ -1496,7 +1503,6 @@ new file mode 100644
 +}
 +
 +}  // namespace aegis
-
 diff --git a/chrome/browser/ui/views/profiles/BUILD.gn b/chrome/browser/ui/views/profiles/BUILD.gn
 --- a/chrome/browser/ui/views/profiles/BUILD.gn
 +++ b/chrome/browser/ui/views/profiles/BUILD.gn
