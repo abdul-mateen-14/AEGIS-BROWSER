@@ -11,6 +11,9 @@
 #   aegis_id_state.json (signed_in + email + device uuid); tokens and the
 #   vault key stay volatile exactly like the Android client.
 # - aegis_id_dialog: the sign-in/account dialog (views).
+# - dialog_delegate.h: DialogDelegateView passkey - AegisIdSignInDialog is
+#   added to the grandfathered friend list (156 made the default ctor
+#   private).
 # - profile_menu_view: the "Sign in to Aegis?" promo button opens the Aegis
 #   ID dialog instead of signin_ui_util::EnableSyncFromSingleAccountPromo.
 #
@@ -134,7 +137,6 @@ new file mode 100644
 +
 +#include "base/base64.h"
 +#include "base/check.h"
-+#include "base/check_op.h"
 +#include "base/containers/span.h"
 +#include "crypto/aead.h"
 +#include "crypto/hash.h"
@@ -147,7 +149,8 @@ new file mode 100644
 +namespace {
 +
 +base::span<const uint8_t> InfoSpan(std::string_view s) {
-+  return base::as_byte_span(s);
++  return base::span<const uint8_t>(
++      reinterpret_cast<const uint8_t*>(s.data()), s.size());
 +}
 +
 +}  // namespace
@@ -416,8 +419,8 @@ new file mode 100644
 +                   std::optional<base::DictValue> data);
 +  void OnCredentialsDerived(const std::u16string& email,
 +                            const std::u16string& password,
-+                            std::unique_ptr<Credentials> creds,
-+                            BoolCallback callback);
++                            BoolCallback callback,
++                            std::unique_ptr<Credentials> creds);
 +  void OnLoginReply(const std::u16string& email,
 +                    const std::u16string& password,
 +                    std::unique_ptr<Credentials> creds,
@@ -431,8 +434,8 @@ new file mode 100644
 +  // --- registration chain ---
 +  void OnRegisterBodyReady(const std::u16string& email,
 +                           const std::u16string& password,
-+                           std::string body,
-+                           BoolCallback callback);
++                           BoolCallback callback,
++                           std::string body);
 +  void OnRegisterReply(const std::u16string& email,
 +                       const std::u16string& password,
 +                       BoolCallback callback,
@@ -478,7 +481,7 @@ diff --git a/chrome/browser/ui/views/profiles/aegis_id_manager.cc b/chrome/brows
 new file mode 100644
 --- /dev/null
 +++ b/chrome/browser/ui/views/profiles/aegis_id_manager.cc
-@@ -0,0 +1,622 @@
+@@ -0,0 +1,619 @@
 +// Copyright 2026 The Aegis Browser Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -616,9 +619,8 @@ new file mode 100644
 +AegisIdManager::AegisIdManager(Profile* profile)
 +    : profile_(profile),
 +      state_path_(profile->GetPath().AppendASCII("aegis_id_state.json")),
-+      loader_factory_(
-+          profile->GetDefaultStoragePartition()
-+              ->GetURLLoaderFactoryForBrowserProcess()) {}
++      loader_factory_(profile->GetDefaultStoragePartition()
++                          ->GetURLLoaderFactoryForBrowserProcess()) {}
 +
 +AegisIdManager::~AegisIdManager() = default;
 +
@@ -824,13 +826,11 @@ new file mode 100644
 +          [](const std::string& password, const std::string& salt,
 +             const std::string& algo,
 +             int iterations) -> std::unique_ptr<Credentials> {
-+            // aegis::Credentials (crypto.h) -> AegisIdManager::Credentials:
-+            // record the KDF params the login reply may migrate from.
-+            aegis::Credentials derived =
++            const aegis::Credentials derived =
 +                DeriveCredentials(password, salt, iterations);
 +            auto creds = std::make_unique<Credentials>();
-+            creds->verifier = std::move(derived.verifier);
-+            creds->kek = std::move(derived.kek);
++            creds->verifier = derived.verifier;
++            creds->kek = derived.kek;
 +            creds->algo = algo;
 +            creds->iterations = iterations;
 +            return creds;
@@ -844,8 +844,8 @@ new file mode 100644
 +void AegisIdManager::OnCredentialsDerived(
 +    const std::u16string& email,
 +    const std::u16string& password,
-+    std::unique_ptr<Credentials> creds,
-+    BoolCallback callback) {
++    BoolCallback callback,
++    std::unique_ptr<Credentials> creds) {
 +  base::DictValue device;
 +  device.Set("id", device_uuid_);
 +  device.Set("name", "Aegis Desktop");
@@ -985,8 +985,8 @@ new file mode 100644
 +
 +void AegisIdManager::OnRegisterBodyReady(const std::u16string& email,
 +                                         const std::u16string& password,
-+                                         std::string body,
-+                                         BoolCallback callback) {
++                                         BoolCallback callback,
++                                         std::string body) {
 +  FetchJson(GURL(std::string(kBase) + "/v1/auth/register"), "POST", body,
 +            /*auth=*/false,
 +            base::BindOnce(&AegisIdManager::OnRegisterReply,
@@ -1101,6 +1101,7 @@ new file mode 100644
 +}
 +
 +}  // namespace aegis
+
 diff --git a/chrome/browser/ui/views/profiles/aegis_id_dialog.h b/chrome/browser/ui/views/profiles/aegis_id_dialog.h
 new file mode 100644
 --- /dev/null
@@ -1131,7 +1132,7 @@ diff --git a/chrome/browser/ui/views/profiles/aegis_id_dialog.cc b/chrome/browse
 new file mode 100644
 --- /dev/null
 +++ b/chrome/browser/ui/views/profiles/aegis_id_dialog.cc
-@@ -0,0 +1,371 @@
+@@ -0,0 +1,369 @@
 +// Copyright 2026 The Aegis Browser Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -1237,9 +1238,7 @@ new file mode 100644
 +};
 +
 +AegisIdSignInDialog::AegisIdSignInDialog(Profile* profile)
-+    : views::DialogDelegateView(
-+          views::DialogDelegateView::CreatePassKey()),
-+      profile_(profile) {
++    : profile_(profile) {
 +  profile_->AddObserver(this);
 +  // The form carries its own action buttons; no dialog chrome buttons.
 +  SetButtons(0);
@@ -1503,6 +1502,7 @@ new file mode 100644
 +}
 +
 +}  // namespace aegis
+
 diff --git a/chrome/browser/ui/views/profiles/BUILD.gn b/chrome/browser/ui/views/profiles/BUILD.gn
 --- a/chrome/browser/ui/views/profiles/BUILD.gn
 +++ b/chrome/browser/ui/views/profiles/BUILD.gn
@@ -1573,4 +1573,31 @@ diff --git a/chrome/browser/ui/views/profiles/profile_menu_view.cc b/chrome/brow
  
    // Pending while the HistorySyncPillExperiment is in progress.
    if (button_type == ActionableItem::kSigninReauthButton) {
+
+diff --git a/ui/views/window/dialog_delegate.h b/ui/views/window/dialog_delegate.h
+--- a/ui/views/window/dialog_delegate.h
++++ b/ui/views/window/dialog_delegate.h
+@@ -69,6 +69,14 @@
+ class UninstallView;
+ class WebAppIdentityUpdateConfirmationView;
+ class WebAppUninstallDialogDelegateView;
++
++// Aegis ID sign-in dialog (chrome/browser/ui/views/profiles/
++// aegis_id_dialog.cc): grandfathered DialogDelegateView subclass. The
++// private default constructor below is reachable through this friendship.
++namespace aegis {
++class AegisIdSignInDialog;
++}  // namespace aegis
++
+ FORWARD_DECLARE_TEST(ExtensionPopupInteractiveUiTest,
+                      ExtensionPopupClosesOnShowingWebDialog);
+ 
+@@ -710,6 +718,7 @@
+   // DO NOT ADD TO THIS LIST!
+   // These existing cases are "grandfathered in", but there shouldn't be more.
+   // See comments atop class.
++  friend class ::aegis::AegisIdSignInDialog;
+   friend class ::AppInfoDialogViewsTest;
+   friend class ::AuthenticatorRequestDialogView;
+   friend class ::BatchUploadDialogView;
 
