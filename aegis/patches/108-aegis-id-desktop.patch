@@ -125,7 +125,7 @@ diff --git a/chrome/browser/ui/views/profiles/aegis_id_crypto.cc b/chrome/browse
 new file mode 100644
 --- /dev/null
 +++ b/chrome/browser/ui/views/profiles/aegis_id_crypto.cc
-@@ -0,0 +1,130 @@
+@@ -0,0 +1,132 @@
 +// Copyright 2026 The Aegis Browser Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -150,8 +150,10 @@ new file mode 100644
 +namespace {
 +
 +base::span<const uint8_t> InfoSpan(std::string_view s) {
-+  return base::span<const uint8_t>(
-+      reinterpret_cast<const uint8_t*>(s.data()), s.size());
++  // base::as_bytes(base::make_span(...)) is the sanctioned safe route (the
++  // reinterpret_cast span-from-pointer ctor is hard -Werror in this converted
++  // directory; see Linux #47/#52 and //docs/unsafe_buffers.md).
++  return base::as_bytes(base::make_span(s));
 +}
 +
 +}  // namespace
