@@ -5,7 +5,7 @@
 > trust the file, then verify against GitHub API. Update this file + commit + push after
 > EVERY working pass so a context loss or sandbox recycle never loses state.
 >
-> Last updated: **2026-11-11 07:20 UTC (12:20 PKT)** — by main session.
+> Last updated: **2026-11-11 08:2x UTC (13:2x PKT)** — by main session.
 
 ---
 
@@ -21,7 +21,7 @@
 | aegis-sync backend | Cloudflare Worker `aegis-sync.abdulmateen14.workers.dev` (D1 + KV, routes `/v1/auth/*`, `/v1/devices*`, `/v1/sync/{cursor,pull,push,export}`) |
 | Secrets (NEVER print) | `/home/z/my-project/.secrets/` → `gh_token`, `cf_token`, `cf_account_id` |
 | Local mirror | `/home/z/my-project/download/aegis-repo` |
-| Helper scripts | `/home/z/my-project/scripts/` — key ones: `status_all_lanes.py`, `run_verdict.py <run_id>`, `dispatch_flavor.py <apk\|linux\|windows>`, `patch_lint_includes.py`, `validate_patches.py`, `apply_test_108.py`, `check_progress_58_51.py`, `smoke_worker_username.py` |
+| Helper scripts | `/home/z/my-project/scripts/` — key ones: `status_all_lanes.py`, `run_verdict.py <run_id>`, `dispatch_flavor.py <apk\|linux\|windows>`, `patch_lint_includes.py`, `validate_patches.py`, `apply_test_108.py`, `check_progress_58_51.py`, `smoke_worker_username.py`, `gen_114.py` (patch 114 generator) |
 | Patch chain | `aegis/patches/*.patch` (41 files, applied alphabetically: 010 → 110) |
 | Plans in repo | `docs/DEPLOYMENT-PLAN.md` (program-wide) · `docs/ANDROID-DEPLOYMENT-PLAN.md` (Android lane) · this file |
 | No `gh` CLI | Use python3 + urllib with the GH token for all API calls |
@@ -132,7 +132,7 @@ e8d86ce  fix aegis_id_crypto CHECK_GT: include base/check_op.h (run #51 error)  
 | P3 | Tab marks de-Chrome (Android + desktop) | **DONE** | earlier wave (logo asset swap, Android tab-card mark; desktop had no Chrome literal) |
 | P4 | Aegis ID username | **DONE** (backend + desktop client) | worker `/v1/auth/register` `username` (3–24 `a-z0-9_-`, unique, 409 `username_taken`, live in D1) + patch 108 v2 (`1d7265d`). **Left: Android-side username field** (AegisIdManager.java / AegisEcosystemSettings.java, patch 087 surface) |
 | P5 | Aegis ID avatar (upload→scale→use) | **DONE desktop client**, worker needs nothing | patch 108 v2: file picker → SkCodec decode → skia resize fit 256 → PNG → AesGcmSeal(vault key) → push item_type=setting item_key=profile/avatar; pull path decrypts+caches in `aegis_id_state.json`. **Left: Android-side avatar** |
-| P6 | Passwords sync via aegis-sync | **Backend ready, client NOT started** | worker already allows `item_type=password` (allowed: bookmark/tab/setting/password/autofill; versioned push/pull/cursor/export, tombstones, 409 conflict). **Left = patch 114**: desktop LoginDatabase → E2E encrypt → push/pull + settings toggle; then Android counterpart. Next authoring session. |
+| P6 | Passwords sync via aegis-sync | **AUTHORED 2026-11-11** (source + plan + patch generated + apply-tested; NOT in chain yet) | patch 114: `docs/PATCH_114_PLAN.md` (full plan + verified 156 anchors); source staged `download/aegis-p114-src/`; generated patch `download/aegis-p114-out/114-aegis-passwords-sync.patch` (1220 lines, include-lint + git-apply green). Joins the next desktop wave with 112/113 (bank invalidates once). Left: Android counterpart. |
 | P1 | Total de-Google identity (paths, version page, installer, strings) | **NOT STARTED** — patch 112 | anchors in `download/aegis-design/DEGOOGLE-IDENTITY-CAPSULES-PLAN.md` §P1 (chromium_strings.grd:288-303/509-522/1185-1191, chrome_constants.cc:34-53, installer linux files, version_ui, components_chromium_strings.grd; profile dir → `~/.config/aegis-browser`; **UA `Chrome/` token DO NOT CHANGE**) |
 | P2 | Capsules = native tab groups (Edge-style) | **NOT STARTED** — patch 113, ship after 112 | anchors in same file §P2 (TabStripModel.h:547/684/693/756/713, TabStripController.h:104/108/116/124/162-184, TabGroupModel.h:42/47/57, tab_group_color.h:39-51 (9 colors), tab_group_editor_bubble_view.h:44/489, saved_tab_groups, tab_context_menu_command.h:24-30; NO TabGroupController at 156; tab_strip_action_container is Glic-only → group UI is ours) |
 
@@ -185,18 +185,28 @@ script any time the list gets cluttered (never deletes live runs, never touches 
 
 ## 10. Next actions queue (in order)
 
-1. **[cron 523439 armed]** Linux #52 verdict → GREEN: dispatch Windows r33 + Linux #53
-   (both pick up `1d7265d` = first username+avatar validation). RED: fix-forward Linux.
-2. **[cron 523412 armed]** APK #62 verdict → GREEN: verify draft r62 asset, report delivery.
-   RED: fix-forward APK.
-3. **After 1+2 settle:** author **patch 114 (P6 client)** — desktop LoginDatabase →
-   E2E encrypt → push/pull via `/v1/sync/*` + settings toggle. Reuse avatar's
-   setting-item/versioned/conflict patterns from patch 108 v2.
-4. Author **patch 112 (P1 de-Google identity)** from ready anchors, then **patch 113 (P2
-   Capsules)** — dispatch as one desktop wave after Linux #53 GREEN (per user's
-   one-wave-per-lane preference).
-5. **Android parity pass** (small patch 115): username field + avatar in Android Aegis ID
-   (AegisIdManager.java / AegisEcosystemSettings.java), riding the next APK wave.
+1. **[cron 523593 armed]** Linux #53 verdict (self-reschedules +40 min) → GREEN
+   artifact: verify draft r53, dispatch Windows r33 from HEAD. GREEN cap-bank:
+   dispatch Linux #54. RED: fix-forward Linux. (Stale predecessor 523439 was
+   deleted when #53 was dispatched.)
+2. **[cron 523412 armed]** APK #62 verdict → GREEN: verify draft r62 asset, report
+   delivery. RED: fix-forward APK.
+3. **PATCH 114 AUTHORED 2026-11-11 (P6 client)** — complete plan at
+   `docs/PATCH_114_PLAN.md`; source staged `download/aegis-p114-src/`
+   (aegis_password_sync.h 232 / .cc 916 lines); generated + validated patch at
+   `download/aegis-p114-out/114-aegis-passwords-sync.patch` (1220 lines) via
+   `scripts/gen_114.py` (include lint + git apply --check vs post-108
+   mini-tree, both green). **Deliberately NOT committed into aegis/patches/**:
+   joining the chain invalidates the banks, so it rides the next desktop wave
+   with 112/113. All password API signatures verified against the
+   156.0.8078.79 pin (plan §3); flagged compile-time anchors in plan §8.4.
+4. Author **patch 112 (P1 de-Google identity)** from ready anchors, then
+   **patch 113 (P2 Capsules)** — dispatch as one desktop wave after Linux #53
+   settles (per user's one-wave-per-lane preference); the wave carries
+   112 + 113 + 114 in one bank invalidation.
+5. **Android parity pass** (small patch 115): username field + avatar in
+   Android Aegis ID (AegisIdManager.java / AegisEcosystemSettings.java), riding
+   the next APK wave; Android password-sync counterpart after that.
 6. When user asks: publish chosen drafts (user decides which; never unprompted).
 
 ---
