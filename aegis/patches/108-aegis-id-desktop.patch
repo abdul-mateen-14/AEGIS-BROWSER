@@ -125,7 +125,7 @@ diff --git a/chrome/browser/ui/views/profiles/aegis_id_crypto.cc b/chrome/browse
 new file mode 100644
 --- /dev/null
 +++ b/chrome/browser/ui/views/profiles/aegis_id_crypto.cc
-@@ -0,0 +1,132 @@
+@@ -0,0 +1,133 @@
 +// Copyright 2026 The Aegis Browser Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -150,10 +150,11 @@ new file mode 100644
 +namespace {
 +
 +base::span<const uint8_t> InfoSpan(std::string_view s) {
-+  // base::as_bytes(base::make_span(...)) is the sanctioned safe route (the
-+  // reinterpret_cast span-from-pointer ctor is hard -Werror in this converted
-+  // directory; see Linux #47/#52 and //docs/unsafe_buffers.md).
-+  return base::as_bytes(base::make_span(s));
++  // base::as_bytes(base::span(...)) is the sanctioned safe route: CTAD guide
++  // span(R&&) in base/containers/span.h (base::make_span is GONE in 156 —
++  // Linux #54); the reinterpret_cast span-from-pointer ctor is hard -Werror
++  // in this converted directory; see Linux #47/#52/#53.
++  return base::as_bytes(base::span(s));
 +}
 +
 +}  // namespace
@@ -258,12 +259,11 @@ new file mode 100644
 +}
 +
 +}  // namespace aegis
-
 diff --git a/chrome/browser/ui/views/profiles/aegis_id_manager.h b/chrome/browser/ui/views/profiles/aegis_id_manager.h
 new file mode 100644
 --- /dev/null
 +++ b/chrome/browser/ui/views/profiles/aegis_id_manager.h
-@@ -0,0 +1,246 @@
+@@ -0,0 +1,252 @@
 +// Copyright 2026 The Aegis Browser Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -464,6 +464,9 @@ new file mode 100644
 +                       std::optional<base::DictValue> data);
 +
 +  // --- avatar sync chain ---
++  void OnAvatarPushBodyReady(std::vector<uint8_t> png,
++                             BoolCallback callback,
++                             std::optional<std::string> body);
 +  void OnAvatarPushReply(std::vector<uint8_t> png,
 +                         BoolCallback callback,
 +                         int status,
@@ -471,6 +474,9 @@ new file mode 100644
 +  void OnAvatarPullReply(AvatarCallback callback,
 +                         int status,
 +                         std::optional<base::DictValue> data);
++  void OnAvatarDecrypted(int version,
++                         AvatarCallback callback,
++                         std::optional<std::vector<uint8_t>> png);
 +
 +  // --- sign-out / devices ---
 +  void OnSignOutReply(BoolCallback callback,
@@ -514,7 +520,7 @@ diff --git a/chrome/browser/ui/views/profiles/aegis_id_manager.cc b/chrome/brows
 new file mode 100644
 --- /dev/null
 +++ b/chrome/browser/ui/views/profiles/aegis_id_manager.cc
-@@ -0,0 +1,808 @@
+@@ -0,0 +1,812 @@
 +// Copyright 2026 The Aegis Browser Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -1078,6 +1084,9 @@ new file mode 100644
 +    return;
 +  }
 +  const int base_version = avatar_version_;
++  // The reply closure needs the PNG bytes to cache them on success; bind a
++  // copy (deterministic: copied before the task bind moves png_bytes).
++  std::vector<uint8_t> png_for_reply = png_bytes;
 +  base::ThreadPool::PostTaskAndReplyWithResult(
 +      FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
 +      base::BindOnce(
@@ -1097,7 +1106,7 @@ new file mode 100644
 +            item.Set("nonce_b64", Base64Encode(nonce));
 +            item.Set("base_version", base_version);
 +            item.Set("deleted", false);
-+            base::Value::List items;
++            base::ListValue items;
 +            items.Append(std::move(item));
 +            base::DictValue body;
 +            body.Set("items", std::move(items));
@@ -1105,7 +1114,8 @@ new file mode 100644
 +          },
 +          vault_key_, std::move(png_bytes), base_version),
 +      base::BindOnce(&AegisIdManager::OnAvatarPushBodyReady,
-+                     weak_factory_.GetWeakPtr(), std::move(callback)));
++                     weak_factory_.GetWeakPtr(), std::move(png_for_reply),
++                     std::move(callback)));
 +}
 +
 +void AegisIdManager::OnAvatarPushBodyReady(std::vector<uint8_t> png,
@@ -1132,7 +1142,7 @@ new file mode 100644
 +        DescribeError(status, DecodeApiError(status, data ? &*data : nullptr)));
 +    return;
 +  }
-+  const base::Value::List* results = data->FindList("results");
++  const base::ListValue* results = data->FindList("results");
 +  if (!results || results->empty()) {
 +    std::move(callback).Run(false,
 +                            u"The sync service sent a malformed reply.");
@@ -1177,7 +1187,7 @@ new file mode 100644
 +        DescribeError(status, DecodeApiError(status, data ? &*data : nullptr)));
 +    return;
 +  }
-+  const base::Value::List* items = data->FindList("items");
++  const base::ListValue* items = data->FindList("items");
 +  const base::DictValue* avatar_row = nullptr;
 +  if (items) {
 +    for (const base::Value& entry : *items) {
@@ -1477,7 +1487,7 @@ new file mode 100644
 +  SkBitmap src;
 +  const SkImageInfo src_info =
 +      codec->getInfo().makeAlphaType(kPremul_SkAlphaType);
-+  if (!src.allocPixels(src_info)) {
++  if (!src.tryAllocPixels(src_info)) {
 +    return std::nullopt;
 +  }
 +  if (codec->getPixels(src_info, src.getPixels(), src.rowBytes()) !=
@@ -1836,7 +1846,7 @@ new file mode 100644
 +  ClearError();
 +  const std::u16string email(email_field_->GetText());
 +  const std::u16string username(
-+      NormalizeUsernameInput(username_field_->GetText()));
++      NormalizeUsernameInput(std::u16string(username_field_->GetText())));
 +  const std::u16string password(password_field_->GetText());
 +  if (email.empty() || email.find(u'@') == std::u16string::npos) {
 +    ShowError(u"Enter an email address to create your Aegis ID with.");
