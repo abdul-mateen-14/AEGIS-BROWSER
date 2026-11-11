@@ -55,23 +55,23 @@ git -C download/aegis-repo log --oneline -5 && git -C download/aegis-repo status
 Verdict detail for one run: `python3 scripts/run_verdict.py <run_id>` (prints step-level
 bank/artifact outcome). Run logs: `scripts/job_<job_id>.log` when saved, else fetch via API.
 
-## 4. Lane status — snapshot 2026-11-11 07:20Z
+## 4. Lane status — snapshot 2026-11-11 07:56Z
 
 | Lane | Latest run | State | Head | Meaning |
 |---|---|---|---|---|
-| **APK** | #62 id=42974545503 (started 06:44:27Z) | **in_progress** | `e8d86ce` | Real next APK delivery: icons v2 + home/dock fixes + patch 110 local password manager + all aegis_id crypto fixes. #58 (c70a066) was GREEN → draft r58 (318.9 MB) already banked as fallback. |
-| **Linux** | #52 id=42972326181 (started 06:25:30Z) | **in_progress** | `e8d86ce` | Fix-forward for #51 RED (aegis_id_crypto CHECK_GT missing include). First Linux compile of patches 108/110 surface. |
-| **Windows** | #32 id=42855429095 (GREEN 2026-11-10 16:31Z) | idle, cap-bank | `7cdd37b` | #32 banked (artifacts skipped) → latest Windows **artifact** is draft r31. Next Windows run (#33) = first artifact build with username+avatar patch 108 v2 + patch 110. Gated on Linux #52 GREEN (cron 523439). |
+| **APK** | #62 id=42974545503 (started 06:44:27Z) | **in_progress** | `e8d86ce` | Real next APK delivery: icons v2 + home/dock fixes + patch 110 local password manager + all aegis_id crypto fixes. #58 (c70a066) was GREEN → draft r58 (318.9 MB) already banked as fallback. Verdict sweep = cron 523412. |
+| **Linux** | #53 id=42983001747 (started 07:55:11Z) | **in_progress** | `e943d44` | Fix-forward for #52 RED (InfoSpan unsafe-buffer -Werror, see §8). `e943d44` carries EVERYTHING: 108 v2 username+avatar + 110 + crypto fixes. First build that can reach manager/dialog TUs past crypto.o — more first-compile errors possible there. Verdict + Windows gate = cron 523593. |
+| **Windows** | #32 id=42855429095 (GREEN 2026-11-10 16:31Z) | idle, cap-bank | `7cdd37b` | Latest Windows **artifact** is draft r31. Next run (#33) = first artifact build with the full desktop wave. Gated on Linux #53 GREEN (cron 523593). |
 
 Armed watchdog crons (verify with `cron list`, re-arm if missing):
 
 | Job | Fires (Asia/Shanghai) | Does |
 |---|---|---|
-| 523439 | 2026-11-11 16:50 CST (= 08:50Z) | `run_verdict.py 42972326181`. In-progress → re-arm +40 min. GREEN → dispatch **Windows r33** then **Linux #53** (both pick up `1d7265d` username+avatar). RED → fix-forward Linux only. |
-| 523412 | 2026-11-11 18:20 CST (= 10:20Z) | `run_verdict.py 42974545503`. In-progress → re-arm +45 min. GREEN → verify draft r62 asset exists, report. RED → fix-forward APK + dispatch. |
+| 523593 | 2026-11-11 16:45 CST (= 08:45Z, self-reschedules +40 min) | `run_verdict.py 42983001747` (#53). In-progress → re-arm. GREEN artifact → verify draft r53, dispatch **Windows r33** from HEAD. RED → fix-forward Linux only. |
+| 523412 | 2026-11-11 18:20 CST (= 10:20Z, self-reschedules +45 min) | `run_verdict.py 42974545503` (#62). In-progress → re-arm. GREEN → verify draft r62 asset, report. RED → fix-forward APK + dispatch. |
 
-**Note:** both in-flight runs (#52, #62) checked out `e8d86ce` — one commit BEFORE `1d7265d`
-(username + avatar desktop work). They cannot fail on avatar code. Linux #53 / Windows #33
+**Note:** #62 checked out `e8d86ce` — one commit BEFORE `1d7265d` (username + avatar desktop
+work, Android-irrelevant). It cannot fail on avatar/username code. Linux #53 and Windows #33
 are the first runs that validate `1d7265d`.
 
 ## 5. Deliverables ledger (verified via API 2026-11-11 08:1xZ)
@@ -140,11 +140,12 @@ e8d86ce  fix aegis_id_crypto CHECK_GT: include base/check_op.h (run #51 error)  
 
 | Run | Error | Fix commit | Lesson |
 |---|---|---|---|
+| Linux #52 (e8d86ce) | `aegis_id_crypto.cc:25` InfoSpan `reinterpret_cast` → hard `-Werror,-Wunsafe-buffer-usage` (converted dir) at [692/1331], 27 min in | `e943d44` | REPEAT of #47: 942db2c fixed this exact line, the fix was LOST when patch 108 was regenerated from staging (1d7265d). **Lesson: when regenerating a patch from staging, re-check every historical one-line fix against the staged content.** dialog.cc iterator-pair pattern empirically plugin-clean (compiled #49/#50) — left alone |
 | Linux #51 (8ff19f0) | `aegis_id_crypto.cc` CHECK_GT: `base/check_op.h` not included | `e8d86ce` | CHECK macros need check_op.h, not just logging.h |
 | Linux #49/#50 | aegis_id manager/dialog 156 API drift; DialogDelegateView passkey | `22cbbd4`, `61f083c` | verify every 156 API against pinned tag sources before patching |
 | Patch 110 | missing closing quote on `built_in_backend` include | `8ff19f0` | include-quote lint = `patch_lint_includes.py` (now green across all 41 patches) |
 | APK #58 | — GREEN (draft r58) | — | first APK with patch 110 compiled |
-| Windows #32 | — cap-bank GREEN, no artifact | — | Windows next run must be artifact run (cron 523439 gates it on Linux #52) |
+| Windows #32 | — cap-bank GREEN, no artifact | — | Windows next run must be artifact run (cron 523593 gates it on Linux #53) |
 
 Historical (older waves, summarized — details in git log): marker-bug staleness
 (gn-gen overwrote `.aegis_head` → 094-098 never compiled into r31/r12; fixed 7425d9e +
