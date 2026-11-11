@@ -5,7 +5,7 @@
 > trust the file, then verify against GitHub API. Update this file + commit + push after
 > EVERY working pass so a context loss or sandbox recycle never loses state.
 >
-> Last updated: **2026-11-11 12:2x UTC (17:2x PKT)** — by main session.
+> Last updated: **2026-11-11 13:1x UTC (18:1x PKT)** — by main session.
 
 ---
 
@@ -55,24 +55,22 @@ git -C download/aegis-repo log --oneline -5 && git -C download/aegis-repo status
 Verdict detail for one run: `python3 scripts/run_verdict.py <run_id>` (prints step-level
 bank/artifact outcome). Run logs: `scripts/job_<job_id>.log` when saved, else fetch via API.
 
-## 4. Lane status — snapshot 2026-11-11 12:0xZ
+## 4. Lane status — snapshot 2026-11-11 13:1xZ
+
+**WATCHDOG CRONS DISCONTINUED 2026-11-11 ~13:05Z (user request: "cancel all the cron
+jobs") — ALL deleted (523412/524122/524163), NONE armed.** Lane verdicts are now MANUAL:
+check on user ping or at session start with `python3 scripts/run_verdict.py <run_id>`.
+Dispatch discipline (iron rules 4/5) is unchanged — just nobody is watching automatically.
 
 | Lane | Latest run | State | Head | Meaning |
 |---|---|---|---|---|
-| **APK** | #63 id=43019369532 (started 12:19:42Z) | **in_progress** | `57a61f6` | Continues #62's cap-bank: #62 GREEN cap only (281 min ninja, 123,338 edges, banked 1.89 GB, artifact steps skipped — no draft r62). #63 = first APK build with patch 108 v2 (shared BUILD.gn, desktop-only code) + the 2aff576 skia-dep fix; carries the real delivery: icons v2 + home/dock fixes + patch 110 local password manager + crypto fixes. Fallback draft r58 (318.9 MB) stays banked. Verdict sweep = cron 524163. |
-| **Linux** | #54 id=43016173134 (started 11:57:10Z) | **in_progress** | `2aff576` | Fix-forward for #53 RED (gn gen duplicate skia_use_dawn, see §8). `2aff576` carries EVERYTHING incl. e943d44 InfoSpan fix + 108 v2 + 110. gn gen is the first gate (~35 min in after bank restore); manager/dialog TUs compile after crypto.o — first-compile errors possible. Verdict + Windows gate = cron 524122. |
-| **Windows** | #32 id=42855429095 (GREEN 2026-11-10 16:31Z) | idle, cap-bank | `7cdd37b` | Latest Windows **artifact** is draft r31. Next run (#33) = first artifact build with the full desktop wave. Gated on Linux #54 GREEN (cron 524122). |
+| **APK** | #63 id=43019369532 (started 12:19:42Z) | **in_progress** | `57a61f6` | Continues #62's cap-bank (1.89 GB banked, 123,338 edges done). First APK build with patch 108 v2 (desktop-only code, shared BUILD.gn) + the 2aff576 skia-dep fix. Carries the real delivery: icons v2 + home/dock fixes + patch 110 local password manager + crypto fixes. NO watchdog — check manually. |
+| **Linux** | #55 id=43026595992 (started 13:09:31Z) | **in_progress** | `fd981ff` | Fix-forward for #54 RED (13+2 compile errors in the 108 v2 avatar path, see §8). gn gen PROVEN good since 2aff576. Remaining risk: more 156 drift in manager/dialog/link stage. NO watchdog — check manually; on GREEN artifact verify draft r55 then dispatch Windows r33 from HEAD. |
+| **Windows** | #32 id=42855429095 (GREEN 2026-11-10 16:31Z) | idle, cap-bank | `7cdd37b` | Latest Windows **artifact** is draft r31. Next run (#33) = first artifact build with the full desktop wave. Gate: Linux #55 GREEN artifact (manual check now). |
 
-Armed watchdog crons (verify with `cron list`, re-arm if missing):
-
-| Job | Fires (Asia/Shanghai) | Does |
-|---|---|---|
-| 524122 | 2026-11-11 20:50 CST (= 12:50Z, self-reschedules +40 min) | `run_verdict.py 43016173134` (#54). In-progress → re-arm. GREEN artifact → verify draft r54, dispatch **Windows r33** from HEAD. GREEN cap-bank → dispatch Linux successor. RED → fix-forward Linux only. |
-| 524163 | 2026-11-11 21:20 CST (= 13:20Z, self-reschedules +45 min) | `run_verdict.py 43019369532` (#63). In-progress → re-arm. GREEN artifact → verify draft r63, report delivery. GREEN cap-bank → dispatch APK successor. RED → fix-forward APK + dispatch. |
-
-**Note:** #63 builds at HEAD `57a61f6` (= `2aff576` + docs) — first APK build validating
-`1d7265d` (username+avatar, desktop-only code, shared BUILD.gn) + `2aff576` (skia-dep fix).
-Linux #54 and Windows #33 are the first desktop runs that validate the same two commits.
+**Note:** #63 builds at HEAD `57a61f6` (= `2aff576` + docs); Linux #55 builds at `fd981ff`
+(= that + the 54-fix). Windows #33 will be the first desktop run validating
+`1d7265d` + `2aff576` + `fd981ff` together.
 
 ## 5. Deliverables ledger (verified via API 2026-11-11 08:1xZ)
 
@@ -140,6 +138,7 @@ e8d86ce  fix aegis_id_crypto CHECK_GT: include base/check_op.h (run #51 error)  
 
 | Run | Error | Fix commit | Lesson |
 |---|---|---|---|
+| Linux #54 (2aff576) | REAL compile errors — gn gen PASSED (2aff576 skia fix proven). crypto.cc:28 `base::make_span` GONE in 156; manager.cc x3 `base::Value::List` gone in 156 (values rewrite: standalone `ListValue`, FindList → `const ListValue*`); SetAvatarImage reply never bound png (PostTaskAndReplyWithResult reply = task return ONLY) + OnAvatarPushBodyReady/OnAvatarDecrypted undeclared; dialog.cc allocPixels(info) void in 156 Skia + GetText() returns u16string_view | `fd981ff` | All verified against cached 156 sources (`scripts/chromium_file.py`). Devices path already used ListValue (compiled #52) = in-file ground truth. crypto.cc now STAGED (extracted 1:1 from patch, roundtrip-checked) and build_patch108.py made idempotent (windowed NEW_DEPS strip, net-delta count). Lesson: the v2 avatar path was written against a fictional API — ALWAYS verify new-API usage against the cached pin before regenerating |
 | Linux #53 (e943d44) | gn gen died in seconds: `ERROR at //third_party/skia/gn/skia.gni:51:19: Duplicate build argument declaration` — `skia_use_dawn` already declared at `//skia/features.gni:12`. Chain: profiles/BUILD.gn:492 dep `//third_party/skia` → standalone Skia BUILD.gn:10 → `import gn/skia.gni` → declare_args | `2aff576` | NEW DEP CLASS: NEVER dep on `//third_party/skia` (standalone Skia BUILD.gn is never in the stock chrome graph). `//skia` alone provides all `third_party/skia/include/*` headers. Poison line came from `build_patch108.py` NEW_DEPS during 1d7265d; #52 passed gn gen only because it predated the hunk. Fixed surgically (`scripts/fix108_skia_dep.py`, asserts: unique line + BUILD.gn section + in-hunk range, hunk count 34→33) AND in the generator. Diff audit: exactly 2 lines changed. Watchdog cron 523593 fired at 08:45Z but failed silently (log redirect 401) — dispatched nothing |
 | Linux #52 (e8d86ce) | `aegis_id_crypto.cc:25` InfoSpan `reinterpret_cast` → hard `-Werror,-Wunsafe-buffer-usage` (converted dir) at [692/1331], 27 min in | `e943d44` | REPEAT of #47: 942db2c fixed this exact line, the fix was LOST when patch 108 was regenerated from staging (1d7265d). **Lesson: when regenerating a patch from staging, re-check every historical one-line fix against the staged content.** dialog.cc iterator-pair pattern empirically plugin-clean (compiled #49/#50) — left alone |
 | Linux #51 (8ff19f0) | `aegis_id_crypto.cc` CHECK_GT: `base/check_op.h` not included | `e8d86ce` | CHECK macros need check_op.h, not just logging.h |
@@ -195,12 +194,13 @@ script any time the list gets cluttered (never deletes live runs, never touches 
 
 ## 10. Next actions queue (in order)
 
-1. **[cron 524122 armed]** Linux #54 verdict (id 43016173134, head `2aff576`,
-   self-reschedules +40 min) → GREEN artifact: verify draft r54, dispatch Windows r33
-   from HEAD. GREEN cap-bank: dispatch Linux successor. RED: fix-forward Linux.
-2. **[cron 524163 armed]** APK #63 verdict (id 43019369532, head `57a61f6`, continues
-   #62's cap-bank) → GREEN: verify draft r63 asset, report delivery. GREEN cap-bank:
-   dispatch APK successor. RED: fix-forward APK.
+1. **Linux #55 verdict — MANUAL CHECK (no cron; discontinued by user request).**
+   `python3 scripts/run_verdict.py 43026595992`. RED → fix-forward (see §8). GREEN
+   cap-bank → `dispatch_flavor.py linux`. GREEN artifact → verify draft r55, then
+   `dispatch_flavor.py windows` for Windows r33 (first artifact build with the full wave).
+2. **APK #63 verdict — MANUAL CHECK.** `python3 scripts/run_verdict.py 43019369532`.
+   GREEN artifact → verify draft r63, report delivery. GREEN cap-bank →
+   `dispatch_flavor.py apk`. RED → fix-forward APK.
 3. **PATCH 114 AUTHORED 2026-11-11 (P6 client)** — complete plan at
    `docs/PATCH_114_PLAN.md`; source staged `download/aegis-p114-src/`
    (aegis_password_sync.h 232 / .cc 916 lines); generated + validated patch at
