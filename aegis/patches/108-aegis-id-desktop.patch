@@ -261,7 +261,7 @@ diff --git a/chrome/browser/ui/views/profiles/aegis_id_manager.h b/chrome/browse
 new file mode 100644
 --- /dev/null
 +++ b/chrome/browser/ui/views/profiles/aegis_id_manager.h
-@@ -0,0 +1,215 @@
+@@ -0,0 +1,246 @@
 +// Copyright 2026 The Aegis Browser Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -311,10 +311,11 @@ new file mode 100644
 +};
 +
 +// Desktop Aegis ID client: account state + authentication + device
-+// management against the aegis-sync worker (see aegis-sync/README.md).
-+// C++ port of the Android AegisIdManager/AegisSyncClient pair, cross-checked
-+// against a live end-to-end protocol run (register -> kdf-params -> login ->
-+// vault-key unwrap -> devices -> logout).
++// management + profile avatar sync against the aegis-sync worker (see
++// aegis-sync/README.md). C++ port of the Android AegisIdManager/
++// AegisSyncClient pair, cross-checked against a live end-to-end protocol
++// run (register -> kdf-params -> login -> vault-key unwrap -> devices ->
++// logout).
 +//
 +// Threading model: all entry points are called on the UI thread (the dialog
 +// owns this object). The 600k-iteration KDF chain and the state-file IO run
@@ -324,12 +325,13 @@ new file mode 100644
 +// buttons while an operation runs.
 +//
 +// Persistence (aegis_id_state.json in the profile dir, mirroring the
-+// Android client's prefs): signed_in + email + device uuid. Session tokens
-+// and the vault key stay volatile like on Android - after a browser restart
-+// the dialog shows the "session expired" state until the user signs in
-+// again. Persisting the refresh token would fix that, but it would put a
-+// usable credential into the profile file, which the Android client
-+// deliberately does not do either.
++// Android client's prefs): signed_in + email + username + device uuid +
++// the locally cached avatar bytes (Base64) and its sync version. Session
++// tokens and the vault key stay volatile like on Android - after a browser
++// restart the dialog shows the "session expired" state until the user
++// signs in again. Persisting the refresh token would fix that, but it
++// would put a usable credential into the profile file, which the Android
++// client deliberately does not do either.
 +class AegisIdManager {
 + public:
 +  // ok=true: |message| carries the signed-in email; ok=false: |message| is
@@ -338,6 +340,9 @@ new file mode 100644
 +      base::OnceCallback<void(bool ok, const std::u16string& message)>;
 +  using DevicesCallback = base::OnceCallback<void(
 +      bool ok, std::vector<AegisDeviceInfo>, const std::u16string& message)>;
++  // ok=true and empty |png|: no avatar is set on the account yet.
++  using AvatarCallback = base::OnceCallback<void(
++      bool ok, std::vector<uint8_t> png, const std::u16string& message)>;
 +
 +  // |profile| must outlive the manager (the owning dialog observes profile
 +  // destruction and closes first).
@@ -348,7 +353,7 @@ new file mode 100644
 +  AegisIdManager& operator=(const AegisIdManager&) = delete;
 +
 +  // Loads the persisted state; |on_ready| runs on the UI thread once
-+  // signed_in()/email() are trustworthy.
++  // signed_in()/email()/username() are trustworthy.
 +  void Init(base::OnceClosure on_ready);
 +
 +  bool ready() const { return ready_; }
@@ -357,17 +362,30 @@ new file mode 100644
 +    return !access_token_.empty() || !refresh_token_.empty();
 +  }
 +  const std::u16string& email() const { return email_; }
++  const std::u16string& username() const { return username_; }
 +  const std::string& device_uuid() const { return device_uuid_; }
++
++  // Decoded cached avatar PNG bytes; empty when none is cached.
++  std::vector<uint8_t> avatar_png() const;
++  // True once an avatar pull has completed this session (success or not).
++  bool avatar_loaded() const { return avatar_loaded_; }
 +
 +  void SignIn(const std::u16string& email,
 +              const std::u16string& password,
 +              BoolCallback callback);
 +  void CreateAccount(const std::u16string& email,
++                     const std::u16string& username,
 +                     const std::u16string& password,
 +                     BoolCallback callback);
 +  // Best-effort server logout; always succeeds locally.
 +  void SignOut(BoolCallback callback);
 +  void ListDevices(DevicesCallback callback);
++
++  // Profile avatar (E2E-encrypted, syncs through the worker's setting
++  // items). SetAvatarImage pushes |png_bytes|; FetchAvatarImage pulls the
++  // latest avatar (or reports an empty vector when none is set).
++  void SetAvatarImage(std::vector<uint8_t> png_bytes, BoolCallback callback);
++  void FetchAvatarImage(AvatarCallback callback);
 +
 + private:
 +  struct Credentials;
@@ -443,6 +461,15 @@ new file mode 100644
 +                       int status,
 +                       std::optional<base::DictValue> data);
 +
++  // --- avatar sync chain ---
++  void OnAvatarPushReply(std::vector<uint8_t> png,
++                         BoolCallback callback,
++                         int status,
++                         std::optional<base::DictValue> data);
++  void OnAvatarPullReply(AvatarCallback callback,
++                         int status,
++                         std::optional<base::DictValue> data);
++
 +  // --- sign-out / devices ---
 +  void OnSignOutReply(BoolCallback callback,
 +                      int status,
@@ -469,7 +496,11 @@ new file mode 100644
 +  bool ready_ = false;
 +  bool signed_in_ = false;
 +  std::u16string email_;
++  std::u16string username_;
 +  std::string device_uuid_;
++  std::string avatar_b64_;      // local cache of the decrypted avatar PNG
++  int avatar_version_ = 0;      // server sync version of the avatar item
++  bool avatar_loaded_ = false;  // pull already attempted this session
 +
 +  base::WeakPtrFactory<AegisIdManager> weak_factory_{this};
 +};
@@ -477,12 +508,11 @@ new file mode 100644
 +}  // namespace aegis
 +
 +#endif  // CHROME_BROWSER_UI_VIEWS_PROFILES_AEGIS_ID_MANAGER_H_
-
 diff --git a/chrome/browser/ui/views/profiles/aegis_id_manager.cc b/chrome/browser/ui/views/profiles/aegis_id_manager.cc
 new file mode 100644
 --- /dev/null
 +++ b/chrome/browser/ui/views/profiles/aegis_id_manager.cc
-@@ -0,0 +1,619 @@
+@@ -0,0 +1,808 @@
 +// Copyright 2026 The Aegis Browser Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -531,17 +561,19 @@ new file mode 100644
 +        sender: "Aegis ID sign-in"
 +        description:
 +          "Signs the browser profile in to an Aegis ID account on the "
-+          "aegis-sync service. Sends the account email, a PBKDF2-derived "
-+          "verifier (never the password), device metadata and opaque "
-+          "end-to-end-encrypted sync blobs. Replaces the Google/GAIA "
-+          "sign-in flow in de-googled Aegis builds."
++          "aegis-sync service. Sends the account email, an optional display "
++          "username, a PBKDF2-derived verifier (never the password), device "
++          "metadata and opaque end-to-end-encrypted sync blobs (including "
++          "the profile avatar). Replaces the Google/GAIA sign-in flow in "
++          "de-googled Aegis builds."
 +        trigger:
 +          "User clicks the Aegis ID sign-in button in the profile menu, or "
 +          "opens an Aegis ID surface."
 +        data:
-+          "Email, verifier, KDF salt parameters, device uuid/name/platform, "
-+          "access/refresh tokens, and end-to-end-encrypted sync items. The "
-+          "master password and vault key never leave the device."
++          "Email, optional username, verifier, KDF salt parameters, device "
++          "uuid/name/platform, access/refresh tokens, and end-to-end-"
++          "encrypted sync items. The master password and vault key never "
++          "leave the device."
 +        destination: OTHER
 +        destination_other: "The operator-provided aegis-sync service host"
 +      }
@@ -559,6 +591,8 @@ new file mode 100644
 +constexpr int kHttpCreated = 201;
 +constexpr int kHttpUnauthorized = 401;
 +constexpr int kHttpConflict = 409;
++
++constexpr char kAvatarItemKey[] = "profile/avatar";
 +
 +std::string JsonEncode(const base::DictValue& dict) {
 +  std::string out;
@@ -648,7 +682,10 @@ new file mode 100644
 +  if (state) {
 +    signed_in_ = state->FindBool("signed_in").value_or(false);
 +    email_ = base::UTF8ToUTF16(Str(state->FindString("email")));
++    username_ = base::UTF8ToUTF16(Str(state->FindString("username")));
 +    device_uuid_ = Str(state->FindString("device_uuid"));
++    avatar_b64_ = Str(state->FindString("avatar_b64"));
++    avatar_version_ = state->FindInt("avatar_version").value_or(0);
 +  }
 +  if (device_uuid_.empty()) {
 +    device_uuid_ = base::Uuid::GenerateRandomV4().AsLowercaseString();
@@ -662,7 +699,10 @@ new file mode 100644
 +  base::DictValue state;
 +  state.Set("signed_in", signed_in_);
 +  state.Set("email", base::UTF16ToUTF8(email_));
++  state.Set("username", base::UTF16ToUTF8(username_));
 +  state.Set("device_uuid", device_uuid_);
++  state.Set("avatar_b64", avatar_b64_);
++  state.Set("avatar_version", avatar_version_);
 +  base::ThreadPool::PostTask(
 +      FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
 +      base::BindOnce(
@@ -670,6 +710,14 @@ new file mode 100644
 +            base::ImportantFileWriter::WriteFileAtomically(path, content);
 +          },
 +          state_path_, JsonEncode(state)));
++}
++
++std::vector<uint8_t> AegisIdManager::avatar_png() const {
++  std::vector<uint8_t> png;
++  if (!avatar_b64_.empty() && Base64Decode(avatar_b64_, &png)) {
++    return png;
++  }
++  return {};
 +}
 +
 +// ------------------------------------------------------------- plumbing
@@ -882,6 +930,9 @@ new file mode 100644
 +    std::move(callback).Run(false, u"The sync service sent a malformed reply.");
 +    return;
 +  }
++  // The login reply carries the account's display username (may be empty
++  // for accounts created before usernames existed).
++  username_ = base::UTF8ToUTF16(Str(user->FindString("username")));
 +
 +  // Unwrap the vault key on the pool, honoring migrated KDF params exactly
 +  // like the Android client's unwrapVaultKey: if the account's CURRENT
@@ -951,14 +1002,16 @@ new file mode 100644
 +}
 +
 +void AegisIdManager::CreateAccount(const std::u16string& email,
++                                   const std::u16string& username,
 +                                   const std::u16string& password,
 +                                   BoolCallback callback) {
 +  const std::string email_utf8 = base::UTF16ToUTF8(email);
++  const std::string username_utf8 = base::UTF16ToUTF8(username);
 +  const std::string password_utf8 = base::UTF16ToUTF8(password);
 +  base::ThreadPool::PostTaskAndReplyWithResult(
 +      FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
 +      base::BindOnce(
-+          [](const std::string& email,
++          [](const std::string& email, const std::string& username,
 +             const std::string& password) -> std::string {
 +            const std::string salt_b64 =
 +                Base64Encode(RandomBytes(kKdfSaltSize));
@@ -971,6 +1024,9 @@ new file mode 100644
 +            kdf.Set("iterations", static_cast<int>(kDefaultIterations));
 +            base::DictValue body;
 +            body.Set("email", email);
++            if (!username.empty()) {
++              body.Set("username", username);
++            }
 +            body.Set("kdf_salt_b64", salt_b64);
 +            body.Set("kdf", std::move(kdf));
 +            body.Set("verifier_b64", Base64Encode(creds.verifier));
@@ -978,7 +1034,7 @@ new file mode 100644
 +            body.Set("vault_nonce_b64", Base64Encode(nonce));
 +            return JsonEncode(body);
 +          },
-+          email_utf8, password_utf8),
++          email_utf8, username_utf8, password_utf8),
 +      base::BindOnce(&AegisIdManager::OnRegisterBodyReady,
 +                     weak_factory_.GetWeakPtr(), email, password,
 +                     std::move(callback)));
@@ -1008,6 +1064,169 @@ new file mode 100644
 +  }
 +  // Registration succeeded; run the normal sign-in flow.
 +  DoSignIn(email, password, std::move(callback));
++}
++
++// ------------------------------------------------------------ avatar sync
++
++void AegisIdManager::SetAvatarImage(std::vector<uint8_t> png_bytes,
++                                    BoolCallback callback) {
++  if (!session_live() || vault_key_.empty()) {
++    std::move(callback).Run(false,
++                            u"Your session expired. Sign in again first.");
++    return;
++  }
++  const int base_version = avatar_version_;
++  base::ThreadPool::PostTaskAndReplyWithResult(
++      FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
++      base::BindOnce(
++          [](std::vector<uint8_t> key, std::vector<uint8_t> png,
++             int base_version) -> std::optional<std::string> {
++            if (key.size() != kVaultKeySize || png.empty()) {
++              return std::nullopt;
++            }
++            auto [nonce, ciphertext] = AesGcmSeal(key, png);
++            if (ciphertext.empty()) {
++              return std::nullopt;
++            }
++            base::DictValue item;
++            item.Set("item_type", "setting");
++            item.Set("item_key", kAvatarItemKey);
++            item.Set("ciphertext_b64", Base64Encode(ciphertext));
++            item.Set("nonce_b64", Base64Encode(nonce));
++            item.Set("base_version", base_version);
++            item.Set("deleted", false);
++            base::Value::List items;
++            items.Append(std::move(item));
++            base::DictValue body;
++            body.Set("items", std::move(items));
++            return JsonEncode(body);
++          },
++          vault_key_, std::move(png_bytes), base_version),
++      base::BindOnce(&AegisIdManager::OnAvatarPushBodyReady,
++                     weak_factory_.GetWeakPtr(), std::move(callback)));
++}
++
++void AegisIdManager::OnAvatarPushBodyReady(std::vector<uint8_t> png,
++                                           BoolCallback callback,
++                                           std::optional<std::string> body) {
++  if (!body || !session_live()) {
++    std::move(callback).Run(false,
++                            u"Couldn't prepare the profile picture upload.");
++    return;
++  }
++  AuthedFetch(GURL(std::string(kBase) + "/v1/sync/push"), "POST", *body,
++              base::BindOnce(&AegisIdManager::OnAvatarPushReply,
++                             weak_factory_.GetWeakPtr(), std::move(png),
++                             std::move(callback)));
++}
++
++void AegisIdManager::OnAvatarPushReply(std::vector<uint8_t> png,
++                                       BoolCallback callback,
++                                       int status,
++                                       std::optional<base::DictValue> data) {
++  if (status != kHttpOk || !data) {
++    std::move(callback).Run(
++        false,
++        DescribeError(status, DecodeApiError(status, data ? &*data : nullptr)));
++    return;
++  }
++  const base::Value::List* results = data->FindList("results");
++  if (!results || results->empty()) {
++    std::move(callback).Run(false,
++                            u"The sync service sent a malformed reply.");
++    return;
++  }
++  const base::DictValue& result = results->front().GetDict();
++  const std::string* result_status = result.FindString("status");
++  if (!result_status || *result_status != "ok") {
++    // The avatar was modified from another device since our last pull.
++    std::move(callback).Run(
++        false,
++        u"Your profile picture changed on another device. Reopen Aegis ID "
++        u"and try again.");
++    return;
++  }
++  avatar_version_ = result.FindInt("version").value_or(avatar_version_ + 1);
++  avatar_b64_ = Base64Encode(png);
++  PersistState();
++  std::move(callback).Run(true, u"");
++}
++
++void AegisIdManager::FetchAvatarImage(AvatarCallback callback) {
++  if (!session_live()) {
++    // No live session: report "no avatar" without nagging.
++    avatar_loaded_ = true;
++    std::move(callback).Run(true, {}, u"");
++    return;
++  }
++  AuthedFetch(GURL(std::string(kBase) + "/v1/sync/pull?cursor=0"), "GET",
++              std::nullopt,
++              base::BindOnce(&AegisIdManager::OnAvatarPullReply,
++                             weak_factory_.GetWeakPtr(), std::move(callback)));
++}
++
++void AegisIdManager::OnAvatarPullReply(AvatarCallback callback,
++                                       int status,
++                                       std::optional<base::DictValue> data) {
++  avatar_loaded_ = true;
++  if (status != kHttpOk || !data) {
++    std::move(callback).Run(
++        false, {},
++        DescribeError(status, DecodeApiError(status, data ? &*data : nullptr)));
++    return;
++  }
++  const base::Value::List* items = data->FindList("items");
++  const base::DictValue* avatar_row = nullptr;
++  if (items) {
++    for (const base::Value& entry : *items) {
++      const base::DictValue& d = entry.GetDict();
++      if (Str(d.FindString("item_key")) == kAvatarItemKey &&
++          !d.FindBool("deleted").value_or(false)) {
++        avatar_row = &d;  // pull is event-ordered; last match wins
++      }
++    }
++  }
++  if (!avatar_row) {
++    std::move(callback).Run(true, {}, u"");  // no avatar set on the account
++    return;
++  }
++  const std::string ct_b64 = Str(avatar_row->FindString("ciphertext"));
++  const std::string nonce_b64 = Str(avatar_row->FindString("nonce"));
++  const int version = avatar_row->FindInt("version").value_or(0);
++  base::ThreadPool::PostTaskAndReplyWithResult(
++      FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
++      base::BindOnce(
++          [](std::vector<uint8_t> key, std::string ct_b64,
++             std::string nonce_b64) -> std::optional<std::vector<uint8_t>> {
++            std::vector<uint8_t> ct, nonce;
++            if (key.size() != kVaultKeySize ||
++                !Base64Decode(ct_b64, &ct) ||
++                !Base64Decode(nonce_b64, &nonce)) {
++              return std::nullopt;
++            }
++            return AesGcmOpen(key, nonce, ct);
++          },
++          vault_key_, ct_b64, nonce_b64),
++      base::BindOnce(&AegisIdManager::OnAvatarDecrypted,
++                     weak_factory_.GetWeakPtr(), version,
++                     std::move(callback)));
++}
++
++void AegisIdManager::OnAvatarDecrypted(
++    int version,
++    AvatarCallback callback,
++    std::optional<std::vector<uint8_t>> png) {
++  if (!png || png->empty()) {
++    // Undecryptable/absent avatar: surface as "none" rather than an error.
++    std::move(callback).Run(true, {}, u"");
++    return;
++  }
++  if (version > 0) {
++    avatar_version_ = version;
++  }
++  avatar_b64_ = Base64Encode(*png);
++  PersistState();
++  std::move(callback).Run(true, std::move(*png), u"");
 +}
 +
 +// ------------------------------------------------------- sign-out, devices
@@ -1102,7 +1321,6 @@ new file mode 100644
 +}
 +
 +}  // namespace aegis
-
 diff --git a/chrome/browser/ui/views/profiles/aegis_id_dialog.h b/chrome/browser/ui/views/profiles/aegis_id_dialog.h
 new file mode 100644
 --- /dev/null
@@ -1133,24 +1351,43 @@ diff --git a/chrome/browser/ui/views/profiles/aegis_id_dialog.cc b/chrome/browse
 new file mode 100644
 --- /dev/null
 +++ b/chrome/browser/ui/views/profiles/aegis_id_dialog.cc
-@@ -0,0 +1,369 @@
+@@ -0,0 +1,663 @@
 +// Copyright 2026 The Aegis Browser Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
 +
 +#include "chrome/browser/ui/views/profiles/aegis_id_dialog.h"
 +
++#include <algorithm>
++#include <memory>
++#include <optional>
 +#include <utility>
++#include <vector>
 +
++#include "base/files/file_util.h"
 +#include "base/functional/bind.h"
 +#include "base/memory/raw_ptr.h"
++#include "base/memory/scoped_refptr.h"
 +#include "base/memory/weak_ptr.h"
 +#include "base/strings/utf_string_conversions.h"
++#include "base/task/thread_pool.h"
 +#include "base/time/time.h"
 +#include "chrome/browser/profiles/profile.h"
 +#include "chrome/browser/profiles/profile_observer.h"
 +#include "chrome/browser/ui/views/profiles/aegis_id_manager.h"
++#include "skia/ext/image_operations.h"
++#include "third_party/skia/include/codec/SkCodec.h"
++#include "third_party/skia/include/core/SkBitmap.h"
++#include "third_party/skia/include/core/SkData.h"
++#include "third_party/skia/include/core/SkImageInfo.h"
++#include "third_party/skia/include/encode/SkPngEncoder.h"
++#include "ui/base/models/image_model.h"
++#include "ui/gfx/image/image_skia.h"
++#include "ui/shell_dialogs/select_file_dialog.h"
++#include "ui/shell_dialogs/select_file_policy.h"
++#include "ui/shell_dialogs/selected_file_info.h"
 +#include "ui/views/controls/button/md_text_button.h"
++#include "ui/views/controls/image_view.h"
 +#include "ui/views/controls/label.h"
 +#include "ui/views/controls/textfield/textfield.h"
 +#include "ui/views/layout/box_layout.h"
@@ -1163,6 +1400,8 @@ new file mode 100644
 +namespace {
 +
 +constexpr char16_t kDialogTitle[] = u"Aegis ID";
++constexpr int kAvatarMaxSize = 256;
++constexpr int kAvatarDisplaySize = 64;
 +
 +std::u16string FormatSeen(int64_t last_seen_at) {
 +  if (last_seen_at <= 0) {
@@ -1182,6 +1421,118 @@ new file mode 100644
 +  return u"active in the last week";
 +}
 +
++inline bool IsSpaceChar(char16_t c) {
++  return c == u' ' || c == u'\t' || c == u'\n' || c == u'\r';
++}
++
++// The worker lowercases usernames on ingest; mirror that client-side so the
++// displayed name matches what other devices will show.
++std::u16string NormalizeUsernameInput(const std::u16string& input) {
++  size_t begin = 0;
++  size_t end = input.size();
++  while (begin < end && IsSpaceChar(input[begin])) {
++    ++begin;
++  }
++  while (end > begin && IsSpaceChar(input[end - 1])) {
++    --end;
++  }
++  std::u16string out;
++  out.reserve(end - begin);
++  for (size_t i = begin; i < end; ++i) {
++    const char16_t c = input[i];
++    out.push_back((c >= u'A' && c <= u'Z') ? static_cast<char16_t>(c + 32)
++                                           : c);
++  }
++  return out;
++}
++
++bool IsValidUsername(const std::u16string& name) {
++  if (name.size() < 3 || name.size() > 24) {
++    return false;
++  }
++  for (const char16_t c : name) {
++    const bool ok = (c >= u'a' && c <= u'z') || (c >= u'0' && c <= u'9') ||
++                    c == u'_' || c == u'-';
++    if (!ok) {
++      return false;
++    }
++  }
++  return true;
++}
++
++// Decodes an arbitrary PNG/JPEG/WebP image and scales it down so the larger
++// edge is at most |kAvatarMaxSize| (aspect preserved). Runs on the ThreadPool.
++std::optional<SkBitmap> DecodeAndFitAvatar(const std::vector<uint8_t>& bytes) {
++  if (bytes.empty()) {
++    return std::nullopt;
++  }
++  sk_sp<SkData> data =
++      SkData::MakeWithoutCopy(bytes.data(), bytes.size());
++  std::unique_ptr<SkCodec> codec = SkCodec::MakeFromData(data);
++  if (!codec) {
++    return std::nullopt;
++  }
++  SkBitmap src;
++  const SkImageInfo src_info =
++      codec->getInfo().makeAlphaType(kPremul_SkAlphaType);
++  if (!src.allocPixels(src_info)) {
++    return std::nullopt;
++  }
++  if (codec->getPixels(src_info, src.getPixels(), src.rowBytes()) !=
++      SkCodec::kSuccess) {
++    return std::nullopt;
++  }
++  int width = src.width();
++  int height = src.height();
++  if (width > kAvatarMaxSize || height > kAvatarMaxSize) {
++    const double scale =
++        std::min(static_cast<double>(kAvatarMaxSize) / width,
++                 static_cast<double>(kAvatarMaxSize) / height);
++    width = std::max(1, static_cast<int>(width * scale));
++    height = std::max(1, static_cast<int>(height * scale));
++    SkBitmap fitted = skia::ImageOperations::Resize(
++        src.pixmap(), skia::ImageOperations::RESIZE_BEST, width, height,
++        SkIRect::MakeWH(width, height));
++    if (!fitted.isNull()) {
++      src = std::move(fitted);
++    }
++  }
++  return src;
++}
++
++// Reads |path| and produces square-capped PNG bytes suitable for the avatar
++// sync item. Runs on the ThreadPool.
++std::optional<std::vector<uint8_t>> LoadAndNormalizeAvatar(
++    const base::FilePath& path) {
++  std::string raw;
++  if (!base::ReadFileToString(path, &raw) || raw.empty()) {
++    return std::nullopt;
++  }
++  const std::vector<uint8_t> bytes(raw.begin(), raw.end());
++  std::optional<SkBitmap> bitmap = DecodeAndFitAvatar(bytes);
++  if (!bitmap || bitmap->isNull()) {
++    return std::nullopt;
++  }
++  sk_sp<SkData> png =
++      SkPngEncoder::Encode(bitmap->pixmap(), SkPngEncoder::Options());
++  if (!png) {
++    return std::nullopt;
++  }
++  return std::vector<uint8_t>(
++      static_cast<const uint8_t*>(png->data()),
++      static_cast<const uint8_t*>(png->data()) + png->size());
++}
++
++// The dialog never runs in an incognito profile and has no enterprise
++// policy layer, so the file-picker policy is simply permissive. A local
++// subclass keeps the aegis_id target free of chrome/browser/ui layering
++// dependencies (ChromeSelectFilePolicy lives outside profiles/).
++class AegisSelectFilePolicy : public ui::SelectFilePolicy {
++ public:
++  bool CanOpenSelectFileDialog() override { return true; }
++  void SelectFileDenied() override {}
++};
++
 +}  // namespace
 +
 +// The widget owns the dialog view, the dialog owns the manager. Profile
@@ -1191,9 +1542,12 @@ new file mode 100644
 +// dialog, so every manager reply runs only while the dialog is alive. The
 +// dialog-closing paths (profile destruction) synchronously destroy the
 +// manager, whose own replies are bound to the manager's WeakPtrFactory and
-+// are therefore dropped.
++// are therefore dropped. Pool-side work kicked off directly by the dialog
++// (avatar decode/encode) uses weak_ptr_factory_ instead, because
++// PostTaskAndReplyWithResult replies outlive the dialog's own lifetime.
 +class AegisIdSignInDialog : public views::DialogDelegateView,
-+                            public ProfileObserver {
++                            public ProfileObserver,
++                            public ui::SelectFileDialog::Listener {
 + public:
 +  explicit AegisIdSignInDialog(Profile* profile);
 +  ~AegisIdSignInDialog() override;
@@ -1203,6 +1557,10 @@ new file mode 100644
 +
 +  // ProfileObserver:
 +  void OnProfileWillBeDestroyed(Profile* profile) override;
++
++  // ui::SelectFileDialog::Listener:
++  void FileSelected(const ui::SelectedFileInfo& file, int index) override;
++  void FileSelectionCanceled() override;
 +
 + private:
 +  void BuildLayout();
@@ -1222,6 +1580,14 @@ new file mode 100644
 +                        std::vector<AegisDeviceInfo> devices,
 +                        const std::u16string& message);
 +
++  void OnSetAvatarClicked();
++  void OnAvatarBytesLoaded(std::optional<std::vector<uint8_t>> png);
++  void OnAvatarSet(bool ok, const std::u16string& message);
++  void OnAvatarFetched(bool ok,
++                       std::vector<uint8_t> png,
++                       const std::u16string& message);
++  void OnAvatarBitmapReady(std::optional<SkBitmap> bitmap);
++
 +  raw_ptr<Profile> profile_ = nullptr;
 +  std::unique_ptr<AegisIdManager> manager_;
 +
@@ -1230,12 +1596,19 @@ new file mode 100644
 +  raw_ptr<views::Label> error_label_ = nullptr;
 +  raw_ptr<views::View> form_container_ = nullptr;
 +  raw_ptr<views::Textfield> email_field_ = nullptr;
++  raw_ptr<views::Textfield> username_field_ = nullptr;
 +  raw_ptr<views::Textfield> password_field_ = nullptr;
 +  raw_ptr<views::MdTextButton> signin_button_ = nullptr;
 +  raw_ptr<views::MdTextButton> create_button_ = nullptr;
 +  raw_ptr<views::View> account_container_ = nullptr;
++  raw_ptr<views::ImageView> avatar_image_ = nullptr;
++  raw_ptr<views::MdTextButton> set_avatar_button_ = nullptr;
 +  raw_ptr<views::View> devices_container_ = nullptr;
 +  raw_ptr<views::MdTextButton> signout_button_ = nullptr;
++  scoped_refptr<ui::SelectFileDialog> select_file_dialog_;
++
++  // Must stay last: replies bound to it are dropped once destruction starts.
++  base::WeakPtrFactory<AegisIdSignInDialog> weak_ptr_factory_{this};
 +};
 +
 +AegisIdSignInDialog::AegisIdSignInDialog(Profile* profile)
@@ -1251,6 +1624,11 @@ new file mode 100644
 +}
 +
 +AegisIdSignInDialog::~AegisIdSignInDialog() {
++  // The native file picker holds a raw pointer to this Listener.
++  if (select_file_dialog_) {
++    select_file_dialog_->ListenerDestroyed();
++    select_file_dialog_ = nullptr;
++  }
 +  if (profile_) {
 +    profile_->RemoveObserver(this);
 +  }
@@ -1299,6 +1677,12 @@ new file mode 100644
 +  email->SetPreferredSize(gfx::Size(360, 0));
 +  email_field_ = form_container_->AddChildView(std::move(email));
 +
++  auto username = std::make_unique<views::Textfield>();
++  username->SetPlaceholderText(u"Username (3-24: a-z 0-9 _ -)");
++  username->SetAccessibleName(u"Username");
++  username->SetPreferredSize(gfx::Size(360, 0));
++  username_field_ = form_container_->AddChildView(std::move(username));
++
 +  auto password = std::make_unique<views::Textfield>();
 +  password->SetPlaceholderText(u"Master password");
 +  password->SetTextInputType(ui::TEXT_INPUT_TYPE_PASSWORD);
@@ -1322,6 +1706,19 @@ new file mode 100644
 +  account_container_ = AddChildView(std::make_unique<views::View>());
 +  account_container_->SetLayoutManager(std::make_unique<views::BoxLayout>(
 +      views::BoxLayout::Orientation::kVertical, gfx::Insets(), 8));
++
++  auto avatar_row = std::make_unique<views::View>();
++  avatar_row->SetLayoutManager(std::make_unique<views::BoxLayout>(
++      views::BoxLayout::Orientation::kHorizontal, gfx::Insets(), 12));
++  auto avatar = std::make_unique<views::ImageView>();
++  avatar->SetPreferredSize(gfx::Size(kAvatarDisplaySize, kAvatarDisplaySize));
++  avatar->SetAccessibleName(u"Profile picture");
++  avatar_image_ = avatar_row->AddChildView(std::move(avatar));
++  set_avatar_button_ = avatar_row->AddChildView(
++      std::make_unique<views::MdTextButton>(base::BindRepeating(
++          &AegisIdSignInDialog::OnSetAvatarClicked, base::Unretained(this)),
++          u"Set profile picture\u2026"));
++  account_container_->AddChildView(std::move(avatar_row));
 +
 +  auto devices = std::make_unique<views::View>();
 +  devices->SetLayoutManager(std::make_unique<views::BoxLayout>(
@@ -1364,7 +1761,26 @@ new file mode 100644
 +void AegisIdSignInDialog::ShowAccount() {
 +  form_container_->SetVisible(false);
 +  account_container_->SetVisible(true);
-+  status_label_->SetText(u"Signed in as " + manager_->email());
++  std::u16string who = manager_->email();
++  if (!manager_->username().empty()) {
++    who = manager_->username() + u" \u2022 " + manager_->email();
++  }
++  status_label_->SetText(u"Signed in as " + who);
++
++  // Cached avatar first (survives restarts); pull once per session when
++  // nothing is cached yet.
++  const std::vector<uint8_t> cached = manager_->avatar_png();
++  if (!cached.empty()) {
++    base::ThreadPool::PostTaskAndReplyWithResult(
++        FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
++        base::BindOnce(&DecodeAndFitAvatar, cached),
++        base::BindOnce(&AegisIdSignInDialog::OnAvatarBitmapReady,
++                       weak_ptr_factory_.GetWeakPtr()));
++  } else if (!manager_->avatar_loaded()) {
++    manager_->FetchAvatarImage(base::BindOnce(
++        &AegisIdSignInDialog::OnAvatarFetched,
++        weak_ptr_factory_.GetWeakPtr()));
++  }
 +
 +  devices_container_->RemoveAllChildViews();
 +  auto loading = std::make_unique<views::Label>(
@@ -1383,6 +1799,7 @@ new file mode 100644
 +  signin_button_->SetEnabled(!busy);
 +  create_button_->SetEnabled(!busy);
 +  signout_button_->SetEnabled(!busy);
++  set_avatar_button_->SetEnabled(!busy);
 +}
 +
 +void AegisIdSignInDialog::ShowError(const std::u16string& message) {
@@ -1416,9 +1833,15 @@ new file mode 100644
 +void AegisIdSignInDialog::OnCreateClicked() {
 +  ClearError();
 +  const std::u16string email(email_field_->GetText());
++  const std::u16string username(
++      NormalizeUsernameInput(username_field_->GetText()));
 +  const std::u16string password(password_field_->GetText());
 +  if (email.empty() || email.find(u'@') == std::u16string::npos) {
 +    ShowError(u"Enter an email address to create your Aegis ID with.");
++    return;
++  }
++  if (!username.empty() && !IsValidUsername(username)) {
++    ShowError(u"Usernames are 3-24 characters: a-z, 0-9, _ and -.");
 +    return;
 +  }
 +  if (password.size() < 8) {
@@ -1427,7 +1850,7 @@ new file mode 100644
 +    return;
 +  }
 +  SetBusy(true);
-+  manager_->CreateAccount(email, password,
++  manager_->CreateAccount(email, username, password,
 +                          base::BindOnce(&AegisIdSignInDialog::OnSignInDone,
 +                                         base::Unretained(this)));
 +}
@@ -1446,6 +1869,95 @@ new file mode 100644
 +  SetBusy(true);
 +  manager_->SignOut(base::BindOnce(&AegisIdSignInDialog::OnSignInDone,
 +                                   base::Unretained(this)));
++}
++
++void AegisIdSignInDialog::OnSetAvatarClicked() {
++  ClearError();
++  if (!manager_->session_live()) {
++    ShowError(u"Your session expired. Sign in again to update your picture.");
++    return;
++  }
++  if (!select_file_dialog_) {
++    select_file_dialog_ = ui::SelectFileDialog::Create(
++        this, std::make_unique<AegisSelectFilePolicy>());
++  }
++  select_file_dialog_->SelectFile(
++      ui::SelectFileDialog::SELECT_OPEN_FILE, u"Choose a profile picture",
++      base::FilePath(), /*file_types=*/nullptr, /*file_type_index=*/0,
++      base::FilePath::StringType(),
++      GetWidget() ? GetWidget()->GetNativeWindow() : nullptr);
++}
++
++void AegisIdSignInDialog::FileSelected(const ui::SelectedFileInfo& file,
++                                       int /*index*/) {
++  const base::FilePath& path =
++      !file.local_path.empty() ? file.local_path : file.file_path;
++  base::ThreadPool::PostTaskAndReplyWithResult(
++      FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
++      base::BindOnce(&LoadAndNormalizeAvatar, path),
++      base::BindOnce(&AegisIdSignInDialog::OnAvatarBytesLoaded,
++                     weak_ptr_factory_.GetWeakPtr()));
++}
++
++void AegisIdSignInDialog::FileSelectionCanceled() {
++  select_file_dialog_ = nullptr;
++}
++
++void AegisIdSignInDialog::OnAvatarBytesLoaded(
++    std::optional<std::vector<uint8_t>> png) {
++  if (!account_container_->GetVisible()) {
++    return;
++  }
++  if (!png || png->empty()) {
++    ShowError(u"Couldn't read that image. Try a PNG, JPEG or WebP file.");
++    return;
++  }
++  SetBusy(true);
++  manager_->SetAvatarImage(std::move(*png),
++                           base::BindOnce(&AegisIdSignInDialog::OnAvatarSet,
++                                          weak_ptr_factory_.GetWeakPtr()));
++}
++
++void AegisIdSignInDialog::OnAvatarSet(bool ok, const std::u16string& message) {
++  if (!account_container_->GetVisible()) {
++    return;
++  }
++  SetBusy(false);
++  if (!ok) {
++    ShowError(message);
++    return;
++  }
++  const std::vector<uint8_t> cached = manager_->avatar_png();
++  if (!cached.empty()) {
++    base::ThreadPool::PostTaskAndReplyWithResult(
++        FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
++        base::BindOnce(&DecodeAndFitAvatar, cached),
++        base::BindOnce(&AegisIdSignInDialog::OnAvatarBitmapReady,
++                       weak_ptr_factory_.GetWeakPtr()));
++  }
++}
++
++void AegisIdSignInDialog::OnAvatarFetched(
++    bool ok,
++    std::vector<uint8_t> png,
++    const std::u16string& /*message*/) {
++  if (!account_container_->GetVisible() || !ok || png.empty()) {
++    return;  // avatar is optional; stay silent on misses
++  }
++  base::ThreadPool::PostTaskAndReplyWithResult(
++      FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
++      base::BindOnce(&DecodeAndFitAvatar, std::move(png)),
++      base::BindOnce(&AegisIdSignInDialog::OnAvatarBitmapReady,
++                     weak_ptr_factory_.GetWeakPtr()));
++}
++
++void AegisIdSignInDialog::OnAvatarBitmapReady(std::optional<SkBitmap> bitmap) {
++  if (!account_container_->GetVisible() || !bitmap || bitmap->isNull()) {
++    return;
++  }
++  avatar_image_->SetImage(ui::ImageModel::FromImageSkia(
++      gfx::ImageSkia::CreateFrom1xBitmap(*bitmap)));
++  PreferredSizeChanged();
 +}
 +
 +void AegisIdSignInDialog::OnDevicesFetched(
@@ -1503,7 +2015,6 @@ new file mode 100644
 +}
 +
 +}  // namespace aegis
-
 diff --git a/chrome/browser/ui/views/profiles/BUILD.gn b/chrome/browser/ui/views/profiles/BUILD.gn
 --- a/chrome/browser/ui/views/profiles/BUILD.gn
 +++ b/chrome/browser/ui/views/profiles/BUILD.gn
@@ -1515,7 +2026,7 @@ diff --git a/chrome/browser/ui/views/profiles/BUILD.gn b/chrome/browser/ui/views
        ":avatar_badge_view",
        "//build:branding_buildflags",
        "//chrome/app:branded_strings",
-@@ -466,6 +467,30 @@
+@@ -466,6 +467,34 @@
          "//chrome/browser/web_applications",
        ]
      }
@@ -1540,6 +2051,10 @@ diff --git a/chrome/browser/ui/views/profiles/BUILD.gn b/chrome/browser/ui/views
 +      "//crypto",
 +      "//net",
 +      "//services/network/public/cpp",
++      "//skia",
++      "//third_party/skia",
++      "//ui/gfx",
++      "//ui/shell_dialogs",
 +      "//ui/base",
 +      "//ui/views",
 +    ]
