@@ -2028,7 +2028,7 @@ diff --git a/chrome/browser/ui/views/profiles/BUILD.gn b/chrome/browser/ui/views
        ":avatar_badge_view",
        "//build:branding_buildflags",
        "//chrome/app:branded_strings",
-@@ -466,6 +467,34 @@
+@@ -466,6 +467,33 @@
          "//chrome/browser/web_applications",
        ]
      }
@@ -2054,7 +2054,6 @@ diff --git a/chrome/browser/ui/views/profiles/BUILD.gn b/chrome/browser/ui/views
 +      "//net",
 +      "//services/network/public/cpp",
 +      "//skia",
-+      "//third_party/skia",
 +      "//ui/gfx",
 +      "//ui/shell_dialogs",
 +      "//ui/base",
