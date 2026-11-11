@@ -5,7 +5,7 @@
 > trust the file, then verify against GitHub API. Update this file + commit + push after
 > EVERY working pass so a context loss or sandbox recycle never loses state.
 >
-> Last updated: **2026-11-11 12:0x UTC (17:0x PKT)** — by main session.
+> Last updated: **2026-11-11 12:2x UTC (17:2x PKT)** — by main session.
 
 ---
 
@@ -59,7 +59,7 @@ bank/artifact outcome). Run logs: `scripts/job_<job_id>.log` when saved, else fe
 
 | Lane | Latest run | State | Head | Meaning |
 |---|---|---|---|---|
-| **APK** | #62 id=42974545503 (started 06:44:27Z) | **in_progress** (~5h+, variance up to 2.3×) | `e8d86ce` | Real next APK delivery: icons v2 + home/dock fixes + patch 110 local password manager + all aegis_id crypto fixes. Predates `1d7265d` AND the 2aff576 BUILD.gn fix — cannot fail on either. #58 (c70a066) GREEN → draft r58 (318.9 MB) banked as fallback. Verdict sweep = cron 524124. |
+| **APK** | #63 id=43019369532 (started 12:19:42Z) | **in_progress** | `57a61f6` | Continues #62's cap-bank: #62 GREEN cap only (281 min ninja, 123,338 edges, banked 1.89 GB, artifact steps skipped — no draft r62). #63 = first APK build with patch 108 v2 (shared BUILD.gn, desktop-only code) + the 2aff576 skia-dep fix; carries the real delivery: icons v2 + home/dock fixes + patch 110 local password manager + crypto fixes. Fallback draft r58 (318.9 MB) stays banked. Verdict sweep = cron 524163. |
 | **Linux** | #54 id=43016173134 (started 11:57:10Z) | **in_progress** | `2aff576` | Fix-forward for #53 RED (gn gen duplicate skia_use_dawn, see §8). `2aff576` carries EVERYTHING incl. e943d44 InfoSpan fix + 108 v2 + 110. gn gen is the first gate (~35 min in after bank restore); manager/dialog TUs compile after crypto.o — first-compile errors possible. Verdict + Windows gate = cron 524122. |
 | **Windows** | #32 id=42855429095 (GREEN 2026-11-10 16:31Z) | idle, cap-bank | `7cdd37b` | Latest Windows **artifact** is draft r31. Next run (#33) = first artifact build with the full desktop wave. Gated on Linux #54 GREEN (cron 524122). |
 
@@ -68,14 +68,11 @@ Armed watchdog crons (verify with `cron list`, re-arm if missing):
 | Job | Fires (Asia/Shanghai) | Does |
 |---|---|---|
 | 524122 | 2026-11-11 20:50 CST (= 12:50Z, self-reschedules +40 min) | `run_verdict.py 43016173134` (#54). In-progress → re-arm. GREEN artifact → verify draft r54, dispatch **Windows r33** from HEAD. GREEN cap-bank → dispatch Linux successor. RED → fix-forward Linux only. |
-| 524124 | 2026-11-11 20:45 CST (= 12:45Z, self-reschedules +45 min) | `run_verdict.py 42974545503` (#62). In-progress → re-arm. GREEN → verify draft r62 asset, report. RED → fix-forward APK + dispatch. |
+| 524163 | 2026-11-11 21:20 CST (= 13:20Z, self-reschedules +45 min) | `run_verdict.py 43019369532` (#63). In-progress → re-arm. GREEN artifact → verify draft r63, report delivery. GREEN cap-bank → dispatch APK successor. RED → fix-forward APK + dispatch. |
 
-**Note:** #62 checked out `e8d86ce` — BEFORE `1d7265d` (desktop username+avatar) and BEFORE
-`2aff576` (BUILD.gn fix). It cannot fail on either. Linux #54 and Windows #33 are the first
-runs that validate `1d7265d` + `2aff576`.
-**Watchdog lesson:** old crons 523593/523412 FIRED on schedule but failed silently (job-log
-redirect 401; no reschedule written). New payloads embed the two-step log fetch
-(NoRedirect → signed Location → GET WITHOUT auth header) and explicit reschedule rules.
+**Note:** #63 builds at HEAD `57a61f6` (= `2aff576` + docs) — first APK build validating
+`1d7265d` (username+avatar, desktop-only code, shared BUILD.gn) + `2aff576` (skia-dep fix).
+Linux #54 and Windows #33 are the first desktop runs that validate the same two commits.
 
 ## 5. Deliverables ledger (verified via API 2026-11-11 08:1xZ)
 
@@ -83,11 +80,11 @@ Published releases (user decides these; never delete unprompted):
 - `linux-156.0.8078.79-r45` (.deb 110.5 MB + .zip 160.0 MB, tag @ `a548d4c`) — **the only published release**
 
 Draft releases (NEVER publish/delete without user):
-- `build-...-r58` APK 318.9 MB (GREEN #58 @ c70a066; NO icons v2 — superseded by r62 when it lands) — **latest APK artifact draft**
+- `build-...-r58` APK 318.9 MB (GREEN #58 @ c70a066; NO icons v2 — superseded by r63 when it lands) — **latest APK artifact draft**
 - `windows-...-r31` .exe 116.1 MB + .zip 199.9 MB — **latest/best Windows artifact draft**
 - `banking-windows` — bank vols: runs 42764643911 (#30), 42855429095 (#32) — 2.90 GB
 - `banking-linux` — bank vols: runs 41870785941 (orphan txt), 42957091996 (#50), 42965777019 (#51) — 3.42 GB
-- `banking-android` — bank vols: runs 42797034779, 42848316691 — 4.59 GB
+- `banking-android` — bank vols: runs 42797034779, 42848316691, 42974545503 (#62 cap-bank, 1.89 GB) — 6.48 GB
 
 **Cleanup 2026-11-11 07:5xZ (user request):** deleted 6 old/superseded/bugged drafts via
 `scripts/delete_old_drafts.py` (guard: never banking-*, never published, never latest
@@ -201,8 +198,9 @@ script any time the list gets cluttered (never deletes live runs, never touches 
 1. **[cron 524122 armed]** Linux #54 verdict (id 43016173134, head `2aff576`,
    self-reschedules +40 min) → GREEN artifact: verify draft r54, dispatch Windows r33
    from HEAD. GREEN cap-bank: dispatch Linux successor. RED: fix-forward Linux.
-2. **[cron 524124 armed]** APK #62 verdict (id 42974545503) → GREEN: verify draft r62
-   asset, report delivery. RED: fix-forward APK.
+2. **[cron 524163 armed]** APK #63 verdict (id 43019369532, head `57a61f6`, continues
+   #62's cap-bank) → GREEN: verify draft r63 asset, report delivery. GREEN cap-bank:
+   dispatch APK successor. RED: fix-forward APK.
 3. **PATCH 114 AUTHORED 2026-11-11 (P6 client)** — complete plan at
    `docs/PATCH_114_PLAN.md`; source staged `download/aegis-p114-src/`
    (aegis_password_sync.h 232 / .cc 916 lines); generated + validated patch at
