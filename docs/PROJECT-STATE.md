@@ -74,12 +74,10 @@ Armed watchdog crons (verify with `cron list`, re-arm if missing):
 (username + avatar desktop work). They cannot fail on avatar code. Linux #53 / Windows #33
 are the first runs that validate `1d7265d`.
 
-## 5. Deliverables ledger (verified via API 2026-11-11 07:55Z)
+## 5. Deliverables ledger (verified via API 2026-11-11 08:1xZ)
 
 Published releases (user decides these; never delete unprompted):
-- `linux-156.0.8078.79-r45` (.deb 110.5 MB + .zip 160.0 MB) — **best published Linux**
-- `linux-...-r31`, `linux-...-r24` (older)
-- `build-156.0.8078.79-r28` (APK 511.3 MB, older fat build)
+- `linux-156.0.8078.79-r45` (.deb 110.5 MB + .zip 160.0 MB, tag @ `a548d4c`) — **the only published release**
 
 Draft releases (NEVER publish/delete without user):
 - `build-...-r58` APK 318.9 MB (GREEN #58 @ c70a066; NO icons v2 — superseded by r62 when it lands) — **latest APK artifact draft**
@@ -93,6 +91,17 @@ Draft releases (NEVER publish/delete without user):
 artifact drafts) — `build-...-r57`, `build-...-r43`, `build-...-r29` (fat 511 MB),
 `windows-...-r12` (marker-bug era), `linux-...-r29`, `linux-...-r28`. Freed **1.96 GiB**.
 Banks byte-identical before/after. Re-run the same script pattern for future purges.
+
+**Cleanup 2026-11-11 08:1xZ (user):** user deleted 3 old PUBLISHED releases —
+`linux-...-r31`, `linux-...-r24`, `build-...-r28` (APK). Watchdog then deleted their 3
+orphan git tags (same names, commits `e35a99d`/`e36e494`/`e36e494`). Remaining tag:
+`linux-156.0.8078.79-r45` → `a548d4c` (release alive).
+
+**Tagging convention going forward:** exactly one git tag per published release
+(`<flavor>-156.0.8078.79-rNN` @ the build's head commit) = provenance of what shipped.
+When a release is deleted, delete its tag too (they serve no purpose once the release is
+gone and only offer confusing source zips). Draft releases never need tags; published
+ones get theirs at publish time.
 
 ## 6. Commit chain (what each recent commit is)
 
