@@ -1,0 +1,294 @@
+# 109 - aegis-home-dock-fix (fix-forward from r57 user report)
+# The user-tested r57 build had three hard defects, all confirmed against
+# upstream 156 sources:
+#   1. Home never showed: AegisHomeView was added at index 0 of the content
+#      root (BEHIND the coordinator's NTP) and its "chrome://newtab" prefix
+#      check never matched the native chrome-native://newtab/ URL. Now the
+#      home is the LAST child (dock installs right after, still above it),
+#      full-screen, consumes stray taps, and detects NTPs with
+#      UrlUtilities.isNtpUrl; TabObserver flips it instantly.
+#   2. Dock recall dead: the dock root was WRAP_CONTENT (52dp band) while the
+#      24x140dp sliver target hung 44dp OUTSIDE the root via a negative
+#      margin - those taps fell through to web content. The root is now a
+#      full-screen pass-through FrameLayout and the sliver is vertically
+#      centered INSIDE it (no negative margin).
+#   3. Trust line blank when idle: refreshUrl only bound the page title while
+#      loading; it now binds title/host always (hint only with no tab), and
+#      navigation events peek the dock via TabObserver (1 Hz poll stays as
+#      fallback).
+
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
+@@ -28,7 +28,9 @@ import org.chromium.build.annotations.Nullable;
+ import org.chromium.chrome.R;
+ import org.chromium.chrome.browser.ChromeTabbedActivity;
+ import org.chromium.chrome.browser.tab.Tab;
++import org.chromium.chrome.browser.tab.TabObserver;
+ import org.chromium.chrome.browser.ui.appmenu.AppMenuHandler;
++import org.chromium.url.GURL;
+ 
+ /**
+  * Aegis Liquid Glass dock (patch 099, spec section 03): the browser chrome
+@@ -75,6 +77,33 @@ public class AegisDockView extends FrameLayout {
+     private boolean mImeOpen;
+     private boolean mWasLoading;
+     private @Nullable String mLastBound;
++    private @Nullable Tab mObservedTab;
++    /** Navigation-driven refresh + peek (spec 3.1); the 1 Hz poll stays as
++     *  a fallback for fast same-document navigations and tab switches. */
++    private final TabObserver mTabObserver =
++            new TabObserver() {
++                @Override
++                public void onShown(Tab tab, int type) {
++                    refreshUrl();
++                    schedulePeekAfterNavigation();
++                }
++
++                @Override
++                public void onUrlUpdated(Tab tab) {
++                    refreshUrl();
++                }
++
++                @Override
++                public void onPageLoadFinished(Tab tab, GURL url) {
++                    refreshUrl();
++                    schedulePeekAfterNavigation();
++                }
++
++                @Override
++                public void didFirstVisuallyNonEmptyPaint(Tab tab) {
++                    schedulePeekAfterNavigation();
++                }
++            };
+     /** False when the OS asks for reduced motion or the device is low-RAM:
+      *  state changes are applied instantly without animation. */
+     private final boolean mAnimate =
+@@ -97,12 +126,16 @@ public class AegisDockView extends FrameLayout {
+         org.chromium.chrome.browser.aegis.home.AegisHomeView.install(activity);
+         AegisDockView dock = new AegisDockView(activity, menuSupplier);
+         dock.setId(R.id.aegis_dock);
++        // Full-screen pass-through root: empty areas return false from
++        // onTouchEvent and fall through to the content below; children are
++        // positioned inside the root's bounds so the sliver touch target is
++        // always hittable (the old WRAP_CONTENT root left most of the sliver
++        // outside the dock, and those taps reached the web content instead).
+         content.addView(
+                 dock,
+                 new FrameLayout.LayoutParams(
+                         ViewGroup.LayoutParams.MATCH_PARENT,
+-                        ViewGroup.LayoutParams.WRAP_CONTENT,
+-                        Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL));
++                        ViewGroup.LayoutParams.MATCH_PARENT));
+     }
+ 
+     private AegisDockView(
+@@ -199,10 +232,7 @@ public class AegisDockView extends FrameLayout {
+                 new FrameLayout.LayoutParams(
+                         res.getDimensionPixelSize(R.dimen.aegis_sliver_touch_w),
+                         res.getDimensionPixelSize(R.dimen.aegis_sliver_touch_h),
+-                        Gravity.BOTTOM | Gravity.START);
+-        sliverLp.bottomMargin =
+-                vmargin + res.getDimensionPixelSize(R.dimen.aegis_dock_height) / 2
+-                        - res.getDimensionPixelSize(R.dimen.aegis_sliver_touch_h) / 2;
++                        Gravity.CENTER_VERTICAL | Gravity.START);
+         mSliverTouch.setVisibility(GONE);
+         mSliverTouch.setContentDescription(getContext().getString(R.string.aegis_dock_recall));
+         mSliverTouch.setClickable(true);
+@@ -392,14 +422,28 @@ public class AegisDockView extends FrameLayout {
+         postDelayed(mPeekEnd, COLLAPSE_DELAY_MS + PEEK_DELAY_MS);
+     }
+ 
++    /** Keeps the navigation observer attached to the current activity tab. */
++    private void ensureTabObserver() {
++        Activity activity = (Activity) getContext();
++        if (!(activity instanceof ChromeTabbedActivity)) return;
++        Tab tab = ((ChromeTabbedActivity) activity).getActivityTab();
++        if (tab == mObservedTab) return;
++        if (mObservedTab != null) mObservedTab.removeObserver(mTabObserver);
++        mObservedTab = tab;
++        if (tab != null) tab.addObserver(mTabObserver);
++    }
++
+     private void refreshUrl() {
++        ensureTabObserver();
+         Activity activity = (Activity) getContext();
+         if (!(activity instanceof ChromeTabbedActivity)) return;
+         ChromeTabbedActivity cta = (ChromeTabbedActivity) activity;
+         Tab tab = cta.getActivityTab();
+         String next;
+         boolean loading = tab != null && tab.isLoading();
+-        if (tab == null || !loading) {
++        // The trust line shows the current page at all times (spec section
++        // 2.2); the search hint only appears when no tab exists.
++        if (tab == null) {
+             next = getContext().getString(R.string.aegis_dock_search_hint);
+         } else {
+             String title = tab.getTitle();
+@@ -460,6 +504,10 @@ public class AegisDockView extends FrameLayout {
+         removeCallbacks(mRefresh);
+         removeCallbacks(mCollapse);
+         removeCallbacks(mPeekEnd);
++        if (mObservedTab != null) {
++            mObservedTab.removeObserver(mTabObserver);
++            mObservedTab = null;
++        }
+     }
+ 
+     @Override
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java
+@@ -22,18 +22,22 @@ import org.chromium.build.annotations.Nullable;
+ import org.chromium.chrome.R;
+ import org.chromium.chrome.browser.ChromeTabbedActivity;
+ import org.chromium.chrome.browser.tab.Tab;
++import org.chromium.chrome.browser.tab.TabObserver;
++import org.chromium.components.embedder_support.util.UrlUtilities;
+ 
+ import java.text.SimpleDateFormat;
+ import java.util.Date;
+ import java.util.Locale;
+ 
+ /**
+- * Aegis new-tab home (patch 103, proposal Plate 01): clock, hardened status
++ * Aegis new-tab home (proposal Plate 01): clock, hardened status
+  * pill and quick-shields tiles over a monochrome gradient, edge to edge
+- * under the status bar. A View-layer overlay that becomes visible whenever
+- * the current tab is the new-tab page (the native NTP stays underneath);
+- * the glass dock floats above it. Tiles open URLs in the current tab; the
+- * sync tile opens the Aegis ID page, the private tile a private tab.
++ * under the status bar. A full-screen opaque overlay, LAST child of the
++ * content root (paints above the coordinator: NTP, Hub, suggestions),
++ * visible whenever the current tab is the new-tab page; the glass dock
++ * installs right after it and floats above. Tiles open URLs in the
++ * current tab; the settings tile opens Aegis settings, the private tile
++ * a private tab.
+  */
+ @NullMarked
+ public class AegisHomeView extends FrameLayout {
+@@ -45,27 +49,66 @@ public class AegisHomeView extends FrameLayout {
+     private final TextView mDate;
+     private final ChromeTabbedActivity mActivity;
+     private final Handler mHandler = new Handler(Looper.getMainLooper());
++    /** One-shot flip: runs tick() without re-arming the polling loop. */
+     private final Runnable mTick = this::tick;
++    /** 1 Hz fallback loop (tab-switch detection; observer handles navs). */
++    private final Runnable mTickLoop =
++            new Runnable() {
++                @Override
++                public void run() {
++                    tick();
++                    mHandler.postDelayed(this, CHECK_MS);
++                }
++            };
++    private @Nullable Tab mObservedTab;
++    /** Instant show/hide on navigation + URL changes (TabObserver, 156). */
++    private final TabObserver mTabObserver =
++            new TabObserver() {
++                @Override
++                public void onShown(Tab tab, int type) {
++                    mHandler.post(mTick);
++                }
++
++                @Override
++                public void onUrlUpdated(Tab tab) {
++                    mHandler.post(mTick);
++                }
++
++                @Override
++                public void onPageLoadFinished(Tab tab, org.chromium.url.GURL url) {
++                    mHandler.post(mTick);
++                }
++            };
+     private final SimpleDateFormat mClockFormat =
+             new SimpleDateFormat("HH:mm", Locale.getDefault());
+     private final SimpleDateFormat mDateFormat =
+             new SimpleDateFormat("EEE, MMMM d", Locale.getDefault());
+ 
+-    /** Installs the home overlay once, behind the dock. */
++    /** Installs the home overlay once, as the LAST child of the content root
++     *  (the dock installs right after and floats above it). */
+     public static void install(ChromeTabbedActivity activity) {
+         ViewGroup content = activity.findViewById(android.R.id.content);
+         if (content == null) return;
+         if (content.findViewById(R.id.aegis_home) != null) return;
+         AegisHomeView home = new AegisHomeView(activity);
+         home.setId(R.id.aegis_home);
+-        content.addView(home, 0);
++        // Last child: paints above everything the coordinator hosts (native
++        // NTP, Hub, omnibox suggestions). Index 0 (the old install) put the
++        // home BEHIND all of it, which is why it never showed.
++        content.addView(
++                home,
++                new FrameLayout.LayoutParams(
++                        ViewGroup.LayoutParams.MATCH_PARENT,
++                        ViewGroup.LayoutParams.MATCH_PARENT));
+     }
+ 
+     private AegisHomeView(ChromeTabbedActivity activity) {
+         super(activity);
+         mActivity = activity;
+         setVisibility(GONE);
+-        setClickable(false);
++        // Consume stray taps on the home surface so the covered native NTP
++        // (search box, tiles) never receives them through the overlay.
++        setClickable(true);
+ 
+         LinearLayout column = new LinearLayout(getContext());
+         column.setOrientation(LinearLayout.VERTICAL);
+@@ -215,13 +258,23 @@ public class AegisHomeView extends FrameLayout {
+         mHandler.postDelayed(mClockTick, CLOCK_MS);
+     }
+ 
++    /** Keeps the navigation observer attached to the current activity tab. */
++    private void ensureTabObserver() {
++        Tab tab = mActivity.getActivityTab();
++        if (tab == mObservedTab) return;
++        if (mObservedTab != null) mObservedTab.removeObserver(mTabObserver);
++        mObservedTab = tab;
++        if (tab != null) tab.addObserver(mTabObserver);
++    }
++
+     private void tick() {
++        ensureTabObserver();
+         Tab tab = mActivity.getActivityTab();
+-        boolean onNtp = false;
+-        if (tab != null && tab.getUrl() != null) {
+-            String spec = tab.getUrl().getSpec();
+-            onNtp = spec != null && spec.startsWith("chrome://newtab");
+-        }
++        // Canonical NTP detection at 156: the native new-tab URL is
++        // chrome-native://newtab/ - the old "chrome://newtab" prefix check
++        // never matched it, so the home never showed.
++        boolean onNtp = tab != null && tab.getUrl() != null
++                && UrlUtilities.isNtpUrl(tab.getUrl());
+         if (onNtp) {
+             mClock.setText(mClockFormat.format(new Date()));
+             mDate.setText(mDateFormat.format(new Date()).toUpperCase(Locale.getDefault()));
+@@ -229,13 +282,13 @@ public class AegisHomeView extends FrameLayout {
+         } else if (getVisibility() != GONE) {
+             setVisibility(GONE);
+         }
+-        mHandler.postDelayed(mTick, CHECK_MS);
+     }
+ 
+     @Override
+     protected void onAttachedToWindow() {
+         super.onAttachedToWindow();
+         tick();
++        mHandler.postDelayed(mTickLoop, CHECK_MS);
+         mHandler.postDelayed(mClockTick, CLOCK_MS);
+     }
+ 
+@@ -243,7 +296,12 @@ public class AegisHomeView extends FrameLayout {
+     protected void onDetachedFromWindow() {
+         super.onDetachedFromWindow();
+         mHandler.removeCallbacks(mTick);
++        mHandler.removeCallbacks(mTickLoop);
+         mHandler.removeCallbacks(mClockTick);
++        if (mObservedTab != null) {
++            mObservedTab.removeObserver(mTabObserver);
++            mObservedTab = null;
++        }
+     }
+ }
+ 

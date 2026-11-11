@@ -64,3 +64,11 @@ cc_wrapper = "/usr/local/bin/aegis_atomic_cc"
 # no window can ever reach the graph end that way. Forcing ninja makes
 # the v6 contract hold: window N+1 resumes with only genuinely dirty edges.
 use_siso = false
+
+# Keep aegis_* dock/home resources OUT of the R8 resource shrinker. The
+# aegis drawables/tokens are referenced only from aegis Java whose R
+# constants R8 inlines before the shrinker traces usage, so the shrinker
+# stripped aegis_dock_pill / aegis_dock_sliver / aegis_ic_menu /
+# aegis_tokens from r57 - the dock rendered without its spec'd glass
+# surfaces. Cost: a larger APK (unshrunk res table); no runtime impact.
+optimize_android_resources = false

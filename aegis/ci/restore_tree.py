@@ -199,13 +199,24 @@ def main():
 
     print(f"aegis changed since bank: {bsha[:10]} -> {cur_sha[:10]} ({len(changed)} files)")
 
-    # bank.sh / restore_tree.py / restamp.py do not affect gn args, compiler
+    # bank.sh / restore_tree.py / restamp.sh do not affect gn args, compiler
     # flags or any compiled object - changing them must NOT drop the bank.
-    # Only the build-affecting ci files (gn args, atomic_cc wrapper) do.
+    # The remaining ci files are LANE-SCOPED: arm64.gn only affects the
+    # arm64 (Android) bank; linux_x64.gn / win_x64.gn / atomic_cc.c only the
+    # desktop banks. A change scoped to another lane must NOT drop this
+    # lane's bank (e.g. adding optimize_android_resources=false to arm64.gn
+    # keeps the linux bank intact). An unknown odir falls back to treating
+    # every ci file as build-affecting (safe direction).
+    ci_lane_files = {
+        "arm64": {"arm64.gn"},
+        "linux_x64": {"linux_x64.gn", "atomic_cc.c"},
+        "win_x64": {"win_x64.gn", "atomic_cc.c"},
+    }
+    this_lane = ci_lane_files.get(
+        odir, {"arm64.gn", "linux_x64.gn", "win_x64.gn", "atomic_cc.c"})
     ci_build_affecting = [
         p for p in changed
-        if p.startswith("aegis/ci/") and os.path.basename(p) not in (
-            "bank.sh", "restore_tree.py", "restamp.sh")
+        if p.startswith("aegis/ci/") and os.path.basename(p) in this_lane
     ]
     if ci_build_affecting:
         print("gn args or compiler wrapper changed - dropping bank for safety")
