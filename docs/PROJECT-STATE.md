@@ -74,23 +74,25 @@ Armed watchdog crons (verify with `cron list`, re-arm if missing):
 (username + avatar desktop work). They cannot fail on avatar code. Linux #53 / Windows #33
 are the first runs that validate `1d7265d`.
 
-## 5. Deliverables ledger (verified via API 2026-11-11 07:05Z)
+## 5. Deliverables ledger (verified via API 2026-11-11 07:55Z)
 
-Published releases:
+Published releases (user decides these; never delete unprompted):
 - `linux-156.0.8078.79-r45` (.deb 110.5 MB + .zip 160.0 MB) — **best published Linux**
 - `linux-...-r31`, `linux-...-r24` (older)
 - `build-156.0.8078.79-r28` (APK 511.3 MB, older fat build)
 
 Draft releases (NEVER publish/delete without user):
-- `build-...-r58` APK 318.9 MB (GREEN #58 @ c70a066; NO icons v2 — superseded by r62 when it lands)
-- `build-...-r57` APK 318.9 MB
-- `build-...-r43`, `build-...-r29` (older APKs)
-- `windows-...-r31` .exe 116.1 MB + .zip 199.9 MB — **best Windows artifact**
-- `windows-...-r12` (STALE: marker-bug era, superseded)
-- `linux-...-r29`, `linux-...-r28` drafts (superseded by published r45)
-- `banking-windows` — bank vols: runs 42764643911 (#30), 42855429095 (#32)
-- `banking-linux` — bank vols: runs 42957091996 (#50), 42965777019 (#51)
-- `banking-android` — bank vols: runs 42797034779, 42848316691
+- `build-...-r58` APK 318.9 MB (GREEN #58 @ c70a066; NO icons v2 — superseded by r62 when it lands) — **latest APK artifact draft**
+- `windows-...-r31` .exe 116.1 MB + .zip 199.9 MB — **latest/best Windows artifact draft**
+- `banking-windows` — bank vols: runs 42764643911 (#30), 42855429095 (#32) — 2.90 GB
+- `banking-linux` — bank vols: runs 41870785941 (orphan txt), 42957091996 (#50), 42965777019 (#51) — 3.42 GB
+- `banking-android` — bank vols: runs 42797034779, 42848316691 — 4.59 GB
+
+**Cleanup 2026-11-11 07:5xZ (user request):** deleted 6 old/superseded/bugged drafts via
+`scripts/delete_old_drafts.py` (guard: never banking-*, never published, never latest
+artifact drafts) — `build-...-r57`, `build-...-r43`, `build-...-r29` (fat 511 MB),
+`windows-...-r12` (marker-bug era), `linux-...-r29`, `linux-...-r28`. Freed **1.96 GiB**.
+Banks byte-identical before/after. Re-run the same script pattern for future purges.
 
 ## 6. Commit chain (what each recent commit is)
 
