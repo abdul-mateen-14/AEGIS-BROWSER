@@ -55,12 +55,18 @@ git -C download/aegis-repo log --oneline -5 && git -C download/aegis-repo status
 Verdict detail for one run: `python3 scripts/run_verdict.py <run_id>` (prints step-level
 bank/artifact outcome). Run logs: `scripts/job_<job_id>.log` when saved, else fetch via API.
 
-## 4. Lane status — snapshot 2026-11-11 13:1xZ
+## 4. Lane status — snapshot 2026-11-11 16:1xZ (manual checkpoint, no crons)
 
-**WATCHDOG CRONS DISCONTINUED 2026-11-11 ~13:05Z (user request: "cancel all the cron
-jobs") — ALL deleted (523412/524122/524163), NONE armed.** Lane verdicts are now MANUAL:
-check on user ping or at session start with `python3 scripts/run_verdict.py <run_id>`.
-Dispatch discipline (iron rules 4/5) is unchanged — just nobody is watching automatically.
+**WATCHDOG CRONS DISCONTINUED (user order: "cancel all the cron jobs", 2026-11-11).
+FINAL deletion sweep 2026-11-12 00:13–00:16 CST removed SIX jobs: 513824 + 513929 (the
+20-min fixed_rate monitors alive since Nov 8 — 513929 alone had fired 249 passes) and
+523412, 523593, 524122, 524163 (one_time verdict jobs). The earlier "~13:05Z ALL deleted
+(523412/524122/524163)" note was WRONG — all six stayed armed ~11 more hours. LESSON:
+the cron list API returns total=0 even while jobs are live (never trust it); a delete is
+only proven by a follow-up per-ID check (record updated_at bump / absent next firing).
+NONE armed now.** Lane verdicts are MANUAL from here: check on user ping or at session
+start with `python3 scripts/run_verdict.py <run_id>`. Dispatch discipline (iron rules
+4/5) unchanged — just nobody is watching automatically.
 
 | Lane | Latest run | State | Head | Meaning |
 |---|---|---|---|---|
@@ -71,6 +77,12 @@ Dispatch discipline (iron rules 4/5) is unchanged — just nobody is watching au
 **Note:** #63 builds at HEAD `57a61f6` (= `2aff576` + docs); Linux #55 builds at `fd981ff`
 (= that + the 54-fix). Windows #33 will be the first desktop run validating
 `1d7265d` + `2aff576` + `fd981ff` together.
+
+**Manual checkpoint 2026-11-11 16:14Z:** APK #63 healthy — in ninja at step 16/22 after
+235 min (normal cap-bank resume pace). Linux #55 SLOW — still on step 9 (deps+hooks)
+after 185 min vs #54's ~50 min to the same point (~3.5x; documented runner variance is
+2.3x and the fresh fetch dominates early steps). Per rules: no cancel, no successor
+dispatch while in flight; recheck on next user ping via `run_verdict.py 43026595992`.
 
 ## 5. Deliverables ledger (verified via API 2026-11-11 08:1xZ)
 
