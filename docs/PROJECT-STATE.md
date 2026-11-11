@@ -71,8 +71,8 @@ start with `python3 scripts/run_verdict.py <run_id>`. Dispatch discipline (iron 
 | Lane | Latest run | State | Head | Meaning |
 |---|---|---|---|---|
 | **APK** | #64 id=43073661607 (started 18:00:56Z) | **in_progress** | `c3870e0` | Successor of #63 cap-bank GREEN (146,671 edges, 1.96 GB banked gen=43019369532 — 280-min cap hit again, artifact steps never reached; r58 draft still latest). #64 resumes the bank and must finish ninja + sign + draft r64. NO watchdog — check manually. |
-| **Linux** | #56 id=43073623562 (started 18:00:42Z) | **in_progress** | `c3870e0` | Fix-forward for #55 RED (dialog.cc:169 unsafe-buffer, see §8). manager.o compiled clean at edge 697 in #55 — all fd981ff fixes held. #56 resumes the 1.71 GB #55 bank; dialog TU recompiles on resume. On GREEN artifact: verify draft r56 then dispatch Windows r33 from HEAD. |
-| **Windows** | #32 id=42855429095 (GREEN 2026-11-10 16:31Z) | idle, cap-bank | `7cdd37b` | Latest Windows **artifact** is draft r31. Next run (#33) = first artifact build with the full desktop wave. Gate: Linux #56 GREEN artifact (manual check). |
+| **Linux** | #57 id=43080734791 (started 18:45:14Z) | **in_progress** | `72cb837` | #56 died at 42 min = INFRA flake, NOT code: `install-build-deps.py`'s depot_tools self-update got `HTTP 502` from the GitHub git RPC (that call path has NO retry wrapper; the source-fetch/tag/gclient wrappers don't cover it). Patches never applied. Redispatched once per infra-flake rule; #57 content == c3870e0 (docs-only delta). If the 502 recurs → propose retry wrapper / DEPOT_TOOLS_UPDATE=0 hardening (workflow change, needs user OK). On GREEN artifact: verify draft r57 then dispatch Windows r33. |
+| **Windows** | #32 id=42855429095 (GREEN 2026-11-10 16:31Z) | idle, cap-bank | `7cdd37b` | Latest Windows **artifact** is draft r31. Next run (#33) = first artifact build with the full desktop wave. Gate: Linux #57 GREEN artifact (manual check). |
 
 **Note:** #56 and #64 both build at HEAD `c3870e0` (= `fd981ff` + the dialog span fix).
 Windows #33 will be the first desktop run validating
@@ -84,6 +84,10 @@ RED with ONE error: aegis_id_dialog.cc:169 unsafe pointer arithmetic in the avat
 vector ctor (same plugin class as e943d44); fixed by c3870e0 (base::span(ptr,size) +
 iterator pair + span.h include), validated (lint + validate + apply_test all OK),
 successor #56 dispatched. Both lanes now on `c3870e0`.
+
+**Verdict 18:45Z:** Linux #56 = INFRA RED — depot_tools self-update HTTP 502 at 42 min,
+no patch applied, zero relation to the fix chain. Redispatched once per flake rule as
+**#57 @ `72cb837`**. APK #64 still in flight (c3870e0).
 
 ## 5. Deliverables ledger (verified via API 2026-11-11 08:1xZ)
 
@@ -151,6 +155,7 @@ e8d86ce  fix aegis_id_crypto CHECK_GT: include base/check_op.h (run #51 error)  
 
 | Run | Error | Fix commit | Lesson |
 |---|---|---|---|
+| Linux #56 (c3870e0) | NO build error — INFRA: step 9 `install-build-deps.py` died at 42 min on `depot_tools update failed … error: RPC failed; HTTP 502` (GitHub git-server 5xx). Patches never applied (steps 11+ skipped) | — (redispatch #57) | depot_tools self-update inside install-build-deps is the ONLY un-retried git call in the workflow. First infra death in the Linux lane since the API-fix wave; does NOT count against the fix chain. If it repeats: wrap install-build-deps in retry or export DEPOT_TOOLS_UPDATE=0 (workflow change → user OK first) |
 | Linux #55 (fd981ff) | dialog.cc:169 `static_cast<const uint8_t*>(png->data()) + png->size()` → `-Werror,-Wunsafe-buffer-usage`. ONE error only; manager.o compiled clean at edge 697 — every fd981ff fix held | `c3870e0` | The `(ptr, ptr+size)` iterator-pair ctor IS flagged — #52's "iterator-pair empirically clean" note was about a different ctor shape, do not trust it. Fix: named `base::span(ptr, size)` (blessed ctor) + vector-from-span-iterators + `base/containers/span.h`. Regenerated via build_patch108.py; diff audit = only the dialog change (no lost historical fixes). Bank resume + surgical invalidation worked: ninja ran 31 min before dying at edge 136,610 |
 | Linux #54 (2aff576) | REAL compile errors — gn gen PASSED (2aff576 skia fix proven). crypto.cc:28 `base::make_span` GONE in 156; manager.cc x3 `base::Value::List` gone in 156 (values rewrite: standalone `ListValue`, FindList → `const ListValue*`); SetAvatarImage reply never bound png (PostTaskAndReplyWithResult reply = task return ONLY) + OnAvatarPushBodyReady/OnAvatarDecrypted undeclared; dialog.cc allocPixels(info) void in 156 Skia + GetText() returns u16string_view | `fd981ff` | All verified against cached 156 sources (`scripts/chromium_file.py`). Devices path already used ListValue (compiled #52) = in-file ground truth. crypto.cc now STAGED (extracted 1:1 from patch, roundtrip-checked) and build_patch108.py made idempotent (windowed NEW_DEPS strip, net-delta count). Lesson: the v2 avatar path was written against a fictional API — ALWAYS verify new-API usage against the cached pin before regenerating |
 | Linux #53 (e943d44) | gn gen died in seconds: `ERROR at //third_party/skia/gn/skia.gni:51:19: Duplicate build argument declaration` — `skia_use_dawn` already declared at `//skia/features.gni:12`. Chain: profiles/BUILD.gn:492 dep `//third_party/skia` → standalone Skia BUILD.gn:10 → `import gn/skia.gni` → declare_args | `2aff576` | NEW DEP CLASS: NEVER dep on `//third_party/skia` (standalone Skia BUILD.gn is never in the stock chrome graph). `//skia` alone provides all `third_party/skia/include/*` headers. Poison line came from `build_patch108.py` NEW_DEPS during 1d7265d; #52 passed gn gen only because it predated the hunk. Fixed surgically (`scripts/fix108_skia_dep.py`, asserts: unique line + BUILD.gn section + in-hunk range, hunk count 34→33) AND in the generator. Diff audit: exactly 2 lines changed. Watchdog cron 523593 fired at 08:45Z but failed silently (log redirect 401) — dispatched nothing |
@@ -208,10 +213,12 @@ script any time the list gets cluttered (never deletes live runs, never touches 
 
 ## 10. Next actions queue (in order)
 
-1. **Linux #56 verdict — MANUAL CHECK (no cron).** `python3 scripts/run_verdict.py
-   43073623562`. RED → fix-forward (see §8). GREEN cap-bank → `dispatch_flavor.py
-   linux`. GREEN artifact → verify draft r56, then `dispatch_flavor.py windows` for
-   Windows r33 (first artifact build with the full desktop wave).
+1. **Linux #57 verdict — MANUAL CHECK (no cron).** `python3 scripts/run_verdict.py
+   43080734791`. RED → if depot_tools HTTP 502 again = second infra strike → propose
+   workflow hardening to user, do NOT blind-redispatch; any other error → fix-forward
+   (see §8). GREEN cap-bank → `dispatch_flavor.py linux`. GREEN artifact → verify
+   draft r57, then `dispatch_flavor.py windows` for Windows r33 (first artifact build
+   with the full desktop wave).
 2. **APK #64 verdict — MANUAL CHECK.** `python3 scripts/run_verdict.py 43073661607`.
    GREEN artifact → verify draft r64, report delivery (icons v2 + home/dock + patch 110
    local passwords + crypto). GREEN cap-bank → `dispatch_flavor.py apk`. RED →
