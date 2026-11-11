@@ -23,6 +23,7 @@
 | Local mirror | `/home/z/my-project/download/aegis-repo` |
 | Helper scripts | `/home/z/my-project/scripts/` — key ones: `status_all_lanes.py`, `run_verdict.py <run_id>`, `dispatch_flavor.py <apk\|linux\|windows>`, `patch_lint_includes.py`, `validate_patches.py`, `apply_test_108.py`, `check_progress_58_51.py`, `smoke_worker_username.py` |
 | Patch chain | `aegis/patches/*.patch` (41 files, applied alphabetically: 010 → 110) |
+| Plans in repo | `docs/DEPLOYMENT-PLAN.md` (program-wide) · `docs/ANDROID-DEPLOYMENT-PLAN.md` (Android lane) · this file |
 | No `gh` CLI | Use python3 + urllib with the GH token for all API calls |
 | Design specs | outside repo: `/home/z/my-project/download/aegis-design/` (mobile + desktop PDFs, HTML mockups, `DEGOOGLE-IDENTITY-CAPSULES-PLAN.md` = P1–P6 anchor file) |
 
