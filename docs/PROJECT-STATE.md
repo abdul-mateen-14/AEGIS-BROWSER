@@ -72,15 +72,18 @@ start with `python3 scripts/run_verdict.py <run_id>`. Dispatch discipline (iron 
 |---|---|---|---|---|
 | **APK** | #67 id=43203010345 (dispatched 2026-11-12T10:44Z) | **in_progress** | `7c49140` | First run of the 16 KB test lane (see triage block below): sign step emits standard APK + `-test16k` variant from the same binaries + hard `check_align` 4096/16384 gates (ground-truth zip-offset check). Restores #65's 2.19 GB bank (same gen #66 restored; 7c49140 touches only workflow + diagnostics source, both outside the invalidation set). NO watchdog — check manually. Last artifact: r66 (#66 GREEN 2026-11-12T06:09Z @ `35a8e90`, draft `build-...-r66` 338,083,578 B, icons v2 + home/dock + patch 110) — on-device launch crash under triage. |
 | **Linux** | #59 id=43150901156 (GREEN 2026-11-12T05:5xZ) | **DONE — artifact** | `da82b21` | FIRST 156-CHAIN LINUX ARTIFACT. Restored #58's 1.61 GB bank (gen 43133968988), only 1,386 dirty edges (patch-108 delta), ninja rc=0 after 52 min, .deb 116 MB. Draft `linux-156.0.8078.79-r59` (.deb 116 MB + portable .zip 167 MB). gfx::PNGCodec fix validated end-to-end. Desktop gate for Windows satisfied. |
-| **Windows** | #33 id=43164506963 (dispatched 2026-11-12T05:54:46Z) | **in_progress** | `b8b1ab0` | First artifact build with the full desktop wave (gate: Linux #59 GREEN artifact — satisfied). Restores banking-windows gen 42855429095 (#32, ~1.45 GB). Builds chrome + mini_installer, 280-min cap, streams bank on cap. NO watchdog — check manually. |
+| **Windows** | #34 id=43215761632 (dispatched 2026-11-12T12:12Z) | **in_progress** | `778d3c9` | Restore wave 2: restores #33's fresh bank gen 43164506963 (1,448,325,651 B, 62,327 edges). #33 verdict 12:0xZ: **GREEN BANK RUN** — restored gen 42855429095 (68,117 edges), dirty 58,568, ninja rc=137 (cap INT) after 273 min at [24,620/58,567] ≈ 42% of the wave, BUILD_REASON=cap, bank streamed (vols=2, BUILD_DONE unset → no artifact). Same bank→restore→finish pattern as Linux #58→#59; ~33.9k edges left at ~93 edges/min ≈ 1.2 cap-waves → expect #34 to cap+bank again, #35 finishes. Builds chrome + mini_installer. NO watchdog — check manually. |
 
 **Note:** Linux #59 built `da82b21` (= `e0824f0` + gfx::PNGCodec avatar encode); APK #66
 builds `35a8e90` = `e0824f0` + Android-only login-db constants — da82b21 does not touch
-Android code. Windows #33 builds `b8b1ab0` (docs-only on top of da82b21) and is the first
+Android code. Windows #33 built `b8b1ab0` (docs-only on top of da82b21) and was the first
 desktop run validating `1d7265d` + `2aff576` + `fd981ff` + `c3870e0` + `e0824f0` +
 `da82b21` together. APK #67 builds `7c49140` = CI-only change (workflow + diagnostics
 source, both outside the patch chain) — ninja inputs unchanged vs #66, so the #65 bank
 applies identically and the run should mirror #66's profile (~148 min ninja).
+Windows #34 builds `778d3c9` = docs + patch 111 — patch 111 touches ONLY chrome/android
+class files (AegisCrashTrap.java + its 2 hook sites), outside the Windows ninja graph,
+so the #33 bank applies identically and dirty stays patch-108-sized.
 
 **Verdicts 2026-11-11 18:0xZ:** APK #63 = cap-bank GREEN (ninja rc=1 at 279 min
 classified cap, 146,671 edges, 1.96 GB banked) — successor #64 dispatched. Linux #55 =
@@ -210,6 +213,34 @@ or device-specific loader behavior — it needs the actual stack.
   fall back to offered path (1) LADB logcat or (2) r58 install bisection. r67 must
   finish first (one active run per lane).
 
+**Verdict 2026-11-12 12:0xZ — Windows #33 = GREEN BANK RUN (wave 1 of the desktop
+build, no artifact yet):** restored banking-windows gen 42855429095 (68,117 edges,
+~1 min), AEGIS-DIRTY edges=58,568, ninja rc=137 after 273 min — the 280-min cap fired
+its INT, killed cleanly (1× Killed), last progress [24,620/58,567] ≈ 42% of the dirty
+wave. BUILD_REASON=cap, BUILD_DONE unset, NINJA_EDGES=62,327. Bank streamed:
+**AEGIS-BANK flavor=windows gen=43164506963 vols=2 bytes=1,448,325,651 edges=62,327** →
+new banking-windows draft. Run itself completed/success (bank path is a green exit by
+design). Rate ≈ 93 edges/min ⇒ ~33.9k remaining edges ≈ 365 min > cap ⇒ next wave also
+caps; Linux took 2 waves (bank→GREEN). **Windows #34 dispatched id=43215761632 @ 778d3c9**
+(12:12:16Z, via dispatch_flavor.py windows; 30-min rule passed — lane idle 377 min).
+778d3c9 = docs + patch 111 (chrome/android-only, outside the Windows ninja graph) → bank
+restore unaffected. Verdict command: `python3 scripts/run_verdict.py 43215761632`.
+
+**Local 16KB test variant of r66 built (future Android test artifact, user request):**
+`download/aegis-156.0.8078.79-r66-16kb-test.apk` 337,583,797 B — pipeline scripts/
+`mk16k.sh` (strip_sigblock.py → align16k.py [own zipalign-equivalent, extra-field
+padding] → official build-tools 34 apksigner on JRE 21). v1-off / v2+v3 signed with
+throwaway key CN="Aegis Browser (16KB test)", cert sha256 f6cbc6a282fb421a76e49d3a5e7c
+bb8814c9637eeea487ad8caea487eefd057a (≠ release key ⇒ uninstall release build before
+installing). check16k.py audit on the signed file: all 4,786 entry blobs byte-identical
+to r66 (parity 4786/4786), 8/8 .so STORED at 0 mod 16384, stored entries 0 mod 4,
+apksigner verify Verifies + minSdk 29 OK (verify output profile identical to the
+release asset's). The audit independently re-confirmed r66 was already 16K-compliant,
+so this variant is a test/utility piece, not a crash fix; r67's `-test16k` lane
+supersedes it for release-signed variants. Build kit kept in scripts/apk16k/
+(build-tools 34 zipalign + apksigner.jar both run on the sandbox JRE; note public
+build-tools zips end at r34 — no `-P 16` zipalign CLI exists, hence the Python aligner).
+
 ## 5. Deliverables ledger (verified via API 2026-11-12 06:1xZ)
 
 Published releases (user decides these; never delete unprompted):
@@ -221,14 +252,19 @@ Draft releases (NEVER publish/delete without user):
   (16 KB test lane); no draft yet
 - `build-...-r66` .apk 338,083,578 B (GREEN #66 @ 35a8e90; icons v2 + home/dock + patch 110 local passwords) — **latest APK artifact draft**; on-device launch crash under triage (see §4)
 - `build-...-r58` APK 318.9 MB (GREEN #58 @ c70a066; NO icons v2) — superseded by r66
-- `windows-...-r31` .exe 116.1 MB + .zip 199.9 MB — **latest/best Windows artifact draft** (r33 building now)
-- `banking-windows` — bank vols: runs 42764643911 (#30), 42855429095 (#32) — 2.90 GB; #33 restores 42855429095
+- `windows-...-r31` .exe 116.1 MB + .zip 199.9 MB — **latest/best Windows artifact draft** (r33/r34 banking toward the first artifact of the desktop wave)
+- `banking-windows` — bank vols: runs 42764643911 (#30), 42855429095 (#32), **43164506963 (#33, 1,448,325,651 B latest gen, 62,327 edges — restored by #34)**
 - `banking-linux` — bank vols: runs 41870785941 (orphan txt), 43016173134 (#54), 43026595992 (#55, 1.71 GB), 43080734791 (#57, 1.71 GB), **43133968988 (#58, 1.61 GB latest gen — restored by GREEN #59, no newer bank: artifact runs don't bank)**
 - `banking-android` — bank vols: runs 42797034779, 42848316691, 42974545503 (#62, 1.89 GB), 43019369532 (#63, 1.96 GB — rotated away by #65), 43073661607 (#64, 2.18 GB) + **43133995506 (#65, 2.19 GB latest gen, 182,018 edges — restores into #66, #67)**; draft holds both latest gens (4.37 GB total)
 - **Aegis Diagnostics app (NOT a release):** `download/AegisDiagnostics.apk` 16,811 B,
   sha256 e7870f8b9aa5f797250bca0c29fab4c9d44be43325815e2ba8b3cc93d613b197; source
   `aegis/diagnostics/` + `build.sh`; org.aegis.diagnostics v1.0, v3-signed with the
   diagnostics-only keystore — on-device triage tool, see §4
+- **16KB test variant of r66 (NOT a release; future Android test artifact):**
+  `download/aegis-156.0.8078.79-r66-16kb-test.apk` 337,583,797 B, test-signed
+  CN="Aegis Browser (16KB test)", sha256 f6cbc6a282fb421a76e49d3a5e7cbb8814c9637eeea487ad
+  8caea487eefd057a — locally built from the r66 draft asset, see §4 verdict block
+  (entry data byte-identical to r66, 8/8 .so 0 mod 16384)
 
 **Cleanup 2026-11-11 07:5xZ (user request):** deleted 6 old/superseded/bugged drafts via
 `scripts/delete_old_drafts.py` (guard: never banking-*, never published, never latest
