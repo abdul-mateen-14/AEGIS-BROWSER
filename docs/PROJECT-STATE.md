@@ -5,7 +5,7 @@
 > trust the file, then verify against GitHub API. Update this file + commit + push after
 > EVERY working pass so a context loss or sandbox recycle never loses state.
 >
-> Last updated: **2026-11-12 06:1x UTC (11:1x PKT)** — by main session.
+> Last updated: **2026-11-12 09:2x UTC (14:2x PKT)** — by main session.
 
 ---
 
@@ -55,7 +55,7 @@ git -C download/aegis-repo log --oneline -5 && git -C download/aegis-repo status
 Verdict detail for one run: `python3 scripts/run_verdict.py <run_id>` (prints step-level
 bank/artifact outcome). Run logs: `scripts/job_<job_id>.log` when saved, else fetch via API.
 
-## 4. Lane status — snapshot 2026-11-12 06:1xZ (manual checkpoint, no crons)
+## 4. Lane status — snapshot 2026-11-12 09:2xZ (manual checkpoint, no crons)
 
 **WATCHDOG CRONS DISCONTINUED (user order: "cancel all the cron jobs", 2026-11-11).
 FINAL deletion sweep 2026-11-12 00:13–00:16 CST removed SIX jobs: 513824 + 513929 (the
@@ -70,7 +70,7 @@ start with `python3 scripts/run_verdict.py <run_id>`. Dispatch discipline (iron 
 
 | Lane | Latest run | State | Head | Meaning |
 |---|---|---|---|---|
-| **APK** | #66 id=43143077453 (started 2026-11-12T02:40:54Z) | **in_progress** (build step, ~3h15m elapsed at 05:55Z) | `35a8e90` | Fix-forward for #65 RED (2 errors — Android-local login-db file-name constants for the un-guarded CreateLoginDatabase, see §8). Resumes the 2.19 GB #65 bank (182,018 edges); only the factory_util TU + dependents recompile. NO watchdog — check manually. |
+| **APK** | #66 id=43143077453 (GREEN 2026-11-12T06:09Z) | **DONE — artifact** | `35a8e90` | GREEN ARTIFACT. Resumed #65's 2.19 GB bank, 11,658 dirty edges, ninja rc=0 after 148 min (200,734 edges total). apksigner verify passed in CI (v1+v2+v3, cert CN=Aegis Browser, SHA-256 f36c11bf…). Draft `build-156.0.8078.79-r66` (.apk 338,083,578 B) — first APK with icons v2 + home/dock + patch 110 local passwords. THEN user install attempt on phone failed "App not installed as package appears to be invalid" — APK verified good locally (see §8), triage awaiting device info. |
 | **Linux** | #59 id=43150901156 (GREEN 2026-11-12T05:5xZ) | **DONE — artifact** | `da82b21` | FIRST 156-CHAIN LINUX ARTIFACT. Restored #58's 1.61 GB bank (gen 43133968988), only 1,386 dirty edges (patch-108 delta), ninja rc=0 after 52 min, .deb 116 MB. Draft `linux-156.0.8078.79-r59` (.deb 116 MB + portable .zip 167 MB). gfx::PNGCodec fix validated end-to-end. Desktop gate for Windows satisfied. |
 | **Windows** | #33 id=43164506963 (dispatched 2026-11-12T05:54:46Z) | **in_progress** | `b8b1ab0` | First artifact build with the full desktop wave (gate: Linux #59 GREEN artifact — satisfied). Restores banking-windows gen 42855429095 (#32, ~1.45 GB). Builds chrome + mini_installer, 280-min cap, streams bank on cap. NO watchdog — check manually. |
 
@@ -133,6 +133,30 @@ artifact `aegis-linux-x64-59` (282.4 MB) + draft `linux-156.0.8078.79-r59` (.deb
 windows; 30-min rule passed — lane idle since #32). APK #66 still in build step at
 05:55Z (~3h15m elapsed, 280-min cap not reached).
 
+**Verdicts + triage 2026-11-12 09:2xZ:** APK #66 = **GREEN ARTIFACT** — resumed #65's
+2.19 GB bank, AEGIS-DIRTY edges=11658, ninja rc=0 after 148 min, NINJA_EDGES=200,734,
+sign step ran apksigner verify --print-certs (V3.0 signer cert DN C=US/OU=Release/O=Aegis/
+CN=Aegis Browser, SHA-256 f36c11bfd0e1e9411168d8faee214e4093c333ec428580de9232a7d6e97371a6)
+→ draft `build-156.0.8078.79-r66`, APK 338,083,578 B. Windows #33 still in_progress.
+
+**APK r66 install failure — triage (APK VERIFIED GOOD, device-side suspected):** user
+sideloaded r66 (338.08 MB = byte-exact asset) → installer: "App not installed as package
+appears to be invalid." Local dissection (scripts/inspect_apk66.py on downloaded asset):
+zip integrity clean (4,786 entries, unzip -t no errors), v1 (META-INF/AEGIS.RSA,
+sha256WithRSA, cert valid 2026-11-01→2056) + v2 (0x7109871a) + v3 (0xf05368c0) signing
+blocks all present, manifest parses (label "Aegis" readable), minSdk=29 / targetSdk=37 /
+versionCode 807807904 / package org.chromium.chrome, extractNativeLibs=false with ALL 8
+.so STORED + 4KB-aligned, resources.arsc STORED. **r58 vs r66 structural diff: identical
+in every install-relevant field** (same minSdk/target/sign schemes/lib pattern, 0 bad
+entries both). minSdk=29 is STOCK Chromium 156 (config.gni default_min_sdk_version=29;
+24 is Cronet-only) — stock Chrome 156 also requires Android 10+. Suspects (in order):
+(1) phone Android < 10 → minSdk refusal (MIUI shows the generic invalid string);
+(2) stale older-signature Aegis install (pre-Nov-1 keystore era) → update-incompatible;
+(3) MIUI/HyperOS pure mode blocking sideload; (4) 16KB-page device (4K-aligned .so
+rejected) — long shot. Awaiting from user: device model + Android version, whether an
+old Aegis build is installed. Candidate hardening (workflow change → user OK first):
+zipalign `-P 16` (16KB-page-safe packaging, zero risk on 4K devices).
+
 ## 5. Deliverables ledger (verified via API 2026-11-12 06:1xZ)
 
 Published releases (user decides these; never delete unprompted):
@@ -140,7 +164,8 @@ Published releases (user decides these; never delete unprompted):
 
 Draft releases (NEVER publish/delete without user):
 - `linux-...-r59` .deb 116 MB + .zip 167 MB (GREEN #59 @ da82b21) — **latest Linux artifact draft, first of the 156 chain**
-- `build-...-r58` APK 318.9 MB (GREEN #58 @ c70a066; NO icons v2 — superseded by the next APK artifact run (#66) when it lands) — **latest APK artifact draft**
+- `build-...-r66` .apk 338,083,578 B (GREEN #66 @ 35a8e90; icons v2 + home/dock + patch 110 local passwords) — **latest APK artifact draft**; install triage in progress (see §4)
+- `build-...-r58` APK 318.9 MB (GREEN #58 @ c70a066; NO icons v2) — superseded by r66
 - `windows-...-r31` .exe 116.1 MB + .zip 199.9 MB — **latest/best Windows artifact draft** (r33 building now)
 - `banking-windows` — bank vols: runs 42764643911 (#30), 42855429095 (#32) — 2.90 GB; #33 restores 42855429095
 - `banking-linux` — bank vols: runs 41870785941 (orphan txt), 43016173134 (#54), 43026595992 (#55, 1.71 GB), 43080734791 (#57, 1.71 GB), **43133968988 (#58, 1.61 GB latest gen — restored by GREEN #59, no newer bank: artifact runs don't bank)**
@@ -213,6 +238,7 @@ patch-114 authoring — see git log)
 
 | Run | Error | Fix commit | Lesson |
 |---|---|---|---|
+| APK #66 (35a8e90) | — **GREEN ARTIFACT** (draft r66): bank resume 11,658 dirty edges, ninja rc=0 after 148 min, v1+v2+v3 signed+verified. On-device install then failed "package appears to be invalid" — APK locally verified GOOD (zip/sign/manifest/libs all clean; r58 structurally identical; minSdk 29 = stock 156). Device-side suspected | — | ALWAYS dissect the artifact before blaming the build: byte-exact download + unzip -t + signing-block walk + AXML parse + .so alignment check took ~15 min and cleared the whole CI pipeline. minSdk=29 comes from config.gni default_min_sdk_version (Cronet-only =24) — Chromium 156 requires Android 10+ like stock Chrome. Installer CAN show the label while refusing install — parseability ≠ installability |
 | Linux #59 (da82b21) | — **GREEN ARTIFACT** (draft r59): bank resume 1,386 dirty edges, ninja rc=0 after 52 min, .deb 116 MB | — | Bank + surgical invalidation paid off completely: the whole link-stage fix cost was ONE 52-min run instead of a full rebuild. gfx::PNGCodec (//ui/gfx) encode + kN32 contract validated end-to-end on desktop. First 156-chain Linux deliverable |
 | Linux #58 (e0824f0) | LINK STAGE (first ever): `[1318/1329] LINK ./chrome` — `undefined symbol: SkPngEncoder::Encode(SkPixmap const&, Options const&)` from LoadAndNormalizeAvatar. ALL compile TUs green (e0824f0 UNSAFE_TODO fix held) — bank carried 182k+ edges to the finish line | `da82b21` | SKIA PNG ENCODE IS RUST AT 156: //skia compiles `skia_encode_rust_png_srcs`, NOT the libpng `SkPngEncoder.cpp` — the header declares the old static but nothing defines it (compile-clean, link-dead). Rule: for SkBitmap→PNG use `gfx::PNGCodec::EncodeBGRASkBitmap` (//ui/gfx, always linked; returns `std::optional<std::vector<uint8_t>>` at 156 → also DELETES the UNSAFE_TODO escape). Force kN32 in DecodeAndFitAvatar for the EncodeBGRASkBitmap contract. A compile-error-free run can still die at link — bank+invalidate made the retry cheap (dialog TU + relink only) |
 | APK #65 (e0824f0) | ONE TU / 2 errors: password_store_factory_util.cc:48/49 `kLoginDataForAccountFileName`/`kLoginDataForProfileFileName` undeclared on Android — e0824f0 un-guarded CreateLoginDatabase (built-in backend needs it) but upstream declares+defines these constants in password_manager_constants.{h,cc} ONLY under `#if !BUILDFLAG(IS_ANDROID)`. Bank carried 182,018 edges; only this TU (+dependents) recompiles in #66 | `35a8e90` | UN-GUARDING A FUNCTION EXPOSES ITS WHOLE BODY — inventory every symbol the body uses against the platform you're adding BEFORE dispatch (this one was a one-line grep in the cached 156 password_manager_constants.h). Fix = anon-namespace internal-linkage Android-only copies mirroring upstream values (no edits to stock constants files, no ODR/link impact either platform); section regenerated via scripts/fix110_factory_util_consts.py with a transform self-check (current-patch + block == new content) |
@@ -281,10 +307,13 @@ script any time the list gets cluttered (never deletes live runs, never touches 
    expect possible new API-drift surface). GREEN cap-bank → `dispatch_flavor.py
    windows`. GREEN artifact → verify draft `windows-156.0.8078.79-r33` (.exe + .zip),
    report delivery.
-2. **APK #66 verdict — MANUAL CHECK.** `python3 scripts/run_verdict.py 43143077453`.
-   GREEN artifact → verify draft r66, report delivery (icons v2 + home/dock + patch 110
-   local passwords + crypto). GREEN cap-bank → `dispatch_flavor.py apk`. RED →
-   fix-forward APK.
+2. **APK r66 install triage — awaiting user device info.** APK verified good (see §4
+   triage block). Need: phone model + Android version; whether an older Aegis build is
+   still installed (uninstall it first); MIUI pure mode state. If device is Android < 10:
+   minSdk 29 is stock-156 behavior — options are (a) accept Android 10+ requirement,
+   (b) build a legacy variant with default_min_sdk_version=26 (off-Chromium-QA path,
+   runtime-crash risk on 8/9 — needs user decision). Candidate workflow hardening:
+   zipalign `-P 16` for 16KB-page devices (needs user OK).
 3. **PATCH 114 AUTHORED 2026-11-11 (P6 client)** — complete plan at
    `docs/PATCH_114_PLAN.md`; source staged `download/aegis-p114-src/`
    (aegis_password_sync.h 232 / .cc 916 lines); generated + validated patch at
