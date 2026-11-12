@@ -5,7 +5,7 @@
 > trust the file, then verify against GitHub API. Update this file + commit + push after
 > EVERY working pass so a context loss or sandbox recycle never loses state.
 >
-> Last updated: **2026-11-11 13:1x UTC (18:1x PKT)** — by main session.
+> Last updated: **2026-11-12 06:1x UTC (11:1x PKT)** — by main session.
 
 ---
 
@@ -55,7 +55,7 @@ git -C download/aegis-repo log --oneline -5 && git -C download/aegis-repo status
 Verdict detail for one run: `python3 scripts/run_verdict.py <run_id>` (prints step-level
 bank/artifact outcome). Run logs: `scripts/job_<job_id>.log` when saved, else fetch via API.
 
-## 4. Lane status — snapshot 2026-11-12 02:4xZ (manual checkpoint, no crons)
+## 4. Lane status — snapshot 2026-11-12 06:1xZ (manual checkpoint, no crons)
 
 **WATCHDOG CRONS DISCONTINUED (user order: "cancel all the cron jobs", 2026-11-11).
 FINAL deletion sweep 2026-11-12 00:13–00:16 CST removed SIX jobs: 513824 + 513929 (the
@@ -70,14 +70,15 @@ start with `python3 scripts/run_verdict.py <run_id>`. Dispatch discipline (iron 
 
 | Lane | Latest run | State | Head | Meaning |
 |---|---|---|---|---|
-| **APK** | #66 id=43143077453 (started 2026-11-12T02:40:54Z) | **in_progress** | `35a8e90` | Fix-forward for #65 RED (2 errors — Android-local login-db file-name constants for the un-guarded CreateLoginDatabase, see §8). Resumes the 2.19 GB #65 bank (182,018 edges); only the factory_util TU + dependents recompile. NO watchdog — check manually. |
-| **Linux** | #59 id=43150901156 (started 2026-11-12T03:50:56Z) | **in_progress** | `da82b21` | Fix-forward for #58 RED — the FIRST LINK-STAGE failure: all compile TUs green (e0824f0 dialog UNSAFE_TODO fix held), `LINK ./chrome` died at edge 1318/1329 on ONE undefined symbol `SkPngEncoder::Encode(pixmap, options)` from LoadAndNormalizeAvatar (see §8). Fixed in da82b21 (gfx::PNGCodec). Resumes the bank; dialog TU recompiles + relink (~46 min to reach link again). On GREEN artifact: verify draft then dispatch Windows r33. |
-| **Windows** | #32 id=42855429095 (GREEN 2026-11-10 16:31Z) | idle, cap-bank | `7cdd37b` | Latest Windows **artifact** is draft r31. Next run (#33) = first artifact build with the full desktop wave. Gate: Linux #59 GREEN artifact (manual check). |
+| **APK** | #66 id=43143077453 (started 2026-11-12T02:40:54Z) | **in_progress** (build step, ~3h15m elapsed at 05:55Z) | `35a8e90` | Fix-forward for #65 RED (2 errors — Android-local login-db file-name constants for the un-guarded CreateLoginDatabase, see §8). Resumes the 2.19 GB #65 bank (182,018 edges); only the factory_util TU + dependents recompile. NO watchdog — check manually. |
+| **Linux** | #59 id=43150901156 (GREEN 2026-11-12T05:5xZ) | **DONE — artifact** | `da82b21` | FIRST 156-CHAIN LINUX ARTIFACT. Restored #58's 1.61 GB bank (gen 43133968988), only 1,386 dirty edges (patch-108 delta), ninja rc=0 after 52 min, .deb 116 MB. Draft `linux-156.0.8078.79-r59` (.deb 116 MB + portable .zip 167 MB). gfx::PNGCodec fix validated end-to-end. Desktop gate for Windows satisfied. |
+| **Windows** | #33 id=43164506963 (dispatched 2026-11-12T05:54:46Z) | **in_progress** | `b8b1ab0` | First artifact build with the full desktop wave (gate: Linux #59 GREEN artifact — satisfied). Restores banking-windows gen 42855429095 (#32, ~1.45 GB). Builds chrome + mini_installer, 280-min cap, streams bank on cap. NO watchdog — check manually. |
 
-**Note:** #59 builds at `da82b21` (= `e0824f0` + gfx::PNGCodec avatar encode; APK #66
+**Note:** Linux #59 built `da82b21` (= `e0824f0` + gfx::PNGCodec avatar encode); APK #66
 builds `35a8e90` = `e0824f0` + Android-only login-db constants — da82b21 does not touch
-Android code). Windows #33 will be the first desktop run validating `1d7265d` +
-`2aff576` + `fd981ff` + `c3870e0` + `e0824f0` + `da82b21` together.
+Android code. Windows #33 builds `b8b1ab0` (docs-only on top of da82b21) and is the first
+desktop run validating `1d7265d` + `2aff576` + `fd981ff` + `c3870e0` + `e0824f0` +
+`da82b21` together.
 
 **Verdicts 2026-11-11 18:0xZ:** APK #63 = cap-bank GREEN (ninja rc=1 at 279 min
 classified cap, 146,671 edges, 1.96 GB banked) — successor #64 dispatched. Linux #55 =
@@ -123,16 +124,26 @@ DELETED) + force `kN32_SkColorType` in DecodeAndFitAvatar (EncodeBGRASkBitmap co
 Validated (lint OK / validate OK 12 hunks / apply_test_108 OK), diff audit = dialog only.
 Linux #59 dispatched id=43150901156.
 
-## 5. Deliverables ledger (verified via API 2026-11-11 08:1xZ)
+**Verdicts 2026-11-12 06:1xZ:** Linux #59 = **GREEN ARTIFACT** (first of the 156 chain):
+restored #58's 1.61 GB bank in ~1 min, restamp 1,187,780 files, AEGIS-DIRTY edges=1386,
+ninja rc=0 after 52 min (280-min budget untouched), BUILD_DONE=1, .deb 115,654,836 B →
+artifact `aegis-linux-x64-59` (282.4 MB) + draft `linux-156.0.8078.79-r59` (.deb 116 MB
++ .zip 167 MB). da82b21 gfx::PNGCodec fix validated end-to-end. Windows gate satisfied →
+**Windows #33 dispatched id=43164506963 @ b8b1ab0** (05:54:46Z, via dispatch_flavor.py
+windows; 30-min rule passed — lane idle since #32). APK #66 still in build step at
+05:55Z (~3h15m elapsed, 280-min cap not reached).
+
+## 5. Deliverables ledger (verified via API 2026-11-12 06:1xZ)
 
 Published releases (user decides these; never delete unprompted):
 - `linux-156.0.8078.79-r45` (.deb 110.5 MB + .zip 160.0 MB, tag @ `a548d4c`) — **the only published release**
 
 Draft releases (NEVER publish/delete without user):
-- `build-...-r58` APK 318.9 MB (GREEN #58 @ c70a066; NO icons v2 — superseded by the next APK artifact run (#64) when it lands) — **latest APK artifact draft**
-- `windows-...-r31` .exe 116.1 MB + .zip 199.9 MB — **latest/best Windows artifact draft**
-- `banking-windows` — bank vols: runs 42764643911 (#30), 42855429095 (#32) — 2.90 GB
-- `banking-linux` — bank vols: runs 41870785941 (orphan txt), 43016173134 (#54), 43026595992 (#55, 1.71 GB latest gen)
+- `linux-...-r59` .deb 116 MB + .zip 167 MB (GREEN #59 @ da82b21) — **latest Linux artifact draft, first of the 156 chain**
+- `build-...-r58` APK 318.9 MB (GREEN #58 @ c70a066; NO icons v2 — superseded by the next APK artifact run (#66) when it lands) — **latest APK artifact draft**
+- `windows-...-r31` .exe 116.1 MB + .zip 199.9 MB — **latest/best Windows artifact draft** (r33 building now)
+- `banking-windows` — bank vols: runs 42764643911 (#30), 42855429095 (#32) — 2.90 GB; #33 restores 42855429095
+- `banking-linux` — bank vols: runs 41870785941 (orphan txt), 43016173134 (#54), 43026595992 (#55, 1.71 GB), 43080734791 (#57, 1.71 GB), **43133968988 (#58, 1.61 GB latest gen — restored by GREEN #59, no newer bank: artifact runs don't bank)**
 - `banking-android` — bank vols: runs 42797034779, 42848316691, 42974545503 (#62, 1.89 GB), 43019369532 (#63, 1.96 GB — rotated away by #65), 43073661607 (#64, 2.18 GB) + **43133995506 (#65, 2.19 GB latest gen, 182,018 edges — restores into #66)**; draft holds both latest gens (4.37 GB total)
 
 **Cleanup 2026-11-11 07:5xZ (user request):** deleted 6 old/superseded/bugged drafts via
@@ -180,7 +191,8 @@ e0824f0  fix(patch-108/110): dialog UNSAFE_TODO escape (#57) + 110 android guard
          reconciliation (#64, 10 errors)
 35a8e90  fix(patch-110): Android-local login-db file-name constants (run #65, 2 errors)
 da82b21  fix(patch-108): avatar PNG encode via gfx::PNGCodec (run #58 link error)
-                                                                          ← main HEAD
+b8b1ab0  docs: Linux #58 link-stage verdict + lane snapshot (docs-only)
+                                                                          ← main HEAD (Windows #33 builds this)
 ```
 
 (docs commits interleaved throughout: lane snapshots, ledger refreshes, cron purge,
@@ -201,6 +213,7 @@ patch-114 authoring — see git log)
 
 | Run | Error | Fix commit | Lesson |
 |---|---|---|---|
+| Linux #59 (da82b21) | — **GREEN ARTIFACT** (draft r59): bank resume 1,386 dirty edges, ninja rc=0 after 52 min, .deb 116 MB | — | Bank + surgical invalidation paid off completely: the whole link-stage fix cost was ONE 52-min run instead of a full rebuild. gfx::PNGCodec (//ui/gfx) encode + kN32 contract validated end-to-end on desktop. First 156-chain Linux deliverable |
 | Linux #58 (e0824f0) | LINK STAGE (first ever): `[1318/1329] LINK ./chrome` — `undefined symbol: SkPngEncoder::Encode(SkPixmap const&, Options const&)` from LoadAndNormalizeAvatar. ALL compile TUs green (e0824f0 UNSAFE_TODO fix held) — bank carried 182k+ edges to the finish line | `da82b21` | SKIA PNG ENCODE IS RUST AT 156: //skia compiles `skia_encode_rust_png_srcs`, NOT the libpng `SkPngEncoder.cpp` — the header declares the old static but nothing defines it (compile-clean, link-dead). Rule: for SkBitmap→PNG use `gfx::PNGCodec::EncodeBGRASkBitmap` (//ui/gfx, always linked; returns `std::optional<std::vector<uint8_t>>` at 156 → also DELETES the UNSAFE_TODO escape). Force kN32 in DecodeAndFitAvatar for the EncodeBGRASkBitmap contract. A compile-error-free run can still die at link — bank+invalidate made the retry cheap (dialog TU + relink only) |
 | APK #65 (e0824f0) | ONE TU / 2 errors: password_store_factory_util.cc:48/49 `kLoginDataForAccountFileName`/`kLoginDataForProfileFileName` undeclared on Android — e0824f0 un-guarded CreateLoginDatabase (built-in backend needs it) but upstream declares+defines these constants in password_manager_constants.{h,cc} ONLY under `#if !BUILDFLAG(IS_ANDROID)`. Bank carried 182,018 edges; only this TU (+dependents) recompiles in #66 | `35a8e90` | UN-GUARDING A FUNCTION EXPOSES ITS WHOLE BODY — inventory every symbol the body uses against the platform you're adding BEFORE dispatch (this one was a one-line grep in the cached 156 password_manager_constants.h). Fix = anon-namespace internal-linkage Android-only copies mirroring upstream values (no edits to stock constants files, no ODR/link impact either platform); section regenerated via scripts/fix110_factory_util_consts.py with a transform self-check (current-patch + block == new content) |
 | APK #64 (c3870e0) | 10 errors, ALL stock-code-on-Android: backend.cc 101/102, 139/140, 169/170 `kNeedsSettingsConfirmation`/`kUnrecoverableError` absent (`#if !BUILDFLAG(IS_ANDROID)` in sync_service.h) + 3× `kDeviceManagementError` unhandled on Android + 265/616 `prefs::kClearingUndecryptablePasswords` absent. TU compiled on Android for the FIRST time (patch 110 BUILD.gn force-include; prior runs never reached it) | `e0824f0` | STOCK DESKTOP CODE IS NOT ANDROID-SAFE BY DEFAULT — stock never compiles this file on Android, so its guards were never exercised there. Force-including a desktop file on Android = audit EVERY #if guard inside it (enum members, prefs, helpers) against the cached 156 tag. New harness scripts/apply_test_110.py (mini-tree git apply) now guards patch 110 like apply_test_108 guards 108 |
@@ -263,10 +276,11 @@ script any time the list gets cluttered (never deletes live runs, never touches 
 
 ## 10. Next actions queue (in order)
 
-1. **Linux #59 verdict — MANUAL CHECK (no cron).** `python3 scripts/run_verdict.py
-   43150901156`. RED → fix-forward (see §8). GREEN cap-bank → `dispatch_flavor.py
-   linux`. GREEN artifact → verify draft, then `dispatch_flavor.py windows` for
-   Windows r33 (first artifact build with the full desktop wave).
+1. **Windows #33 verdict — MANUAL CHECK (no cron).** `python3 scripts/run_verdict.py
+   43164506963`. RED → fix-forward (see §8; first desktop exposure of the full wave —
+   expect possible new API-drift surface). GREEN cap-bank → `dispatch_flavor.py
+   windows`. GREEN artifact → verify draft `windows-156.0.8078.79-r33` (.exe + .zip),
+   report delivery.
 2. **APK #66 verdict — MANUAL CHECK.** `python3 scripts/run_verdict.py 43143077453`.
    GREEN artifact → verify draft r66, report delivery (icons v2 + home/dock + patch 110
    local passwords + crypto). GREEN cap-bank → `dispatch_flavor.py apk`. RED →
