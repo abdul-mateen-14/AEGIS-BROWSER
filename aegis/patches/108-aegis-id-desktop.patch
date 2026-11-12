@@ -1363,7 +1363,7 @@ diff --git a/chrome/browser/ui/views/profiles/aegis_id_dialog.cc b/chrome/browse
 new file mode 100644
 --- /dev/null
 +++ b/chrome/browser/ui/views/profiles/aegis_id_dialog.cc
-@@ -0,0 +1,667 @@
+@@ -0,0 +1,666 @@
 +// Copyright 2026 The Aegis Browser Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -1393,8 +1393,8 @@ new file mode 100644
 +#include "third_party/skia/include/core/SkBitmap.h"
 +#include "third_party/skia/include/core/SkData.h"
 +#include "third_party/skia/include/core/SkImageInfo.h"
-+#include "third_party/skia/include/encode/SkPngEncoder.h"
 +#include "ui/base/models/image_model.h"
++#include "ui/gfx/codec/png_codec.h"
 +#include "ui/gfx/image/image_skia.h"
 +#include "ui/shell_dialogs/select_file_dialog.h"
 +#include "ui/shell_dialogs/select_file_policy.h"
@@ -1486,8 +1486,11 @@ new file mode 100644
 +    return std::nullopt;
 +  }
 +  SkBitmap src;
-+  const SkImageInfo src_info =
-+      codec->getInfo().makeAlphaType(kPremul_SkAlphaType);
++  // Force kN32: PNGCodec::EncodeBGRASkBitmap assumes it, and getPixels
++  // converts any source color type for us.
++  const SkImageInfo src_info = codec->getInfo()
++                                   .makeColorType(kN32_SkColorType)
++                                   .makeAlphaType(kPremul_SkAlphaType);
 +  if (!src.tryAllocPixels(src_info)) {
 +    return std::nullopt;
 +  }
@@ -1526,17 +1529,13 @@ new file mode 100644
 +  if (!bitmap || bitmap->isNull()) {
 +    return std::nullopt;
 +  }
-+  sk_sp<SkData> png =
-+      SkPngEncoder::Encode(bitmap->pixmap(), SkPngEncoder::Options());
-+  if (!png) {
-+    return std::nullopt;
-+  }
-+  // SkData hands out an uncounted (void*) buffer: span-from-uncounted-pointer
-+  // is itself flagged in converted dirs, so use the sanctioned migration
-+  // escape hatch (//docs/unsafe_buffers.md) until SkData grows a span API.
-+  return UNSAFE_TODO(std::vector<uint8_t>(
-+      static_cast<const uint8_t*>(png->data()),
-+      static_cast<const uint8_t*>(png->data()) + png->size()));
++  // gfx::PNGCodec is the always-linked PNG encoder (//ui/gfx, already a dep
++  // of this target). Skia's SkPngEncoder::Encode(pixmap, options) has no
++  // compiled definition in //skia at 156 (PNG encode there is Rust-based),
++  // so referencing it compiles but fails chrome's final link.
++  std::optional<std::vector<uint8_t>> png =
++      gfx::PNGCodec::EncodeBGRASkBitmap(*bitmap, /*discard_transparency=*/false);
++  return png;
 +}
 +
 +// The dialog never runs in an incognito profile and has no enterprise
