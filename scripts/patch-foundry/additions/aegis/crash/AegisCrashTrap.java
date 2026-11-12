@@ -1,0 +1,158 @@
+// Aegis crash trap: last-resort uncaught-exception recorder for sideloaded
+// builds with no adb attached.
+//
+// Installed at the earliest app callback (SplitChromeApplication
+// .attachBaseContext) by patch 111. When ANY uncaught Java exception kills
+// the process, the trap writes the full stack to MediaStore Downloads
+// (aegis-crash-<millis>.txt) so the file shows up in the Files/Downloads
+// app on Android 10+ with no permission and no adb, plus a copy in the
+// app-private files dir. The pre-existing default handler always runs
+// afterwards, so stock crash handling (crash dialog, crashpad) is unchanged.
+//
+// NATIVE crashes (SIGSEGV etc.) do NOT pass through this handler - a silent
+// crash with no aegis-crash-*.txt file means: crash before attachBaseContext,
+// native crash, or MediaStore failure; escalate to logcat.
+
+package org.chromium.chrome.browser.aegis;
+
+import android.app.Application;
+import android.content.ContentValues;
+import android.content.Context;
+import android.net.Uri;
+import android.os.Build;
+import android.provider.MediaStore;
+import android.util.Log;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.OutputStream;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
+
+/** Installs and drives the Aegis crash recorder. */
+public final class AegisCrashTrap {
+    private static final String TAG = "AegisCrashTrap";
+    private static boolean sInstalled;
+
+    private AegisCrashTrap() {}
+
+    /** Call once, as early as possible (Application.attachBaseContext). */
+    public static void install(Context context) {
+        if (sInstalled) {
+            return;
+        }
+        sInstalled = true;
+        final Context app = context.getApplicationContext();
+        final Thread.UncaughtExceptionHandler previous =
+                Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler(
+                (thread, throwable) -> {
+                    report(app, thread, throwable);
+                    if (previous != null) {
+                        previous.uncaughtException(thread, throwable);
+                    }
+                });
+        Log.i(TAG, "installed (Aegis crash trap armed)");
+    }
+
+    private static void report(Context app, Thread thread, Throwable t) {
+        String stamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
+                               .format(new Date());
+        StringBuilder sb = new StringBuilder();
+        sb.append("AEGIS CRASH TRAP\n")
+                .append(stamp)
+                .append("\nthread: ")
+                .append(thread.getName())
+                .append("\nprocess: ")
+                .append(processName())
+                .append("\ndevice: ")
+                .append(Build.MANUFACTURER)
+                .append(' ')
+                .append(Build.MODEL)
+                .append("  Android ")
+                .append(Build.VERSION.RELEASE)
+                .append('\n');
+        try {
+            String pn = app.getPackageManager()
+                             .getPackageInfo(app.getPackageName(), 0)
+                             .versionName;
+            sb.append("pkg: ")
+                    .append(app.getPackageName())
+                    .append(' ')
+                    .append(pn)
+                    .append('\n');
+        } catch (Exception e) {
+            sb.append("pkg: (unavailable)\n");
+        }
+        sb.append('\n');
+        StringWriter sw = new StringWriter();
+        t.printStackTrace(new PrintWriter(sw));
+        sb.append(sw);
+        String text = sb.toString();
+        Log.e(TAG, "crash captured\n" + text);
+        writeToDownloads(app, text);
+        writePrivate(app, text);
+    }
+
+    private static String processName() {
+        try {
+            String name = Application.getProcessName();
+            return name != null ? name : "(null)";
+        } catch (Throwable t) {
+            return "(unknown)";
+        }
+    }
+
+    /** MediaStore.Downloads insert: no permission needed on API 29+. */
+    private static void writeToDownloads(Context app, String text) {
+        OutputStream os = null;
+        try {
+            ContentValues cv = new ContentValues();
+            cv.put(MediaStore.Downloads.DISPLAY_NAME,
+                    "aegis-crash-" + System.currentTimeMillis() + ".txt");
+            cv.put(MediaStore.Downloads.MIME_TYPE, "text/plain");
+            Uri uri =
+                    app.getContentResolver().insert(
+                            MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
+            if (uri == null) {
+                return;
+            }
+            os = app.getContentResolver().openOutputStream(uri);
+            os.write(text.getBytes("UTF-8"));
+            os.flush();
+        } catch (Throwable t) {
+            Log.e(TAG, "downloads write failed", t);
+        } finally {
+            if (os != null) {
+                try {
+                    os.close();
+                } catch (Exception ignored) {
+                }
+            }
+        }
+    }
+
+    /** App-private backup copy (reachable via bugreport/debugging). */
+    private static void writePrivate(Context app, String text) {
+        FileOutputStream fos = null;
+        try {
+            File out = new File(app.getFilesDir(),
+                    "aegis-crash-" + System.currentTimeMillis() + ".txt");
+            fos = new FileOutputStream(out);
+            fos.write(text.getBytes("UTF-8"));
+            fos.flush();
+        } catch (Throwable t) {
+            Log.e(TAG, "private write failed", t);
+        } finally {
+            if (fos != null) {
+                try {
+                    fos.close();
+                } catch (Exception ignored) {
+                }
+            }
+        }
+    }
+}
