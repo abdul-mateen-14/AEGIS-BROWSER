@@ -5,7 +5,7 @@
 > trust the file, then verify against GitHub API. Update this file + commit + push after
 > EVERY working pass so a context loss or sandbox recycle never loses state.
 >
-> Last updated: **2026-11-12 09:2x UTC (14:2x PKT)** — by main session.
+> Last updated: **2026-11-12 10:2x UTC (15:2x PKT)** — by main session.
 
 ---
 
@@ -156,6 +156,19 @@ entries both). minSdk=29 is STOCK Chromium 156 (config.gni default_min_sdk_versi
 rejected) — long shot. Awaiting from user: device model + Android version, whether an
 old Aegis build is installed. Candidate hardening (workflow change → user OK first):
 zipalign `-P 16` (16KB-page-safe packaging, zero risk on 4K devices).
+
+**RESOLVED 2026-11-12 10:2xZ — install failure was a TRUNCATED DOWNLOAD (Brave browser
+interruption); re-download installed fine.** NEW ISSUE: r66 crashes on launch. Device =
+Infinix Hot 60i (Helio G81 Ultimate, Android 15 / XOS 15.1, arm64, 4KB pages) — meets
+minSdk 29; NOT a compat issue. First runtime test of ANY 156-chain APK (no device-OK
+baseline exists). Static sweep of r66 (scripts/apk66_startup_statics.py): all 223
+manifest class refs OK (the 42 raw "missing" are normal non-class alias names like
+com.google.android.apps.chrome.Main + meta-data keys — not real classes), 81 aegis_*
+resources present in resources.arsc (dock pill/sliver, glass, tokens all there; r57
+stripper fix confirmed), 23 icon entries (mipmap + layered). Packaging healthy → need a
+real stack trace. Paths offered: (1) LADB/Shizuku logcat -b crash -d (instant, no PC);
+(2) r58 install bisection (pre-wave baseline); (3) diagnostics APK (crash-handler →
+/Download/aegis-crash.txt) — last resort, costs a build + 338 MB re-download.
 
 ## 5. Deliverables ledger (verified via API 2026-11-12 06:1xZ)
 
