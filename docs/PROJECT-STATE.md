@@ -55,7 +55,7 @@ git -C download/aegis-repo log --oneline -5 && git -C download/aegis-repo status
 Verdict detail for one run: `python3 scripts/run_verdict.py <run_id>` (prints step-level
 bank/artifact outcome). Run logs: `scripts/job_<job_id>.log` when saved, else fetch via API.
 
-## 4. Lane status — snapshot 2026-11-12 09:2xZ (manual checkpoint, no crons)
+## 4. Lane status — snapshot 2026-11-12 10:4xZ (manual checkpoint, no crons)
 
 **WATCHDOG CRONS DISCONTINUED (user order: "cancel all the cron jobs", 2026-11-11).
 FINAL deletion sweep 2026-11-12 00:13–00:16 CST removed SIX jobs: 513824 + 513929 (the
@@ -70,7 +70,7 @@ start with `python3 scripts/run_verdict.py <run_id>`. Dispatch discipline (iron 
 
 | Lane | Latest run | State | Head | Meaning |
 |---|---|---|---|---|
-| **APK** | #66 id=43143077453 (GREEN 2026-11-12T06:09Z) | **DONE — artifact** | `35a8e90` | GREEN ARTIFACT. Resumed #65's 2.19 GB bank, 11,658 dirty edges, ninja rc=0 after 148 min (200,734 edges total). apksigner verify passed in CI (v1+v2+v3, cert CN=Aegis Browser, SHA-256 f36c11bf…). Draft `build-156.0.8078.79-r66` (.apk 338,083,578 B) — first APK with icons v2 + home/dock + patch 110 local passwords. THEN user install attempt on phone failed "App not installed as package appears to be invalid" — APK verified good locally (see §8), triage awaiting device info. |
+| **APK** | #67 id=43203010345 (dispatched 2026-11-12T10:44Z) | **in_progress** | `7c49140` | First run of the 16 KB test lane (see triage block below): sign step emits standard APK + `-test16k` variant from the same binaries + hard `check_align` 4096/16384 gates (ground-truth zip-offset check). Restores #65's 2.19 GB bank (same gen #66 restored; 7c49140 touches only workflow + diagnostics source, both outside the invalidation set). NO watchdog — check manually. Last artifact: r66 (#66 GREEN 2026-11-12T06:09Z @ `35a8e90`, draft `build-...-r66` 338,083,578 B, icons v2 + home/dock + patch 110) — on-device launch crash under triage. |
 | **Linux** | #59 id=43150901156 (GREEN 2026-11-12T05:5xZ) | **DONE — artifact** | `da82b21` | FIRST 156-CHAIN LINUX ARTIFACT. Restored #58's 1.61 GB bank (gen 43133968988), only 1,386 dirty edges (patch-108 delta), ninja rc=0 after 52 min, .deb 116 MB. Draft `linux-156.0.8078.79-r59` (.deb 116 MB + portable .zip 167 MB). gfx::PNGCodec fix validated end-to-end. Desktop gate for Windows satisfied. |
 | **Windows** | #33 id=43164506963 (dispatched 2026-11-12T05:54:46Z) | **in_progress** | `b8b1ab0` | First artifact build with the full desktop wave (gate: Linux #59 GREEN artifact — satisfied). Restores banking-windows gen 42855429095 (#32, ~1.45 GB). Builds chrome + mini_installer, 280-min cap, streams bank on cap. NO watchdog — check manually. |
 
@@ -78,7 +78,9 @@ start with `python3 scripts/run_verdict.py <run_id>`. Dispatch discipline (iron 
 builds `35a8e90` = `e0824f0` + Android-only login-db constants — da82b21 does not touch
 Android code. Windows #33 builds `b8b1ab0` (docs-only on top of da82b21) and is the first
 desktop run validating `1d7265d` + `2aff576` + `fd981ff` + `c3870e0` + `e0824f0` +
-`da82b21` together.
+`da82b21` together. APK #67 builds `7c49140` = CI-only change (workflow + diagnostics
+source, both outside the patch chain) — ninja inputs unchanged vs #66, so the #65 bank
+applies identically and the run should mirror #66's profile (~148 min ninja).
 
 **Verdicts 2026-11-11 18:0xZ:** APK #63 = cap-bank GREEN (ninja rc=1 at 279 min
 classified cap, 146,671 edges, 1.96 GB banked) — successor #64 dispatched. Linux #55 =
@@ -163,12 +165,43 @@ Infinix Hot 60i (Helio G81 Ultimate, Android 15 / XOS 15.1, arm64, 4KB pages) �
 minSdk 29; NOT a compat issue. First runtime test of ANY 156-chain APK (no device-OK
 baseline exists). Static sweep of r66 (scripts/apk66_startup_statics.py): all 223
 manifest class refs OK (the 42 raw "missing" are normal non-class alias names like
-com.google.android.apps.chrome.Main + meta-data keys — not real classes), 81 aegis_*
-resources present in resources.arsc (dock pill/sliver, glass, tokens all there; r57
-stripper fix confirmed), 23 icon entries (mipmap + layered). Packaging healthy → need a
-real stack trace. Paths offered: (1) LADB/Shizuku logcat -b crash -d (instant, no PC);
-(2) r58 install bisection (pre-wave baseline); (3) diagnostics APK (crash-handler →
-/Download/aegis-crash.txt) — last resort, costs a build + 338 MB re-download.
+com.google.android.apps.chrome.Main + meta-data keys — not real classes; the only real
+tags are 2 NativeOnlySandboxedProcessService{0,1} child-process services never bound at
+launch), 81 aegis_* resources present in resources.arsc (dock pill/sliver, glass, tokens
+all there; r57 stripper fix confirmed), 23 icon entries (mipmap + layered).
+
+**Launch-crash triage 2026-11-12 10:4xZ — 16KB-PAGE HYPOTHESIS ELIMINATED (both layers):**
+(ELF) readelf -lW on all 8 extracted .so: every primary PT_LOAD has p_align=0x4000
+(libchrome 3rd seg 0x10000=64KB, superset) — Chromium 156 links arm64 16KB-ready by
+default. (ZIP) ground-truth data-offset check (local header + name + local extra): ALL
+8 .so entries sit at 0 mod 16384 — zipalign honors the ELF p_align even at `-p 4`
+(cross-checked vs unzip -v). So the Hot 60i crash is RUNTIME (patch-wave prime suspect)
+or device-specific loader behavior — it needs the actual stack.
+
+**User chose offered path (3) — diagnostics artifacts shipped 2026-11-12 (commit
+7c49140):**
+- **Aegis Diagnostics app** — `aegis/diagnostics/`, 16,811 B, org.aegis.diagnostics
+  v1.0, minSdk 29/targetSdk 35, v3-signed (diag-only keystore, NOT the release key),
+  sha256 e7870f8b9aa5f797250bca0c29fab4c9d44be43325815e2ba8b3cc93d613b197, copy at
+  download/AegisDiagnostics.apk. One screen reports: kernel page size (Os.sysconf),
+  device/ABI, installed Aegis version + .so zip offsets (%4K/%16K) + ELF max PT_LOAD
+  p_align, then System.load()s two small Chromium ELFs (linker 18 KB, crashpad
+  trampoline 6 KB). One screenshot separates loader/alignment failure from runtime
+  crash — reusable for every future Android test, no adb needed. Build via
+  aegis/diagnostics/build.sh (build-tools 35 + android-35 jar).
+- **Workflow 16 KB test lane** (7c49140): standard APK + `-test16k` variant from the
+  same binaries + `check_align` gate (4096 AND 16384) computed from zip local headers —
+  a silently-ignored zipalign flag can never ship a fake variant; every future release
+  stays provably 16 KB-compliant (Nov-2025 Play requirement pre-staged).
+- **Crash-trap rebuild (planned r68)**: patch 111 = AegisCrashTrap.java addition +
+  ChromeApplication.attachBaseContext hook (patch 103 already touches that file — hunk
+  must apply on post-103 state), Thread.setDefaultUncaughtExceptionHandler at the
+  earliest app callback writing the full stack to MediaStore Downloads
+  (`aegis-crash-rNN.txt` — MediaStore.Downloads insert needs no permission on API 29+;
+  app-private dirs are unreachable via Files on 13+). Java-layer startup crashes yield
+  exact stacks; NATIVE crashes stay silent — if the trap file never appears, fall back
+  to offered path (1) LADB logcat or (2) r58 install bisection. r67 must finish first
+  (one active run per lane).
 
 ## 5. Deliverables ledger (verified via API 2026-11-12 06:1xZ)
 
@@ -177,12 +210,18 @@ Published releases (user decides these; never delete unprompted):
 
 Draft releases (NEVER publish/delete without user):
 - `linux-...-r59` .deb 116 MB + .zip 167 MB (GREEN #59 @ da82b21) — **latest Linux artifact draft, first of the 156 chain**
-- `build-...-r66` .apk 338,083,578 B (GREEN #66 @ 35a8e90; icons v2 + home/dock + patch 110 local passwords) — **latest APK artifact draft**; install triage in progress (see §4)
+- `build-...-r67` (#67 in_progress @ 7c49140) — will carry standard .apk + `-test16k.apk`
+  (16 KB test lane); no draft yet
+- `build-...-r66` .apk 338,083,578 B (GREEN #66 @ 35a8e90; icons v2 + home/dock + patch 110 local passwords) — **latest APK artifact draft**; on-device launch crash under triage (see §4)
 - `build-...-r58` APK 318.9 MB (GREEN #58 @ c70a066; NO icons v2) — superseded by r66
 - `windows-...-r31` .exe 116.1 MB + .zip 199.9 MB — **latest/best Windows artifact draft** (r33 building now)
 - `banking-windows` — bank vols: runs 42764643911 (#30), 42855429095 (#32) — 2.90 GB; #33 restores 42855429095
 - `banking-linux` — bank vols: runs 41870785941 (orphan txt), 43016173134 (#54), 43026595992 (#55, 1.71 GB), 43080734791 (#57, 1.71 GB), **43133968988 (#58, 1.61 GB latest gen — restored by GREEN #59, no newer bank: artifact runs don't bank)**
-- `banking-android` — bank vols: runs 42797034779, 42848316691, 42974545503 (#62, 1.89 GB), 43019369532 (#63, 1.96 GB — rotated away by #65), 43073661607 (#64, 2.18 GB) + **43133995506 (#65, 2.19 GB latest gen, 182,018 edges — restores into #66)**; draft holds both latest gens (4.37 GB total)
+- `banking-android` — bank vols: runs 42797034779, 42848316691, 42974545503 (#62, 1.89 GB), 43019369532 (#63, 1.96 GB — rotated away by #65), 43073661607 (#64, 2.18 GB) + **43133995506 (#65, 2.19 GB latest gen, 182,018 edges — restores into #66, #67)**; draft holds both latest gens (4.37 GB total)
+- **Aegis Diagnostics app (NOT a release):** `download/AegisDiagnostics.apk` 16,811 B,
+  sha256 e7870f8b9aa5f797250bca0c29fab4c9d44be43325815e2ba8b3cc93d613b197; source
+  `aegis/diagnostics/` + `build.sh`; org.aegis.diagnostics v1.0, v3-signed with the
+  diagnostics-only keystore — on-device triage tool, see §4
 
 **Cleanup 2026-11-11 07:5xZ (user request):** deleted 6 old/superseded/bugged drafts via
 `scripts/delete_old_drafts.py` (guard: never banking-*, never published, never latest
@@ -230,7 +269,10 @@ e0824f0  fix(patch-108/110): dialog UNSAFE_TODO escape (#57) + 110 android guard
 35a8e90  fix(patch-110): Android-local login-db file-name constants (run #65, 2 errors)
 da82b21  fix(patch-108): avatar PNG encode via gfx::PNGCodec (run #58 link error)
 b8b1ab0  docs: Linux #58 link-stage verdict + lane snapshot (docs-only)
-                                                                          ← main HEAD (Windows #33 builds this)
+2c07787  docs: APK #66 GREEN verdict + install-failure triage (APK good, device-side)
+2521f08  docs: install failure resolved (truncated download); launch-crash triage queued
+7c49140  apk: 16 KB test lane + compliance gate + standalone Aegis Diagnostics app
+                                                                          ← main HEAD (APK #67 builds this)
 ```
 
 (docs commits interleaved throughout: lane snapshots, ledger refreshes, cron purge,
@@ -320,13 +362,14 @@ script any time the list gets cluttered (never deletes live runs, never touches 
    expect possible new API-drift surface). GREEN cap-bank → `dispatch_flavor.py
    windows`. GREEN artifact → verify draft `windows-156.0.8078.79-r33` (.exe + .zip),
    report delivery.
-2. **APK r66 install triage — awaiting user device info.** APK verified good (see §4
-   triage block). Need: phone model + Android version; whether an older Aegis build is
-   still installed (uninstall it first); MIUI pure mode state. If device is Android < 10:
-   minSdk 29 is stock-156 behavior — options are (a) accept Android 10+ requirement,
-   (b) build a legacy variant with default_min_sdk_version=26 (off-Chromium-QA path,
-   runtime-crash risk on 8/9 — needs user decision). Candidate workflow hardening:
-   zipalign `-P 16` for 16KB-page devices (needs user OK).
+2. **APK launch-crash triage (r66 on Infinix Hot 60i) — user chose path (3).** 16 KB
+   hypothesis ELIMINATED (ELF p_align + zip offsets both 16K-compliant, see §4). Now:
+   (a) user installs Aegis Diagnostics (download/AegisDiagnostics.apk) on the phone →
+   screenshot the report (page size, .so audit, ELF load test); (b) when #67 finishes:
+   `python3 scripts/run_verdict.py 43203010345`, then dispatch r68 carrying crash-trap
+   patch 111 (AegisCrashTrap → MediaStore Downloads stack dump); (c) if the trap file
+   never appears after an r68 crash → native crash → path (1) LADB logcat or path (2)
+   r58 install bisection. r67 verdict gates r68 (one active run per lane).
 3. **PATCH 114 AUTHORED 2026-11-11 (P6 client)** — complete plan at
    `docs/PATCH_114_PLAN.md`; source staged `download/aegis-p114-src/`
    (aegis_password_sync.h 232 / .cc 916 lines); generated + validated patch at
