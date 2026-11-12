@@ -1363,7 +1363,7 @@ diff --git a/chrome/browser/ui/views/profiles/aegis_id_dialog.cc b/chrome/browse
 new file mode 100644
 --- /dev/null
 +++ b/chrome/browser/ui/views/profiles/aegis_id_dialog.cc
-@@ -0,0 +1,666 @@
+@@ -0,0 +1,667 @@
 +// Copyright 2026 The Aegis Browser Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -1376,7 +1376,7 @@ new file mode 100644
 +#include <utility>
 +#include <vector>
 +
-+#include "base/containers/span.h"
++#include "base/compiler_specific.h"
 +#include "base/files/file_util.h"
 +#include "base/functional/bind.h"
 +#include "base/memory/raw_ptr.h"
@@ -1531,11 +1531,12 @@ new file mode 100644
 +  if (!png) {
 +    return std::nullopt;
 +  }
-+  // Pointer arithmetic (ptr + size) is banned by -Wunsafe-buffer-usage;
-+  // span's (ptr, size) constructor is the blessed form.
-+  const base::span<const uint8_t> encoded(
-+      static_cast<const uint8_t*>(png->data()), png->size());
-+  return std::vector<uint8_t>(encoded.begin(), encoded.end());
++  // SkData hands out an uncounted (void*) buffer: span-from-uncounted-pointer
++  // is itself flagged in converted dirs, so use the sanctioned migration
++  // escape hatch (//docs/unsafe_buffers.md) until SkData grows a span API.
++  return UNSAFE_TODO(std::vector<uint8_t>(
++      static_cast<const uint8_t*>(png->data()),
++      static_cast<const uint8_t*>(png->data()) + png->size()));
 +}
 +
 +// The dialog never runs in an incognito profile and has no enterprise
