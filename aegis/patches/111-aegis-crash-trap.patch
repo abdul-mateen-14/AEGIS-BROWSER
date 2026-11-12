@@ -202,3 +202,15 @@ index a15feaf..fa36f85 100644
          if (isBrowserProcess()) {
              setImplSupplier(
                      () ->
+
+diff --git a/chrome/android/chrome_java_sources.gni b/chrome/android/chrome_java_sources.gni
+--- a/chrome/android/chrome_java_sources.gni
++++ b/chrome/android/chrome_java_sources.gni
+@@ -80,6 +80,7 @@
+   "java/src/org/chromium/chrome/browser/actor/ColdBackgroundTab.java",
+   "java/src/org/chromium/chrome/browser/actor/LiveBackgroundTab.java",
+   "java/src/org/chromium/chrome/browser/announcement/AnnouncementNotificationManager.java",
++  "java/src/org/chromium/chrome/browser/aegis/AegisCrashTrap.java",
+   "java/src/org/chromium/chrome/browser/app/ChromeActivity.java",
+   "java/src/org/chromium/chrome/browser/app/MainLayoutSwitcher.java",
+   "java/src/org/chromium/chrome/browser/app/appmenu/AppMenuItemTheme.java",
