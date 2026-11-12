@@ -70,7 +70,7 @@ start with `python3 scripts/run_verdict.py <run_id>`. Dispatch discipline (iron 
 
 | Lane | Latest run | State | Head | Meaning |
 |---|---|---|---|---|
-| **APK** | #67 id=43203010345 (dispatched 2026-11-12T10:44Z) | **in_progress** | `7c49140` | First run of the 16 KB test lane (see triage block below): sign step emits standard APK + `-test16k` variant from the same binaries + hard `check_align` 4096/16384 gates (ground-truth zip-offset check). Restores #65's 2.19 GB bank (same gen #66 restored; 7c49140 touches only workflow + diagnostics source, both outside the invalidation set). NO watchdog — check manually. Last artifact: r66 (#66 GREEN 2026-11-12T06:09Z @ `35a8e90`, draft `build-...-r66` 338,083,578 B, icons v2 + home/dock + patch 110) — on-device launch crash under triage. |
+| **APK** | #68 id=43250401495 (dispatched 2026-11-12T15:40Z) | **in_progress** | `afe4fb8` | **CRASH-TRAP BUILD** (the discriminator): restores #65's 2.19 GB bank gen 43133995506 (same as #66/#67 — afe4fb8 adds only patch 111 chrome/android files), carries patch 111 (AegisCrashTrap.java + 2 hook sites) → any launch-time Java crash writes `aegis-crash-<millis>.txt` to Downloads. User flow: install r68 → launch → if crash, check Files/Downloads for the trap file and send it; if crash with NO file → native crash → LADB logcat or r58-install bisection. r67 verdict: **GREEN ARTIFACT** @ 7c49140 — restored same bank, dirty 11,658 (= #66 exactly, CI-only change confirmed), ninja rc=0 after 154 min, check_align 4096+16384 gates passed, draft `build-...-r67` (.apk 338,083,578 B = byte-size-identical to r66); **-test16k variant SKIPPED** — CI's bundled build-tools lacks `-P 16` zipalign (public zips end at r34; same wall the local kit hit — the workflow's warning fallback branch worked as designed). NO watchdog — check manually. |
 | **Linux** | #59 id=43150901156 (GREEN 2026-11-12T05:5xZ) | **DONE — artifact** | `da82b21` | FIRST 156-CHAIN LINUX ARTIFACT. Restored #58's 1.61 GB bank (gen 43133968988), only 1,386 dirty edges (patch-108 delta), ninja rc=0 after 52 min, .deb 116 MB. Draft `linux-156.0.8078.79-r59` (.deb 116 MB + portable .zip 167 MB). gfx::PNGCodec fix validated end-to-end. Desktop gate for Windows satisfied. |
 | **Windows** | #34 id=43215761632 (dispatched 2026-11-12T12:12Z) | **in_progress** | `778d3c9` | Restore wave 2: restores #33's fresh bank gen 43164506963 (1,448,325,651 B, 62,327 edges). #33 verdict 12:0xZ: **GREEN BANK RUN** — restored gen 42855429095 (68,117 edges), dirty 58,568, ninja rc=137 (cap INT) after 273 min at [24,620/58,567] ≈ 42% of the wave, BUILD_REASON=cap, bank streamed (vols=2, BUILD_DONE unset → no artifact). Same bank→restore→finish pattern as Linux #58→#59; ~33.9k edges left at ~93 edges/min ≈ 1.2 cap-waves → expect #34 to cap+bank again, #35 finishes. Builds chrome + mini_installer. NO watchdog — check manually. |
 
@@ -241,6 +241,35 @@ supersedes it for release-signed variants. Build kit kept in scripts/apk16k/
 (build-tools 34 zipalign + apksigner.jar both run on the sandbox JRE; note public
 build-tools zips end at r34 — no `-P 16` zipalign CLI exists, hence the Python aligner).
 
+**On-device diagnostics results 2026-11-12 (user screenshots; Aegis Diagnostics v1.0
+running on the phone):** device INFINIX X6728B (Hot 60i), fingerprint
+Infinix/X6728B-OP/Infinix-X6728B:15/AP3A.240905.015.A2/195007:user/release-keys,
+Android 15 (SDK 35), arm64-v8a, **kernel page = 4096 bytes → 4K KERNEL** — the
+16KB-page theory is now dead at the device level too (this device never needed 16K
+alignment). Installed APK = r66 byte-exact (versionCode 807807904; zip data offsets
+match the local dissection digit-for-digit, libchrome.so @47448064 …). On-device
+audits mirror the offline analysis exactly: .so zip offsets 8/8 %4K=ok %16K=ok
+("8 16K-aligned, 0 problems"); ELF PT_LOAD p_align max = 0x10000 (libchrome.so),
+0x4000 for the rest → all 16K-ready.
+
+Load tests (the new signal): `libcrashpad_handler_trampoline.so` (6,192 B)
+**LOADED OK**; `libchromium_android_linker.so` failed with `UnsatisfiedLinkError:
+JNI_ERR returned from JNI_OnLoad` — **verified BY-DESIGN for a foreign host, at the
+pin's own source** (upstream tag 156.0.8078.79): JNI_OnLoad → LinkerJNIInit →
+LibInfo_class.Init(env) does FindClass("org/chromium/base/library_loader/Linker$LibInfo")
+(base/android/linker/linker_jni.h) — that class lives in libchrome.dex, which the
+Diagnostics app does not carry → Init returns false → JNI_OnLoad returns -1. The .so
+itself was fully loaded, linked and EXECUTED (it runs LOG_INFO("Entering") before the
+class lookup), so the device's dlopen→relocate→run pipeline is healthy; in-browser
+the class exists and JNI_OnLoad succeeds either way — NOT a device fault.
+
+**Net verdict: statics clean + loader machinery proven working on-device ⇒ the r66
+launch crash is INSIDE Chromium's own startup — Java runtime (patch-wave prime
+suspect) or the APK-direct extractNativeLibs=false load path, which a foreign app
+cannot replicate.** Discriminator = r68 (patch 111 trap, dispatched id=43250401495):
+Java crash → `aegis-crash-<millis>.txt` in Files/Downloads (user sends it); crash
+with no trap file → native crash → fall back to LADB logcat or r58-install bisection.
+
 ## 5. Deliverables ledger (verified via API 2026-11-12 06:1xZ)
 
 Published releases (user decides these; never delete unprompted):
@@ -248,9 +277,11 @@ Published releases (user decides these; never delete unprompted):
 
 Draft releases (NEVER publish/delete without user):
 - `linux-...-r59` .deb 116 MB + .zip 167 MB (GREEN #59 @ da82b21) — **latest Linux artifact draft, first of the 156 chain**
-- `build-...-r67` (#67 in_progress @ 7c49140) — will carry standard .apk + `-test16k.apk`
-  (16 KB test lane); no draft yet
-- `build-...-r66` .apk 338,083,578 B (GREEN #66 @ 35a8e90; icons v2 + home/dock + patch 110 local passwords) — **latest APK artifact draft**; on-device launch crash under triage (see §4)
+- `build-...-r67` .apk 338,083,578 B (GREEN #67 @ 7c49140; 154 min ninja, check_align
+  4096+16384 both passed; byte-size-identical to r66 — CI-only change — **-test16k
+  variant skipped**, CI's bundled build-tools has no `-P 16` zipalign) — **latest APK
+  artifact draft**; content-identical build of r66's code
+- `build-...-r66` .apk 338,083,578 B (GREEN #66 @ 35a8e90; icons v2 + home/dock + patch 110 local passwords) — superseded by r67; still the build installed on the Hot 60i (launch crash under triage, see §4)
 - `build-...-r58` APK 318.9 MB (GREEN #58 @ c70a066; NO icons v2) — superseded by r66
 - `windows-...-r31` .exe 116.1 MB + .zip 199.9 MB — **latest/best Windows artifact draft** (r33/r34 banking toward the first artifact of the desktop wave)
 - `banking-windows` — bank vols: runs 42764643911 (#30), 42855429095 (#32), **43164506963 (#33, 1,448,325,651 B latest gen, 62,327 edges — restored by #34)**
@@ -409,12 +440,13 @@ script any time the list gets cluttered (never deletes live runs, never touches 
    report delivery.
 2. **APK launch-crash triage (r66 on Infinix Hot 60i) — user chose path (3).** 16 KB
    hypothesis ELIMINATED (ELF p_align + zip offsets both 16K-compliant, see §4). Now:
-   (a) user installs Aegis Diagnostics (download/AegisDiagnostics.apk) on the phone →
-   screenshot the report (page size, .so audit, ELF load test); (b) when #67 finishes:
-   `python3 scripts/run_verdict.py 43203010345`, then dispatch r68 — patch 111 (crash
-   trap) is already on main (174fc29), so a plain dispatch picks it up; (c) if the trap file
-   never appears after an r68 crash → native crash → path (1) LADB logcat or path (2)
-   r58 install bisection. r67 verdict gates r68 (one active run per lane).
+   (a) DONE 2026-11-12 — diagnostics ran on the phone, results in §4 (4K kernel,
+   audits green, loader machinery healthy). (b) r67 landed GREEN and r68 (patch 111
+   crash trap) was dispatched id=43250401495 @ afe4fb8 — when it settles:
+   `python3 scripts/run_verdict.py 43250401495`, then install r68 on the Hot 60i →
+   launch → check Files/Downloads for `aegis-crash-*.txt`: file present = Java crash
+   with full stack (send it); crash with no file = native crash → path (1) LADB
+   logcat or path (2) r58 install bisection.
 3. **PATCH 114 AUTHORED 2026-11-11 (P6 client)** — complete plan at
    `docs/PATCH_114_PLAN.md`; source staged `download/aegis-p114-src/`
    (aegis_password_sync.h 232 / .cc 916 lines); generated + validated patch at
