@@ -343,13 +343,74 @@ jobs:
           echo "$KS_B64" | base64 -d > /tmp/aegis.keystore
           ZIPALIGN=$(ls -1 third_party/android_sdk/public/build-tools/*/zipalign  | sort | tail -1)
           APKSIGNER=$(ls -1 third_party/android_sdk/public/build-tools/*/apksigner | sort | tail -1)
+          # Ground-truth page-alignment check, independent of zipalign's CLI:
+          # for every stored lib/*.so entry compute the data offset (local
+          # header + name + LOCAL extra len) and require offset % page == 0.
+          # A silently-ignored zipalign flag can therefore never ship a fake
+          # variant - the check fails the step loudly instead.
+          cat > /tmp/check_align.py <<'AEGIS_PY'
+          import struct, sys, zipfile
+
+          path, page = sys.argv[1], int(sys.argv[2])
+          blob = open(path, 'rb').read()
+          z = zipfile.ZipFile(path)
+          sos = []
+          for zi in z.infolist():
+              if zi.filename.startswith('lib/') and zi.filename.endswith('.so'):
+                  nl, el = struct.unpack_from('<HH', blob, zi.header_offset + 26)
+                  sos.append((zi.filename, zi.header_offset + 30 + nl + el,
+                              zi.compress_type))
+          bad = [f"{n}@{off}" for n, off, ct in sos
+                 if ct != zipfile.ZIP_STORED or off % page]
+          print(f"align-check page={page}: {len(sos)} .so entries, {len(bad)} bad")
+          for b in bad[:5]:
+              print("  BAD", b)
+          sys.exit(1 if bad else 0)
+          AEGIS_PY
+          check_align() { python3 /tmp/check_align.py "$1" "$2"; }
+
+          # ---- standard variant: 4 KB page alignment (historical lane) ----
           "$ZIPALIGN" -f -p 4 "$APK_IN" /tmp/aegis-aligned.apk
           OUT_FILE="AegisBrowser_${VERSION}_arm64_r${GITHUB_RUN_NUMBER}.apk"
           "$APKSIGNER" sign --ks /tmp/aegis.keystore --ks-key-alias "$KS_ALIAS" \
             --ks-pass "env:KS_PASS" --key-pass "env:KEY_PASS" --out "$OUT_FILE" /tmp/aegis-aligned.apk
           "$APKSIGNER" verify --print-certs "$OUT_FILE"
+          check_align "$OUT_FILE" 4096
+          # 16 KB compliance gate on the standard lane too: zipalign honors
+          # the ELFs' p_align=0x4000 (verified in r66 - all 8 .so data
+          # offsets were already 0 mod 16384), so this must always hold.
+          # A future toolchain regression reds here instead of shipping a
+          # 16 KB-noncompliant build (Nov-2025 Google Play requirement).
+          check_align "$OUT_FILE" 16384
           cp "$OUT_FILE" "$GITHUB_WORKSPACE/"
           echo "APK_NAME=$OUT_FILE" >> "$GITHUB_ENV"
+
+          # ---- test16k variant: SAME binaries, 16 KB page alignment ----
+          # 16 KB-page devices cannot mmap stored .so files that are only 4 KB
+          # aligned: install succeeds, app dies instantly on launch (Infinix
+          # Hot 60i r66 report). The ELFs are already 16 KB-ready (all PT_LOAD
+          # p_align=0x4000 verified in r66), so this is packaging-only. This
+          # asset is the permanent Android test artifact and pre-stages the
+          # Nov-2025 Google Play 16 KB page-size requirement.
+          # zipalign -p takes the page size in KB on the current build-tools
+          # (proven: 06d9555 green since 2026-11-01). If a future toolchain
+          # rejects it, the variant is skipped with a loud warning instead of
+          # reding the standard lane; the align check catches any silent
+          # misparse either way.
+          APK16_FILE=""
+          if "$ZIPALIGN" -f -p 16 "$APK_IN" /tmp/aegis16k.apk 2>/tmp/za16.err \
+             && check_align /tmp/aegis16k.apk 16384; then
+            APK16_FILE="AegisBrowser_${VERSION}_arm64_r${GITHUB_RUN_NUMBER}-test16k.apk"
+            "$APKSIGNER" sign --ks /tmp/aegis.keystore --ks-key-alias "$KS_ALIAS" \
+              --ks-pass "env:KS_PASS" --key-pass "env:KEY_PASS" --out "$APK16_FILE" /tmp/aegis16k.apk
+            "$APKSIGNER" verify --print-certs "$APK16_FILE"
+            check_align "$APK16_FILE" 16384
+            cp "$APK16_FILE" "$GITHUB_WORKSPACE/"
+            echo "APK16_NAME=$APK16_FILE" >> "$GITHUB_ENV"
+          else
+            echo "::warning::16 KB zipalign unavailable on this build-tools - test16k variant skipped"
+            tail -3 /tmp/za16.err 2>/dev/null || true
+          fi
 
       - name: Upload APK artifact (kept 1 day, just in case)
         if: env.BUILD_DONE == '1'
@@ -366,10 +427,14 @@ jobs:
         run: |
           set -e
           TAG="build-${VERSION}-r${GITHUB_RUN_NUMBER}"
+          ASSETS=("$GITHUB_WORKSPACE/${{ env.APK_NAME }}")
+          if [ -n "${APK16_NAME:-}" ]; then
+            ASSETS+=("$GITHUB_WORKSPACE/$APK16_NAME")
+          fi
           gh release create "$TAG" --draft \
             --title "Aegis Browser - Chromium ${VERSION} (arm64)" \
-            --notes "Automated free build from GitHub Actions. Chromium ${VERSION}, target_cpu=arm64, unofficial build (no LTO/PGO). Sideload: enable 'Install unknown apps', then install the APK." \
-            "$GITHUB_WORKSPACE/${{ env.APK_NAME }}"
+            --notes "Automated free build from GitHub Actions. Chromium ${VERSION}, target_cpu=arm64, unofficial build (no LTO/PGO). Sideload: enable 'Install unknown apps', then install the APK. The -test16k asset is the same build with 16 KB page-aligned native libs: use it on devices where the standard APK installs but crashes on launch (16 KB-page kernels), and for future Android testing." \
+            "${ASSETS[@]}"
           echo "Draft release created: $TAG"
 
       - name: Build summary
@@ -386,4 +451,5 @@ jobs:
             echo "| Outcome | ${BUILD_DONE:+APK built}${BUILD_REASON:+stopped early ($BUILD_REASON), tree banked} |"
             echo "| Ninja edges logged | ${NINJA_EDGES:-n/a} |"
             echo "| APK | ${APK_NAME:-not produced} |"
+            echo "| APK (16 KB test variant) | ${APK16_NAME:-not produced} |"
           } >> "$GITHUB_STEP_SUMMARY"
