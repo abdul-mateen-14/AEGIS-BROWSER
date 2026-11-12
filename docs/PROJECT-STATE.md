@@ -70,9 +70,9 @@ start with `python3 scripts/run_verdict.py <run_id>`. Dispatch discipline (iron 
 
 | Lane | Latest run | State | Head | Meaning |
 |---|---|---|---|---|
-| **APK** | #68 id=43250401495 (dispatched 2026-11-12T15:40Z) | **in_progress** | `afe4fb8` | **CRASH-TRAP BUILD** (the discriminator): restores #65's 2.19 GB bank gen 43133995506 (same as #66/#67 — afe4fb8 adds only patch 111 chrome/android files), carries patch 111 (AegisCrashTrap.java + 2 hook sites) → any launch-time Java crash writes `aegis-crash-<millis>.txt` to Downloads. User flow: install r68 → launch → if crash, check Files/Downloads for the trap file and send it; if crash with NO file → native crash → LADB logcat or r58-install bisection. r67 verdict: **GREEN ARTIFACT** @ 7c49140 — restored same bank, dirty 11,658 (= #66 exactly, CI-only change confirmed), ninja rc=0 after 154 min, check_align 4096+16384 gates passed, draft `build-...-r67` (.apk 338,083,578 B = byte-size-identical to r66); **-test16k variant SKIPPED** — CI's bundled build-tools lacks `-P 16` zipalign (public zips end at r34; same wall the local kit hit — the workflow's warning fallback branch worked as designed). NO watchdog — check manually. |
+| **APK** | #69 id=43276014308 (dispatched 2026-11-12T18:04Z) | **in_progress** | `345eb52` | **CRASH-TRAP BUILD, attempt 2 (the discriminator)**: restores #68's bank gen 43250401495 (2,346,775,802 B, 4 vols, 196,686 edges — tree was banked at the compile error, so ~7.3k edges of #68's wave are preserved), carries the FIXED patch 111. **#68 verdict: FAILED (compile error, 67 min ninja)** — `ChromeApplicationImpl.java:53: error: cannot find symbol AegisCrashTrap`: patch 111 created the new file but never registered it in `chrome_java_sources.gni` (Chromium does not glob java sources); ninja rc=1 → non-cap bank save (worked as designed). Fix @ `345eb52`: patch 111 gains a 4th hunk registering `java/src/org/chromium/chrome/browser/aegis/AegisCrashTrap.java` (sorted position, before `app/`); validated locally with `git apply --3way` + reverse-check against pristine 156 files. r68→r69 flow unchanged: install → launch → if crash, check Files/Downloads for `aegis-crash-<millis>.txt` and send it; crash with NO file → native crash → LADB logcat or r58-install bisection. r67 verdict: **GREEN ARTIFACT** @ 7c49140 — restored same bank, dirty 11,658 (= #66 exactly, CI-only change confirmed), ninja rc=0 after 154 min, check_align 4096+16384 gates passed, draft `build-...-r67` (.apk 338,083,578 B = byte-size-identical to r66); **-test16k variant SKIPPED** — CI's bundled build-tools lacks `-P 16` zipalign (public zips end at r34; same wall the local kit hit — the workflow's warning fallback branch worked as designed). NO watchdog — check manually. |
 | **Linux** | #59 id=43150901156 (GREEN 2026-11-12T05:5xZ) | **DONE — artifact** | `da82b21` | FIRST 156-CHAIN LINUX ARTIFACT. Restored #58's 1.61 GB bank (gen 43133968988), only 1,386 dirty edges (patch-108 delta), ninja rc=0 after 52 min, .deb 116 MB. Draft `linux-156.0.8078.79-r59` (.deb 116 MB + portable .zip 167 MB). gfx::PNGCodec fix validated end-to-end. Desktop gate for Windows satisfied. |
-| **Windows** | #34 id=43215761632 (dispatched 2026-11-12T12:12Z) | **in_progress** | `778d3c9` | Restore wave 2: restores #33's fresh bank gen 43164506963 (1,448,325,651 B, 62,327 edges). #33 verdict 12:0xZ: **GREEN BANK RUN** — restored gen 42855429095 (68,117 edges), dirty 58,568, ninja rc=137 (cap INT) after 273 min at [24,620/58,567] ≈ 42% of the wave, BUILD_REASON=cap, bank streamed (vols=2, BUILD_DONE unset → no artifact). Same bank→restore→finish pattern as Linux #58→#59; ~33.9k edges left at ~93 edges/min ≈ 1.2 cap-waves → expect #34 to cap+bank again, #35 finishes. Builds chrome + mini_installer. NO watchdog — check manually. |
+| **Windows** | #35 id=43276366118 (dispatched 2026-11-12T18:06Z) | **in_progress** | `345eb52` | Restore wave 2, attempt 2: restores #33's bank gen 43164506963 (1,448,325,651 B, 62,327 edges) — **#34's wave progress was LOST**: #34 hit the 280-min ninja cap (BUILD_REASON=cap, 47,396 edges logged) and was streaming the 7.5 GB bank when the run was cancelled at 18:02:28Z (5h50m elapsed, no `[up]` lines → zero volumes uploaded, no new gen; cause unknown — no newer windows run existed, so no concurrency kill; do not cancel runs). banking-windows draft still holds gen 42855429095 (#32) + gen 43164506963 (#33). #33 verdict 12:0xZ: **GREEN BANK RUN** — dirty 58,568, ninja rc=137 (cap INT) after 273 min at [24,620/58,567] ≈ 42% of the wave. Same bank→restore→finish pattern as Linux #58→#59; ~33.9k edges left at ~93 edges/min ≈ 1.2 cap-waves → expect #35 (and maybe #36) to finish. Builds chrome + mini_installer. NO watchdog — check manually. |
 
 **Note:** Linux #59 built `da82b21` (= `e0824f0` + gfx::PNGCodec avatar encode); APK #66
 builds `35a8e90` = `e0824f0` + Android-only login-db constants — da82b21 does not touch
@@ -196,8 +196,12 @@ or device-specific loader behavior — it needs the actual stack.
   same binaries + `check_align` gate (4096 AND 16384) computed from zip local headers —
   a silently-ignored zipalign flag can never ship a fake variant; every future release
   stays provably 16 KB-compliant (Nov-2025 Play requirement pre-staged).
-- **Crash-trap rebuild (patch 111 authored+validated 2026-11-12, commit 174fc29;
-  dispatches as r68 once r67 lands)**: AegisCrashTrap.java (chrome split) records any
+- **Crash-trap rebuild (patch 111 authored+validated 2026-11-12, commit 174fc29; FIX
+  345eb52 — r68 red: the new file was never registered in `chrome_java_sources.gni`
+  and javac correctly failed with `cannot find symbol`; the patch now carries a 4th
+  hunk adding the `aegis/AegisCrashTrap.java` entry; re-validated `git apply --3way` +
+  reverse-check on pristine 156 files; dispatches as r69)**: AegisCrashTrap.java (chrome
+  split) records any
   uncaught Java exception — device/process/version + full stack — to MediaStore
   Downloads (`aegis-crash-<millis>.txt`, no permission on API 29+, visible in
   Files/Downloads; app-private backup copy too), then chains to the previous handler so
@@ -221,10 +225,14 @@ wave. BUILD_REASON=cap, BUILD_DONE unset, NINJA_EDGES=62,327. Bank streamed:
 **AEGIS-BANK flavor=windows gen=43164506963 vols=2 bytes=1,448,325,651 edges=62,327** →
 new banking-windows draft. Run itself completed/success (bank path is a green exit by
 design). Rate ≈ 93 edges/min ⇒ ~33.9k remaining edges ≈ 365 min > cap ⇒ next wave also
-caps; Linux took 2 waves (bank→GREEN). **Windows #34 dispatched id=43215761632 @ 778d3c9**
-(12:12:16Z, via dispatch_flavor.py windows; 30-min rule passed — lane idle 377 min).
-778d3c9 = docs + patch 111 (chrome/android-only, outside the Windows ninja graph) → bank
-restore unaffected. Verdict command: `python3 scripts/run_verdict.py 43215761632`.
+caps; Linux took 2 waves (bank→GREEN). **Windows #34 verdict 18:0xZ: completed/CANCELLED**
+— cap hit (BUILD_REASON=cap, 47,396 edges logged), 7.5 GB bank streaming began 18:00:02Z,
+run cancelled 18:02:28Z at 5h50m elapsed BEFORE any `[up]` line: zero volumes uploaded,
+no new gen, #34's wave progress lost. Cause unknown (no newer windows run → no
+concurrency kill; not the 6h wall at 18:12Z). **Windows #35 dispatched id=43276366118 @
+345eb52** (18:06:27Z, 30-min rule passed — #34 created 354 min earlier; restores gen
+43164506963; patch 111 is chrome/android-only, outside the Windows ninja graph → bank
+restore unaffected). Verdict command: `python3 scripts/run_verdict.py 43276366118`.
 
 **Local 16KB test variant of r66 built (future Android test artifact, user request):**
 `download/aegis-156.0.8078.79-r66-16kb-test.apk` 337,583,797 B — pipeline scripts/
@@ -266,9 +274,10 @@ the class exists and JNI_OnLoad succeeds either way — NOT a device fault.
 **Net verdict: statics clean + loader machinery proven working on-device ⇒ the r66
 launch crash is INSIDE Chromium's own startup — Java runtime (patch-wave prime
 suspect) or the APK-direct extractNativeLibs=false load path, which a foreign app
-cannot replicate.** Discriminator = r68 (patch 111 trap, dispatched id=43250401495):
-Java crash → `aegis-crash-<millis>.txt` in Files/Downloads (user sends it); crash
-with no trap file → native crash → fall back to LADB logcat or r58-install bisection.
+cannot replicate.** Discriminator = r69 (patch 111 trap, FIXED 345eb52, dispatched
+id=43276014308; r68 red on a compile error before any device test): Java crash →
+`aegis-crash-<millis>.txt` in Files/Downloads (user sends it); crash with no trap
+file → native crash → fall back to LADB logcat or r58-install bisection.
 
 ## 5. Deliverables ledger (verified via API 2026-11-12 06:1xZ)
 
@@ -284,9 +293,9 @@ Draft releases (NEVER publish/delete without user):
 - `build-...-r66` .apk 338,083,578 B (GREEN #66 @ 35a8e90; icons v2 + home/dock + patch 110 local passwords) — superseded by r67; still the build installed on the Hot 60i (launch crash under triage, see §4)
 - `build-...-r58` APK 318.9 MB (GREEN #58 @ c70a066; NO icons v2) — superseded by r66
 - `windows-...-r31` .exe 116.1 MB + .zip 199.9 MB — **latest/best Windows artifact draft** (r33/r34 banking toward the first artifact of the desktop wave)
-- `banking-windows` — bank vols: runs 42764643911 (#30), 42855429095 (#32), **43164506963 (#33, 1,448,325,651 B latest gen, 62,327 edges — restored by #34)**
+- `banking-windows` — bank vols: runs 42764643911 (#30), 42855429095 (#32), **43164506963 (#33, 1,448,325,651 B latest gen, 62,327 edges — restored by #35; #34's attempted gen never uploaded, cancelled mid-stream)**
 - `banking-linux` — bank vols: runs 41870785941 (orphan txt), 43016173134 (#54), 43026595992 (#55, 1.71 GB), 43080734791 (#57, 1.71 GB), **43133968988 (#58, 1.61 GB latest gen — restored by GREEN #59, no newer bank: artifact runs don't bank)**
-- `banking-android` — bank vols: runs 42797034779, 42848316691, 42974545503 (#62, 1.89 GB), 43019369532 (#63, 1.96 GB — rotated away by #65), 43073661607 (#64, 2.18 GB) + **43133995506 (#65, 2.19 GB latest gen, 182,018 edges — restores into #66, #67)**; draft holds both latest gens (4.37 GB total)
+- `banking-android` — bank vols: runs 42797034779, 42848316691, 42974545503 (#62, 1.89 GB), 43019369532 (#63, 1.96 GB — rotated away by #65), 43073661607 (#64, 2.18 GB), 43133995506 (#65, 2.19 GB, 182,018 edges — restored by #66/#67) + **43250401495 (#68, 2.35 GB latest gen, 196,686 edges — non-cap error bank; restores into #69)**
 - **Aegis Diagnostics app (NOT a release):** `download/AegisDiagnostics.apk` 16,811 B,
   sha256 e7870f8b9aa5f797250bca0c29fab4c9d44be43325815e2ba8b3cc93d613b197; source
   `aegis/diagnostics/` + `build.sh`; org.aegis.diagnostics v1.0, v3-signed with the
@@ -345,10 +354,12 @@ da82b21  fix(patch-108): avatar PNG encode via gfx::PNGCodec (run #58 link error
 b8b1ab0  docs: Linux #58 link-stage verdict + lane snapshot (docs-only)
 2c07787  docs: APK #66 GREEN verdict + install-failure triage (APK good, device-side)
 2521f08  docs: install failure resolved (truncated download); launch-crash triage queued
-7c49140  apk: 16 KB test lane + compliance gate + standalone Aegis Diagnostics app
-0b53c24  docs: 16KB hypothesis eliminated; r67 dispatched; Diagnostics delivered
 174fc29  patch 111: Aegis crash trap -> MediaStore Downloads stack dump
-                                                                          ← main HEAD (r68 will build this; #67 builds 7c49140)
+0b53c24  docs: 16KB hypothesis eliminated; r67 dispatched; Diagnostics delivered
+7c49140  apk: 16 KB test lane + compliance gate + standalone Aegis Diagnostics app
+c1286ef  docs: r67 GREEN ARTIFACT + diagnostics + r68 dispatched
+345eb52  apk: patch 111 registers AegisCrashTrap in chrome_java_sources.gni (r68 fix)
+                                                                          ← main HEAD (r69 will build this; #67 built 7c49140)
 ```
 
 (docs commits interleaved throughout: lane snapshots, ledger refreshes, cron purge,
@@ -441,9 +452,10 @@ script any time the list gets cluttered (never deletes live runs, never touches 
 2. **APK launch-crash triage (r66 on Infinix Hot 60i) — user chose path (3).** 16 KB
    hypothesis ELIMINATED (ELF p_align + zip offsets both 16K-compliant, see §4). Now:
    (a) DONE 2026-11-12 — diagnostics ran on the phone, results in §4 (4K kernel,
-   audits green, loader machinery healthy). (b) r67 landed GREEN and r68 (patch 111
-   crash trap) was dispatched id=43250401495 @ afe4fb8 — when it settles:
-   `python3 scripts/run_verdict.py 43250401495`, then install r68 on the Hot 60i →
+   audits green, loader machinery healthy). (b) r68 (patch 111 crash trap) FAILED on a
+   compile error (trap class unregistered — fixed 345eb52) and r69 id=43276014308 @
+   345eb52 is the crash-trap discriminator — when it settles:
+   `python3 scripts/run_verdict.py 43276014308`, then install r69 on the Hot 60i →
    launch → check Files/Downloads for `aegis-crash-*.txt`: file present = Java crash
    with full stack (send it); crash with no file = native crash → path (1) LADB
    logcat or path (2) r58 install bisection.
