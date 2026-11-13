@@ -90,7 +90,7 @@
 +  if (base::EqualsCaseInsensitiveASCII(parsed_scheme_utf8, "aegis") &&
 +      canonicalized_url->is_valid()) {
 +    GURL::Replacements alias_replacements;
-+    alias_replacements.SetSchemeStr(url::kChromeUIScheme);
++    alias_replacements.SetSchemeStr("chrome");
 +    *canonicalized_url = canonicalized_url->ReplaceComponents(alias_replacements);
 +    return metrics::OmniboxInputType::URL;
 +  }

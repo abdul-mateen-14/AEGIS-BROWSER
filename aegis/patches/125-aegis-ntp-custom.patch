@@ -678,7 +678,7 @@ index 194b070..8846a44 100644
 
 --- /dev/null
 +++ b/chrome/android/java/res/values/aegis_ntp_strings.xml
-@@ -0,0 +1,13 @@
+@@ -0,0 +1,15 @@
 +<?xml version="1.0" encoding="utf-8"?>
 +<!-- Copyright 2026 The Aegis Browser Authors
 +     Use of this source code is governed by a BSD-style license that can be

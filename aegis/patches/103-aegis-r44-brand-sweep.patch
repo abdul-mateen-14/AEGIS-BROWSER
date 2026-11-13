@@ -59,7 +59,7 @@
          Some tools have moved to help you search with AI Mode
 --- a/chrome/android/java/AndroidManifest.xml
 +++ b/chrome/android/java/AndroidManifest.xml
-@@ -221,6 +221,6 @@
+@@ -221,7 +221,7 @@
        <application android:name="{% block application_name %}org.chromium.chrome.browser.base.SplitChromeApplication{% endblock %}"
          android:icon="@drawable/ic_launcher"
          android:roundIcon="@drawable/ic_launcher_round"
