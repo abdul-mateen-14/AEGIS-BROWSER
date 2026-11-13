@@ -55,7 +55,7 @@ git -C download/aegis-repo log --oneline -5 && git -C download/aegis-repo status
 Verdict detail for one run: `python3 scripts/run_verdict.py <run_id>` (prints step-level
 bank/artifact outcome). Run logs: `scripts/job_<job_id>.log` when saved, else fetch via API.
 
-## 4. Lane status — snapshot 2026-11-13 08:4xZ (manual checkpoint, no crons)
+## 4. Lane status — snapshot 2026-11-13 12:1xZ (manual checkpoint, no crons)
 
 **WATCHDOG CRONS DISCONTINUED (user order: "cancel all the cron jobs", 2026-11-11).
 FINAL deletion sweep 2026-11-12 00:13–00:16 CST removed SIX jobs: 513824 + 513929 (the
@@ -70,11 +70,11 @@ start with `python3 scripts/run_verdict.py <run_id>`. Dispatch discipline (iron 
 
 | Lane | Latest run | State | Head | Meaning |
 |---|---|---|---|---|
-| **APK** | #71 id=43376020530 (dispatched 2026-11-13T06:03Z) | **in_progress — FULL rebuild (wave branding dropped the bank)** | `47e86d6` | r70 GREEN ARTIFACT (03:49→05:44, ~1h55m: restored r68's gen 43250401495, 200,994 edges, ninja rc=0 — patch-112 NPE fix compiled) and **PUBLISHED 06:43Z — user publish, not assistant** (asset 338,097,998 B, digest `df81d78b…` ≠ r69 `f94b375d…`; identical byte size = zip-alignment coincidence; tag `build-…-r70` → 47e86d6, build was 00f965b). r71 rides the r60 wave (113-118: dock v2, splash/status-bar palette, AI sweep 2, default-browser promos off, launcher icon v3) — but the wave touches aegis/branding/** and the arm64 restore rule drops the bank on branding changes ⇒ fresh ~4-5 h build. p117's desktop whats_new cc break CANNOT touch this lane: desktop webui whats_new is not in the APK graph (r70 log compiles only chrome/browser/ui/android/whats_new java targets). NO watchdog — manual check. |
+| **APK** | #72 id=43419387001 (dispatched 2026-11-13T11:43Z) | **in_progress — bank-resume from #71's cap-bank** | `28c0e60` | #71 verdict 11:36Z: **CAP BANK RUN, no APK** — restored r68's gen 43250401495 (196,687 edges), wave TUs compiled to 118,910 ninja-log edges in 280 min (BUILD_REASON=cap), bank streamed gen 43376020530 (3 vols, 1,873,237,631 B, size-verified; older android gens rotated away by the save). r70 remains the newest PUBLISHED apk. #72 restores gen 43376020530 — the wave is already compiled in that tree, so the dirty set should be small → expect GREEN ARTIFACT this cycle. Then on-device: dock v2 (URL pill / tab swipe / hide button / corner bar / scroll-only auto-hide), splash true-black, icon v3 padding, no default-browser promos; trap stays armed (fresh `aegis-crash-*.txt` = triage input). NO watchdog — manual check. |
 
-| **Linux** | #61 id=43392778086 (dispatched 2026-11-13T08:23Z) | **in_progress — p117 dead-body fix on #60's fresh bank** | `10d93fa` | #60 RED (05:32→06:59): first compile of p117's desktop hunk died `whats_new_util.cc:67` unreachable-code at [913/1347] after 40 min; fresh-tree bank saved gen 43372651434. Fix `10d93fa` deletes the whole dead body (see §8). r61 restores that bank; restore_tree maps patch-117 targets (old+new) and surgically recompiles the TU + relink — expect a short window. On GREEN: draft r61 (.deb + .zip) → desktop screenshot test (true-black, no Gemini/Lens, What's-New off, icon v3; dock = Android-only, capsule = patch 120 NOT implemented). NO watchdog. |
+| **Linux** | #62 id=43421661562 (dispatched 2026-11-13T12:01Z) | **in_progress — REDUNDANT rebuild of the r61 tree (dispatch-before-commit slip; iron rule forbids cancel)** | `28c0e60` | #61 verdict 09:38Z: **GREEN ARTIFACT** — ninja rc=0 after 23 min off #60's fresh-tree bank (141,452 ninja-log edges), .deb 115,623,972 B + .zip 167,326,390 B → draft `linux-156.0.8078.79-r61`. Desktop artifact test done (see §8): frame ≈#0A0A0B ✓, toolbar ≈#141416 ✓, Aegis identity ✓ (version page: The Aegis Authors / Aegis / 156.0.8078.79, zero 'Google Chrome'), zero Gemini/Lens text on NTP + settings ✓, What's-New + sign-in/default-browser promos absent on fresh launch ✓, desktop icon v3 margins ✓ (black squircle tile, triangle well inside). TWO gaps found → fixed in `b7f6cda`: patch 116 (AI nav hard-off) + patch 118 addendum (NTP body pinned #141416). #62 was dispatched BEFORE that commit landed — checkout completed 12:01 on 28c0e60 ⇒ it rebuilds the r61 tree one more time; the fixes ride #63 (dispatch once #62 completes, lane idle). LESSON: commit + push FIRST, dispatch SECOND. NO watchdog. |
 
-| **Windows** | #37 id=43392811502 (dispatched 2026-11-13T08:23Z) | **in_progress — wave + p117 fix on #36's bank** | `10d93fa` | #36 verdict 08:06Z Nov 13: **GREEN BANK RUN** — restored #35's gen 43276366118, ninja rc=137 (cap) after ~287 min at 67,230 edges (~100 edges/min like #35), bank streamed clean (2 vols, 1,451,616,214 B, size-verified; gens 43164506963 + 43276366118 deleted by the save). #37 restores gen 43351285749; restore_tree diffs f0c7f29→10d93fa: patches 112-118 + p117-fix targets mapped, branding change on win_x64 = surgical pak invalidation only (bank kept) → wave TUs recompile + relink. At ~100 edges/min the remaining ~31k edges ⇒ #37 likely caps again; #38 should finish. Builds chrome + mini_installer. NO watchdog. |
+| **Windows** | #37 id=43392811502 (dispatched 2026-11-13T08:23Z) | **in_progress — wave + p117 fix on #36's bank (3.5 h+ elapsed)** | `10d93fa` | #36 verdict 08:06Z Nov 13: **GREEN BANK RUN** — restored #35's gen 43276366118, ninja rc=137 (cap) after ~287 min at 67,230 edges (~100 edges/min like #35), bank streamed clean (2 vols, 1,451,616,214 B, size-verified; gens 43164506963 + 43276366118 deleted by the save). #37 restores gen 43351285749; restore_tree diffs f0c7f29→10d93fa: patches 112-118 + p117-fix targets mapped, branding change on win_x64 = surgical pak invalidation only (bank kept) → wave TUs recompile + relink. At ~100 edges/min the remaining ~31k edges ⇒ #37 likely caps again; #38 should finish. NOTE: #37's head 10d93fa predates `b7f6cda` (patch 116 + 118 addendum) — the AI-nav/NTP fixes reach Windows in a later run, same as APK/Linux. Builds chrome + mini_installer. NO watchdog. |
 
 **Note:** Linux #59 built `da82b21` (= `e0824f0` + gfx::PNGCodec avatar encode); APK #66
 builds `35a8e90` = `e0824f0` + Android-only login-db constants — da82b21 does not touch
@@ -312,14 +312,15 @@ not the one that card renders); (3) Aegis ID dialog (108) unreachable — its
 kSigninButton hook is compiled but 073 removed the promo button; needs an
 explicit profile-menu item.
 
-## 5. Deliverables ledger (verified via API 2026-11-13 08:4xZ)
+## 5. Deliverables ledger (verified via API 2026-11-13 12:0xZ)
 
 Published releases (user decides these; never delete unprompted):
 - `build-...-r70` .apk 338,097,998 B (GREEN #70 @ 00f965b, sha256 `df81d78b…`, patch-112 NPE fix) — **PUBLISHED 2026-11-13 06:43Z (user publish, not assistant)**; tag `build-…-r70` points at 47e86d6 (docs), build was 00f965b
 - `linux-156.0.8078.79-r45` (.deb 110.5 MB + .zip 160.0 MB, tag @ `a548d4c`) — **the only published release**
 
 Draft releases (NEVER publish/delete without user):
-- `linux-...-r59` .deb 116 MB + .zip 167 MB (GREEN #59 @ da82b21) — **latest Linux artifact draft, first of the 156 chain**
+- `linux-...-r61` .deb 115,623,972 B + .zip 167,326,390 B (GREEN #61 @ 10d93fa, ninja rc=0 after 23 min; desktop-tested 2026-11-13 — see §8) — **latest Linux artifact draft**; NOT desktop-tested-clean: two gaps fixed by `b7f6cda` ride #63
+- `linux-...-r59` .deb 116 MB + .zip 167 MB (GREEN #59 @ da82b21) — first of the 156 chain
 - `build-...-r69` .apk 338,097,998 B (GREEN #69 @ 345eb52; 63 min ninja after 5,042-edge
   surgical invalidation; check_align 4096+16384 both passed; = r67 + 14,420 B of compiled
   crash-trap) — **latest APK artifact draft; the crash-trap discriminator awaiting the
@@ -332,8 +333,8 @@ Draft releases (NEVER publish/delete without user):
 - `build-...-r58` APK 318.9 MB (GREEN #58 @ c70a066; NO icons v2) — superseded by r66
 - `windows-...-r31` .exe 116.1 MB + .zip 199.9 MB — **latest/best Windows artifact draft** (r33/r34 banking toward the first artifact of the desktop wave)
 - `banking-windows` — bank vols: runs 42764643911 (#30), 42855429095 (#32); gens 43164506963 (#33) and 43276366118 (#35) were DELETED by #36's save; **latest gen 43351285749 (#36, 1,451,616,214 B, 67,230 edges) — restores into #37**
-- `banking-linux` — bank vols: runs 41870785941 (orphan txt), 43016173134 (#54), 43026595992 (#55, 1.71 GB), 43080734791 (#57, 1.71 GB), 43133968988 (#58, 1.61 GB — restored by GREEN #59); **43372651434 (#60 failed-run bank, fresh tree through 118 @ buggy-117, ~913 edges — restores into r61)**
-- `banking-android` — bank vols: runs 42797034779, 42848316691, 42974545503 (#62, 1.89 GB), 43019369532 (#63, 1.96 GB — rotated away by #65), 43073661607 (#64, 2.18 GB), 43133995506 (#65, 2.19 GB, 182,018 edges — restored by #66/#67) + **43250401495 (#68, 2.35 GB latest gen, 196,686 edges — non-cap error bank; restores into #69)**
+- `banking-linux` — bank vols: runs 41870785941 (orphan txt), 43016173134 (#54), 43026595992 (#55, 1.71 GB), 43080734791 (#57, 1.71 GB), 43133968988 (#58, 1.61 GB — restored by GREEN #59), 43372651434 (#60 failed-run bank, fresh tree through 118 @ buggy-117, ~913 edges — restored by GREEN #61); **next save = #62's post-green tree**
+- `banking-android` — bank vols: runs 42797034779, 42848316691, 42974545503 (#62, 1.89 GB), 43019369532 (#63, 1.96 GB — rotated away by #65), 43073661607 (#64, 2.18 GB), 43133995506 (#65, 2.19 GB, 182,018 edges — restored by #66/#67), 43250401495 (#68, 2.35 GB — restored by #71) + **43376020530 (#71 cap-bank, latest gen, 3 vols, 1,873,237,631 B, 118,909 edges — wave compiled; restores into #72)**
 - **Aegis Diagnostics app (NOT a release):** `download/AegisDiagnostics.apk` 16,811 B,
   sha256 e7870f8b9aa5f797250bca0c29fab4c9d44be43325815e2ba8b3cc93d613b197; source
   `aegis/diagnostics/` + `build.sh`; org.aegis.diagnostics v1.0, v3-signed with the
@@ -421,6 +422,7 @@ patch-114 authoring — see git log)
 
 | Run | Error | Fix commit | Lesson |
 |---|---|---|---|
+| r61 .deb desktop test (forced-dark Xvfb) | TWO runtime gaps vs user feedback 2026-11-13: (a) settings nav keeps a dangling **"AI innovations"** entry — upstream `showAiPage` = OR(show_glic, ai_features, ai_mode_search, geic) still evaluates true in non-Google-branded builds though the AI page is already gone (chrome://settings/ai + /aiInnovations both redirect to chrome://settings/, verified via CDP); (b) **NTP body #3C3C3C** — material NTP mixer (last writer) resolves kColorSysBase through the NativeTheme forced-dark palette = Chromium greys, never the Aegis ramp. Frame (avg #0F1010 ≈ #0A0A0B ✓) and toolbar (#141518 ≈ #141416 ✓) verified exact — they are direct-RGB constants in patch 118, palette-independent | `b7f6cda` | RUNTIME TESTING CATCHES WHAT PATCH REVIEW CANNOT — both gaps were invisible in code review (one feature-gated upstream, one palette-dependent). showAiPage=false MUST keep showAiPageAiFeatureSection's original value or -Wunused-but-set-variable kills -Werror. Patch 116 also neutralizes UpdateShowGlicState()'s runtime re-set. Patch 118 addendum pins kColorNewTabPageBackground in material_new_tab_page_color_mixer.cc (last-writer-wins). Both hunks generated by git diff vs pristine branch-heads/8078 + git apply --check green. SEQUENCING LESSON: #62 was dispatched BEFORE the fix commit — its checkout grabbed 28c0e60 ⇒ redundant r61-tree rebuild the iron rule won't let us cancel; COMMIT + PUSH FIRST, DISPATCH SECOND |
 | Linux #60 (f09dd2f) | FIRST compile of p117's desktop hunk: `whats_new_util.cc:67:3` — `code will never be executed [-Werror,-Wunreachable-code]` (`-Wunreachable-code-aggressive`): the hunk only PREPENDED `return false;` to `ShouldShowForState()`, leaving the entire original `#if IS_CHROMEOS/#else` body unreachable; ninja rc=1 at [913/1347] after 40 min, fresh-tree bank saved (gen 43372651434, ~913 edges) | `10d93fa` | A HARD-OFF GATE MUST DELETE THE BODY, NOT PRECEDE IT — code after an unconditional `return` is dead under -Werror; Java's `if (true) { return; }` carve-out (JLS 14.21) has no C++ equivalent. Desktop webui TUs never compile on APK runs (r70/r71 logs show only `chrome/browser/ui/android/whats_new` java targets), so the APK lane was never exposed. Hunk regenerated by scripts/fix_p117_unreachable.py (difflib, full-body deletion; `git apply --check` + `--3way --check` green vs pristine 156.0.8078.79 sources); LogStartupType/IsEnabled stay header-declared → no -Wunused-function |
 | APK r70 (00f965b) | fix-forward: ON-DEVICE LAUNCH CRASH LOOP — r69 trap files show NPE in PasswordSettingsUpdaterDispatcherBridge.getSettingValue (settings-updater background thread, 2× at launch, 3.8 s apart). Root: patch 110's forced IsPasswordManagerAvailable() gate ALSO instantiates the GMS-backed PasswordManagerSettingsServiceAndroidImpl; un-branded builds ship no downstream PasswordSettingsAccessorFactory (UpstreamImpl is empty) → null accessor → NPE. Fix: Android uses the pref-backed PasswordManagerSettingsServiceImpl (upstream's designed no-GMS fallback), patch 112 | `00f965b` | THE CRASH TRAP PAID OFF — one device launch + two 4 KB text files replaced weeks of blind bisection. A forced gate must be audited for EVERY consumer, not just the one you patched (the gate had two call sites: backend factory + settings-service factory; only the first was considered). Upstream `@Nullable`-with-`assert` patterns are release-deadly: assert never fires in release APKs, so the null flies through to the deref |
 | APK r69 (345eb52) | — GREEN ARTIFACT (draft r69, 338,097,998 B = r67 + 14,420 B): bank resume dirty 5,042, ninja rc=0 after 63 min. On-device: launches → crash loop → trap wrote `aegis-crash-*.txt` = DIAGNOSTIC SUCCESS | — | Patch-111 4th-hunk gni registration was the complete fix. VERIFY the trap fires on a real crash before trusting it as instrumentation — it did (full Java stack + thread + device metadata captured, files land in Files/Downloads via MediaStore) |
@@ -488,31 +490,25 @@ script any time the list gets cluttered (never deletes live runs, never touches 
 
 ## 10. Next actions queue (in order)
 
-1. **Linux #61 verdict — MANUAL CHECK (no cron).** `python3 scripts/run_verdict.py
-   43392778086`. GREEN → draft `linux-...-r61` (.deb + .zip) → desktop screenshot test
-   (true-black frame #0A0A0B / toolbar #141416, no Gemini/Lens outside tabs, What's-New
-   gone, desktop icon v3). SCOPE per user's 2026-11-13 correction: NO dock in desktop
-   shots (dock is Android-only) and NO capsule (patch 120, NOT implemented yet).
-   RED → fix-forward (§8).
-2. **Windows #37 verdict — MANUAL CHECK.** `python3 scripts/run_verdict.py
-   43392811502`. Expected GREEN cap-bank (wave TUs + p117 fix recompile on #36's gen
-   43351285749, ~100 edges/min ⇒ likely caps again) → dispatch #38; if artifact run →
-   verify draft `windows-...-r37` (.exe + .zip), report delivery.
-3. **APK #71 verdict — MANUAL CHECK.** `python3 scripts/run_verdict.py 43376020530`.
-   Wave touches aegis/branding/** ⇒ arm64 restore DROPPED the bank ⇒ full ~4-5 h
-   rebuild. GREEN ARTIFACT → user installs on Hot 60i: clean launch expected (patch 112
-   NPE fix; r70 already published 06:43Z). Then dock v2 (URL pill / tab swipe / hide
-   button / corner bar / scroll-only auto-hide), splash true-black, icon v3 padding, no
+1. **Linux #62 verdict — MANUAL CHECK.** `python3 scripts/run_verdict.py 43421661562`.
+   Expected: redundant GREEN .deb of the r61 tree (bank resume off #61's save, no dirty
+   patches). NOT a deliverable — fixes are NOT in it. GREEN → dispatch **#63** (lane
+   idle, 30-min rule): carries `b7f6cda` (patch 116 AI-nav off + 118 NTP addendum).
+   #63 GREEN → **re-run the desktop test** (forced-dark): AI nav entry gone, NTP body
+   ≈#141416; then r63 is the desktop-test-clean draft.
+2. **Windows #37 verdict — MANUAL CHECK.** `python3 scripts/run_verdict.py 43392811502`.
+   Expected GREEN cap-bank (wave TUs + p117 fix recompile on #36's gen 43351285749,
+   ~100 edges/min ⇒ likely caps again) → dispatch #38; if artifact run → verify draft
+   `windows-...-r37` (.exe + .zip), report delivery. Note: #37 predates `b7f6cda`.
+3. **APK #72 verdict — MANUAL CHECK.** `python3 scripts/run_verdict.py 43419387001`.
+   Bank-resume off #71's gen 43376020530 (wave already compiled) → expect GREEN ARTIFACT.
+   GREEN → user installs on Hot 60i: dock v2 (URL pill / tab swipe / hide button /
+   corner bar / scroll-only auto-hide), splash true-black, icon v3 padding, no
    default-browser promos. ANY crash → fresh `aegis-crash-*.txt` (trap stays armed).
-4. **PATCH NUMBERING RESOLVED 2026-11-13**: r60 UI wave (user feedback, all six items)
-   took 113 dock-v2, 114 aegis-theme-enforcement (splash/status bar proposal palette),
-   115 AI sweep 2 (Glic rollout/actor, Lens), 117 popups-off (What's-New + Android
-   default-browser promos; 117's dead-body fix = 10d93fa), 118 desktop true-black.
-   STAGED password-sync patch (`download/aegis-p114-out/114-aegis-passwords-sync.patch`,
-   re-validate vs post-118 chain before commit) rides the next desktop wave RENUMBERED
-   **119**; planned P2 Capsules → **120**; planned P1 de-Google identity → **121**.
-   Android Aegis ID parity pass (username field + avatar in AegisIdManager.java /
-   AegisEcosystemSettings.java; 119's Android password-sync half after) → **122**.
+4. **PATCH NUMBERING UPDATE 2026-11-13**: `b7f6cda` took the free slot **116** (AI-nav
+   hard-off) and extended 118 (NTP body pinned). Next-desktop-wave numbers unchanged:
+   staged password-sync → **119**; planned P2 Capsules → **120**; planned P1 de-Google
+   identity → **121**; Android Aegis ID parity pass → **122**.
 5. When user asks: publish chosen drafts (user decides which; never unprompted).
    NOTE: r70 was published 2026-11-13 06:43Z — not by assistant actions.
 
