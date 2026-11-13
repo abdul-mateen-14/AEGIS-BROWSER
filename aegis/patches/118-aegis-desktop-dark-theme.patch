@@ -67,3 +67,27 @@
    mixer[kColorToolbarContextualTasksButtonShadow] = {
        ui::SetAlpha(ui::kColorShadowBase, 0x255 * 17 / 100)};
    mixer[kColorToolbarButtonBackgroundHighlightedDefault] =
+
+# r61 runtime addendum: the NTP body sampled #3C3C3C on the forced-dark
+# r61 .deb - kColorSysBase resolves through the NativeTheme forced-dark
+# palette (Chromium greys), not the Aegis ramp. The material NTP mixer is
+# the last writer of kColorNewTabPageBackground, so pin it to Table 5
+# surface #141416 there (dark), keeping upstream behavior in light mode.
+
+--- a/chrome/browser/ui/color/material_new_tab_page_color_mixer.cc
++++ b/chrome/browser/ui/color/material_new_tab_page_color_mixer.cc
+@@ -50,7 +50,13 @@ void AddMaterialNewTabPageColorMixer(ui::ColorProvider* provider,
+       ui::kColorSysOnTonalContainer};
+   mixer[kColorNewTabPageAddShortcutBackgroundHovered] = {
+       ui::SetAlpha({ui::kColorSysOnSurface}, 0x14)};
+-  mixer[kColorNewTabPageBackground] = {ui::kColorSysBase};
++  // Aegis (patch 118): proposal Table 5 surface #141416 for the NTP body.
++  // Upstream defers to kColorSysBase, whose forced-dark NativeTheme palette
++  // lands on Chromium's greys (#3C3C3C observed on the r61 .deb) instead of
++  // the Aegis ramp. Pin the proposal surface directly so the color does not
++  // depend on the system palette at all.
++  mixer[kColorNewTabPageBackground] = {
++      dark_mode ? SkColorSetRGB(0x14, 0x14, 0x16) : ui::kColorSysBase};
+   mixer[kColorNewTabPageBorder] = {ui::kColorSysBaseContainer};
+   mixer[kColorNewTabPageButtonBackground] = {ui::kColorSysTonalContainer};
+   mixer[kColorNewTabPageButtonBackgroundHovered] = {

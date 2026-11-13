@@ -1,0 +1,61 @@
+# 116 - aegis-ai-nav-off (r61 follow-up, user feedback 2026-11-13 item 1)
+# Runtime evidence from the r61 .deb (forced-dark desktop session): the AI
+# innovations page itself is gone (chrome://settings/ai and /aiInnovations
+# both redirect to chrome://settings/), but the settings navigation still
+# shows a dangling "AI innovations" entry. Upstream gates that entry on
+# loadTimeData "showAiPage":
+#
+#   chrome/browser/ui/webui/settings/settings_ui.cc:
+#     html_source->AddBoolean("showAiPage",
+#         show_glic_section || show_ai_features_section ||
+#             enable_ai_mode_search || show_geic_section);
+#
+# Patch 115 killed the glic/lens feature defaults, but the remaining OR
+# terms (ai-feature loop, ai-mode search, GEIC) can still evaluate true in
+# a non-Google-branded build, leaving the dead nav link. Zero AI services
+# outside tabs means the entry point must not render at all.
+#
+# Fix: hard-off the whole AI settings surface in one place. "showAiPage"
+# drives the settings_menu <a id="ai"> visibility, so false removes the nav
+# entry and any residual route. UpdateShowGlicState() can re-set it to true
+# at runtime, so that path is neutralized as well. The AI-feature section
+# flag keeps its original value: it only affects sections inside the
+# now-unreachable AI page, and keeping the variable read avoids a
+# -Wunused-but-set-variable failure under -Werror.
+#
+# File: chrome/browser/ui/webui/settings/settings_ui.cc (pristine upstream
+# in this chain - patch 115 touches only chrome/common/chrome_features.cc
+# and components/lens/lens_features.cc).
+
+--- a/chrome/browser/ui/webui/settings/settings_ui.cc
++++ b/chrome/browser/ui/webui/settings/settings_ui.cc
+@@ -658,9 +658,15 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
+   // Within the AI subpage are separate sections for Glic, for GEIC, and for all
+   // other AI features. The visibility of these is separately controlled, but
+   // we want to show the subpage if any of them are enabled.
+-  html_source->AddBoolean("showAiPage",
+-                          show_glic_section || show_ai_features_section ||
+-                              enable_ai_mode_search || show_geic_section);
++  // Aegis (patch 116): AI innovations settings page + nav entry hard-off.
++  // Zero AI services outside tabs (user feedback 2026-11-13): the OR of the
++  // upstream feature sections still yields true in a non-Google-branded
++  // build and renders a dangling "AI innovations" nav entry pointing at a
++  // removed page (verified on the r61 .deb). Gate the entry point off.
++  // showAiPageAiFeatureSection keeps its original value: it only affects
++  // sections inside the now-unreachable AI page, and keeping the variable
++  // read avoids a -Wunused-but-set-variable failure under -Werror.
++  html_source->AddBoolean("showAiPage", false);
+   html_source->AddBoolean("showAiPageAiFeatureSection",
+                           show_ai_features_section);
+ 
+@@ -914,9 +920,7 @@ void SettingsUI::UpdateShowGlicState() {
+   base::DictValue update;
+   update.Set("showGlicSettings", show_glic);
+   update.Set("glicDisallowedByAdmin", enablement.DisallowedByAdmin());
+-  if (show_glic) {
+-    update.Set("showAiPage", true);
+-  }
++  // Aegis (patch 116): never re-open the AI page at runtime.
+ 
+   content::WebUIDataSource::Update(
+       web_ui()->GetWebContents()->GetBrowserContext(),
