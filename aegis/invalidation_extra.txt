@@ -46,3 +46,22 @@ gen:chrome/branded_strings_en-GB.pak
 gen:chrome/generated_resources_en-US.pak
 gen:chrome/generated_resources_en-GB.pak
 gen:chrome/chrome_unscaled_resources.pak
+
+# DURABLE (2026-11-13, r63 .deb desktop test): wave 121-126 webui edits were
+# STALE in the r63 artifact - patch 121's about_version.html/css rewrite and
+# version_ui_strings.grdp retitle did not reach the served chrome://version
+# page (Chromium logo + wordmark still rendered; title "About Version").
+# build_webui bundles (ui/webui/resources/tools/build_webui.gni) and grit
+# grd->pak are ACTION edges invisible to ninja -t deps, and only 2 of the
+# listed gen paths existed on the Linux runner out layout (locales, installer
+# were deleted; components/strings, components/resources etc. were not found
+# at those exact rel paths). Invalidate the whole webui bundle gen subtree
+# plus every plausible strings-grit gen dir so patched html/css/grdp files
+# always re-bundle. Cost: grit/bundle re-encode only, no CXX recompiles.
+gen:components/webui
+gen:components/strings
+gen:components/version_ui_resources
+gen:chrome/browser/resources
+gen:ui/webui/resources
+gen:components/components_strings.h
+gen:chrome/generated_resources.pak
