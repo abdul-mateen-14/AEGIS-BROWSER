@@ -293,6 +293,23 @@ the Hot 60i → launch.** Java crash → `aegis-crash-<millis>.txt` in Files/Dow
 (user sends it); crash with no trap file → native crash → fall back to LADB logcat
 or r58-install bisection.
 
+**Linux r59 .deb feature test 2026-11-13 (sandbox Xvfb+CDP, full report +
+13 screenshots at `download/aegis-r59-deb-review/`):** 10 features PASS —
+packaging/branding (097), product strings (089/096/103/107), patch-095 license
+line (renders on chrome://settings/help, string in pak), default search Aegis
+(098), cookie_controls_mode=1=kBlockThirdParty fresh-profile + radio UI (010;
+156 enum ground-truth: kOff=0/kBlockThirdParty=1/kIncognitoOnly=2), DNT on
+(030), metrics off by source+Local-State (040), suggest off (020), Shield with
+CDP `net::ERR_BLOCKED_BY_CLIENT` on GA/GTM/adservice + control LOADED (070),
+help links → aegis-browser.pages.dev (072/085), UA Chrome/ token intact.
+3 PARTIALs queued as candidate patch-116 material (desktop wave with 113/114/115):
+(1) chrome://version wordmark still Chromium — 106 missed
+chrome/app/theme/chromium/product_logo.png (107 covered only the .svg);
+(2) settings autofill card label still "Password Manager" (074's patched id is
+not the one that card renders); (3) Aegis ID dialog (108) unreachable — its
+kSigninButton hook is compiled but 073 removed the promo button; needs an
+explicit profile-menu item.
+
 ## 5. Deliverables ledger (verified via API 2026-11-12 06:1xZ)
 
 Published releases (user decides these; never delete unprompted):
