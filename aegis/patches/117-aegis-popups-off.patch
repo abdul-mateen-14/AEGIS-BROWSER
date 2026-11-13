@@ -17,16 +17,59 @@
 #    browser page remains fully functional.
 --- a/chrome/browser/ui/webui/whats_new/whats_new_util.cc
 +++ b/chrome/browser/ui/webui/whats_new/whats_new_util.cc
-@@ -58,6 +58,9 @@
+@@ -58,50 +58,9 @@
  
  bool ShouldShowForState(PrefService* local_state,
                          bool promotional_tabs_enabled) {
+-#if BUILDFLAG(IS_CHROMEOS)
 +  // Aegis (patch 117): What's New is a Google-branded surface that pops a
 +  // tab after every update. Disabled outright for this privacy browser.
-+  return false;
- #if BUILDFLAG(IS_CHROMEOS)
    return false;
- #else
+-#else
+-  LogStartupType(StartupType::kCalledShouldShow);
+-
+-  if (!promotional_tabs_enabled) {
+-    whats_new::LogStartupType(whats_new::StartupType::kPromotionalTabsDisabled);
+-    return false;
+-  }
+-
+-  if (!local_state ||
+-      !local_state->FindPreference(prefs::kLastWhatsNewVersion)) {
+-    LogStartupType(StartupType::kInvalidState);
+-    return false;
+-  }
+-
+-  // Allow disabling the What's New experience in tests using the standard
+-  // kNoFirstRun switch. This behavior can be overridden using the
+-  // kForceWhatsNew switch for the What's New experience integration tests.
+-  const base::CommandLine* command_line =
+-      base::CommandLine::ForCurrentProcess();
+-  if ((command_line->HasSwitch(switches::kNoFirstRun) &&
+-       !command_line->HasSwitch(switches::kForceWhatsNew)) ||
+-      !IsEnabled()) {
+-    LogStartupType(StartupType::kFeatureDisabled);
+-    return false;
+-  }
+-
+-  int last_version = local_state->GetInteger(prefs::kLastWhatsNewVersion);
+-
+-  // Don't show What's New if it's already been shown for the current major
+-  // milestone.
+-  if (CHROME_VERSION_MAJOR <= last_version) {
+-    LogStartupType(StartupType::kAlreadyShown);
+-    return false;
+-  }
+-
+-  // Set the last version here to indicate that What's New should not attempt
+-  // to display again for this milestone. This prevents the page from
+-  // potentially displaying multiple times in a given milestone, e.g. for
+-  // multiple profile relaunches (see https://crbug.com/40807492).
+-  local_state->SetInteger(prefs::kLastWhatsNewVersion, CHROME_VERSION_MAJOR);
+-  return true;
+-#endif
+ }
+ 
+ GURL GetWebUIStartupURL() {
 
 --- a/chrome/browser/ui/android/default_browser_promo/java/src/org/chromium/chrome/browser/ui/default_browser_promo/DefaultBrowserPromoUtils.java
 +++ b/chrome/browser/ui/android/default_browser_promo/java/src/org/chromium/chrome/browser/ui/default_browser_promo/DefaultBrowserPromoUtils.java
