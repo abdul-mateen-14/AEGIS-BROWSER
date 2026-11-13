@@ -497,24 +497,22 @@ script any time the list gets cluttered (never deletes live runs, never touches 
    USER: when r70 verdict = GREEN ARTIFACT, install r70 → expected clean launch; if ANY
    new crash appears, Files/Downloads gets a fresh `aegis-crash-*.txt` (send it — the
    trap stays armed). The "no file = native crash" branch is moot — we got files.
-3. **PATCH 114 AUTHORED 2026-11-11 (P6 client)** — complete plan at
-   `docs/PATCH_114_PLAN.md`; source staged `download/aegis-p114-src/`
-   (aegis_password_sync.h 232 / .cc 916 lines); generated + validated patch at
-   `download/aegis-p114-out/114-aegis-passwords-sync.patch` (1220 lines) via
-   `scripts/gen_114.py` (include lint + git apply --check vs post-108
-   mini-tree, both green). **Deliberately NOT committed into aegis/patches/**:
-   joining the chain invalidates the banks, so it rides the next desktop wave
-   with 113/115. All password API signatures verified against the
-   156.0.8078.79 pin (plan §3); flagged compile-time anchors in plan §8.4.
-4. Author **patch 115 (P1 de-Google identity)** from ready anchors, then
-   **patch 113 (P2 Capsules)** — dispatch as one desktop wave (per user's
-   one-wave-per-lane preference); the wave carries 113 + 114 + 115 in one
-   bank invalidation. NOTE: the number 112 was used 2026-11-13 by the
-   crash-loop fix (settings service) — planned identity patch renumbered
-   112→115; 113/114 unchanged.
-5. **Android parity pass** (small patch 116): username field + avatar in
-   Android Aegis ID (AegisIdManager.java / AegisEcosystemSettings.java), riding
-   the next APK wave; Android password-sync counterpart after that.
+3. **PATCH NUMBERING RESOLVED 2026-11-13**: the r60 UI wave (user feedback,
+   all six items) took 113-115 as committed patches: 113 dock-v2, 114
+   aegis-theme-enforcement (splash/status bar proposal palette), 115 AI sweep
+   2 (Glic rollout/actor, Lens). Plus 117 popups-off (What's New + Android
+   default-browser promos) and 118 desktop dark true-black. The STAGED
+   password-sync patch (`download/aegis-p114-out/114-aegis-passwords-sync.patch`,
+   re-validate vs post-118 chain before commit) rides the next desktop wave
+   RENUMBERED **119**; planned P2 Capsules → **120**; planned P1 de-Google
+   identity → **121**. Android Aegis ID parity pass → **122**.
+4. **r60 wave dispatched 2026-11-13** at f09dd2f: linux r60 (id 43372651434)
+   building; apk r71 queued behind r70 (30-min rule); windows #37 queues
+   behind #36's bank. Launcher icon v3 committed in the same commit
+   (mark 46→32dp in the 108dp viewport; splash true-black pairs with it).
+5. **Android parity pass** (patch 122): username field + avatar in
+   Android Aegis ID (AegisIdManager.java / AegisEcosystemSettings.java);
+   Android password-sync counterpart (119's Android half) after that.
 6. When user asks: publish chosen drafts (user decides which; never unprompted).
 
 ---
