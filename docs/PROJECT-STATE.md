@@ -70,7 +70,7 @@ start with `python3 scripts/run_verdict.py <run_id>`. Dispatch discipline (iron 
 
 | Lane | Latest run | State | Head | Meaning |
 |---|---|---|---|---|
-| **APK** | #69 id=43276014308 (GREEN 2026-11-12T20:11Z) | **DONE — ARTIFACT, awaiting device test** | `345eb52` | **CRASH-TRAP APK SHIPPED (the discriminator).** Restored #68's error bank gen 43250401495 (196,687 edges), surgical invalidation deleted only the trap-registration dependents: **AEGIS-DIRTY edges=5,042** (vs 11,658 for a CI-only change — the fix cost just the chrome_java compile chain), ninja rc=0 after 63 min, check_align 4096+16384 both passed, draft `build-...-r69` (.apk 338,097,998 B = r67 + 14,420 B — the compiled trap class is in). **USER NEXT STEP: install r69 on the Hot 60i → launch → if crash, Files/Downloads has `aegis-crash-<millis>.txt` (send it = full Java stack); crash with NO file → native crash → LADB logcat or r58-install bisection.** r68 was the red predecessor (trap class unregistered in `chrome_java_sources.gni`, fixed by patch-111 4th hunk @ 345eb52, validated `git apply --3way` + reverse-check). r67 remains GREEN ARTIFACT @ 7c49140 (338,083,578 B, byte-size-identical to r66; -test16k variant SKIPPED — CI build-tools lacks `-P 16` zipalign). NO watchdog — check manually. |
+| **APK** | #70 id=43361540474 (dispatched 2026-11-13T03:49Z) | **in_progress — root-cause fix build** | `00f965b` | **STARTUP CRASH ROOT-CAUSED via the r69 trap.** User sent two `aegis-crash-*.txt` (08:26:25 / 08:26:28 PKT, 3.8 s apart): uncaught **NPE in PasswordSettingsUpdaterDispatcherBridge.getSettingValue** on the settings-updater ThreadPool single-thread runner → process death → launch crash loop. Chain: patch 110 forces IsPasswordManagerAvailable() true → PasswordManagerSettingsServiceFactory::CreateService instantiates the GMS-backed PasswordManagerSettingsServiceAndroidImpl → bridge helper on a ThreadPool runner → Java create() holding a **null PasswordSettingsAccessor** (PasswordSettingsAccessorFactoryUpstreamImpl is EMPTY in un-branded builds; asserts stripped in release) → first startup getSettingValue NPEs. Fix = **patch 112** @ 00f965b: Android routes through the pref-backed PasswordManagerSettingsServiceImpl (upstream's designed no-GMS fallback, compiled on Android already; no JNI, toggles write local prefs). Verified against the exact 156.0.8078.79 tag (git apply --check + apply + reverse, all OK). r70 restores #69's bank (200,993 edges) — only the settings-service TU + dependents recompile, expect a short wave. r69 stays GREEN ARTIFACT (338,097,998 B); r67 GREEN @ 7c49140 (338,083,578 B). NO watchdog — check manually. |
 | **Linux** | #59 id=43150901156 (GREEN 2026-11-12T05:5xZ) | **DONE — artifact** | `da82b21` | FIRST 156-CHAIN LINUX ARTIFACT. Restored #58's 1.61 GB bank (gen 43133968988), only 1,386 dirty edges (patch-108 delta), ninja rc=0 after 52 min, .deb 116 MB. Draft `linux-156.0.8078.79-r59` (.deb 116 MB + portable .zip 167 MB). gfx::PNGCodec fix validated end-to-end. Desktop gate for Windows satisfied. |
 | **Windows** | #36 id=43351285749 (dispatched 2026-11-13T02:19Z) | **in_progress** | `f0c7f29` | Restore wave 3: restores #35's bank gen 43276366118 (1,449,991,132 B, 67,993 edges). **#35 verdict 00:0xZ Nov 13: GREEN BANK RUN** — restored gen 43164506963 (62,327 edges), dirty 58,567 (full wave redo — #34's lost progress confirmed cost), ninja rc=137 (cap INT) after 272 min at **[27,214/58,567] ≈ 46.5%** (rate ~100 edges/min, better than #33's 93), BUILD_REASON=cap, bank streamed clean (vols=2, all `[up]` size-verified) — first fully-completed bank save since #33. ~31.3k edges left ≈ 314 min ⇒ #36 caps again, #37 finishes. Builds chrome + mini_installer. NO watchdog — check manually. |
 
@@ -84,6 +84,15 @@ applies identically and the run should mirror #66's profile (~148 min ninja).
 Windows #34 builds `778d3c9` = docs + patch 111 — patch 111 touches ONLY chrome/android
 class files (AegisCrashTrap.java + its 2 hook sites), outside the Windows ninja graph,
 so the #33 bank applies identically and dirty stays patch-108-sized.
+
+**Verdicts 2026-11-13 04:0xZ:** APK r69 = GREEN ARTIFACT and **the trap did its job** — user
+ delivered two aegis-crash-*.txt captured on the Hot 60i at launch (thread
+ "ThreadPoolSingl..."): java.lang.NullPointerException at
+ PasswordSettingsUpdaterDispatcherBridge.getSettingValue (R8-remapped :25), native frames
+ via JniAndroid.handleException only (handler unwind, not a native fault). Root cause
+ chain + fix = patch 112 (see APK lane row); r70 id=43361540474 dispatched @ 00f965b.
+ Windows #35 = GREEN BANK RUN (already recorded); #36 in_progress @ f0c7f29 (started
+ 02:19Z, cap ≈ 06:39Z if not finished earlier).
 
 **Verdicts 2026-11-11 18:0xZ:** APK #63 = cap-bank GREEN (ninja rc=1 at 279 min
 classified cap, 146,671 edges, 1.96 GB banked) — successor #64 dispatched. Linux #55 =
@@ -369,7 +378,9 @@ b8b1ab0  docs: Linux #58 link-stage verdict + lane snapshot (docs-only)
 c1286ef  docs: r67 GREEN ARTIFACT + diagnostics + r68 dispatched
 345eb52  apk: patch 111 registers AegisCrashTrap in chrome_java_sources.gni (r68 fix)
 f0c7f29  docs: r68 compile-failure verdict + patch-111 fix + r69; #34 cancelled + #35
-                                                                          ← main HEAD (#69 built 345eb52; #36 builds f0c7f29)
+dc1244c  docs: r69 GREEN ARTIFACT + #35 GREEN BANK RUN (46.5%) + #36 dispatched
+00f965b  patch 112: settings service on pref-backed impl (fix startup NPE crash loop)
+                                                                          ← main HEAD (#70 builds 00f965b; #36 builds f0c7f29)
 ```
 
 (docs commits interleaved throughout: lane snapshots, ledger refreshes, cron purge,
@@ -382,14 +393,16 @@ patch-114 authoring — see git log)
 | P3 | Tab marks de-Chrome (Android + desktop) | **DONE** | earlier wave (logo asset swap, Android tab-card mark; desktop had no Chrome literal) |
 | P4 | Aegis ID username | **DONE** (backend + desktop client) | worker `/v1/auth/register` `username` (3–24 `a-z0-9_-`, unique, 409 `username_taken`, live in D1) + patch 108 v2 (`1d7265d`). **Left: Android-side username field** (AegisIdManager.java / AegisEcosystemSettings.java, patch 087 surface) |
 | P5 | Aegis ID avatar (upload→scale→use) | **DONE desktop client**, worker needs nothing | patch 108 v2: file picker → SkCodec decode → skia resize fit 256 → PNG → AesGcmSeal(vault key) → push item_type=setting item_key=profile/avatar; pull path decrypts+caches in `aegis_id_state.json`. **Left: Android-side avatar** |
-| P6 | Passwords sync via aegis-sync | **AUTHORED 2026-11-11** (source + plan + patch generated + apply-tested; NOT in chain yet) | patch 114: `docs/PATCH_114_PLAN.md` (full plan + verified 156 anchors); source staged `download/aegis-p114-src/`; generated patch `download/aegis-p114-out/114-aegis-passwords-sync.patch` (1220 lines, include-lint + git-apply green). Joins the next desktop wave with 112/113 (bank invalidates once). Left: Android counterpart. |
-| P1 | Total de-Google identity (paths, version page, installer, strings) | **NOT STARTED** — patch 112 | anchors in `download/aegis-design/DEGOOGLE-IDENTITY-CAPSULES-PLAN.md` §P1 (chromium_strings.grd:288-303/509-522/1185-1191, chrome_constants.cc:34-53, installer linux files, version_ui, components_chromium_strings.grd; profile dir → `~/.config/aegis-browser`; **UA `Chrome/` token DO NOT CHANGE**) |
-| P2 | Capsules = native tab groups (Edge-style) | **NOT STARTED** — patch 113, ship after 112 | anchors in same file §P2 (TabStripModel.h:547/684/693/756/713, TabStripController.h:104/108/116/124/162-184, TabGroupModel.h:42/47/57, tab_group_color.h:39-51 (9 colors), tab_group_editor_bubble_view.h:44/489, saved_tab_groups, tab_context_menu_command.h:24-30; NO TabGroupController at 156; tab_strip_action_container is Glic-only → group UI is ours) |
+| P6 | Passwords sync via aegis-sync | **AUTHORED 2026-11-11** (source + plan + patch generated + apply-tested; NOT in chain yet) | patch 114: `docs/PATCH_114_PLAN.md` (full plan + verified 156 anchors); source staged `download/aegis-p114-src/`; generated patch `download/aegis-p114-out/114-aegis-passwords-sync.patch` (1220 lines, include-lint + git-apply green). Joins the next desktop wave with 113/115 (bank invalidates once). Left: Android counterpart. |
+| P1 | Total de-Google identity (paths, version page, installer, strings) | **NOT STARTED** — patch 115 (renumbered from 112: that number was used 2026-11-13 by the crash-loop fix) | anchors in `download/aegis-design/DEGOOGLE-IDENTITY-CAPSULES-PLAN.md` §P1 (chromium_strings.grd:288-303/509-522/1185-1191, chrome_constants.cc:34-53, installer linux files, version_ui, components_chromium_strings.grd; profile dir → `~/.config/aegis-browser`; **UA `Chrome/` token DO NOT CHANGE**) |
+| P2 | Capsules = native tab groups (Edge-style) | **NOT STARTED** — patch 113, ship with 115 | anchors in same file §P2 (TabStripModel.h:547/684/693/756/713, TabStripController.h:104/108/116/124/162-184, TabGroupModel.h:42/47/57, tab_group_color.h:39-51 (9 colors), tab_group_editor_bubble_view.h:44/489, saved_tab_groups, tab_context_menu_command.h:24-30; NO TabGroupController at 156; tab_strip_action_container is Glic-only → group UI is ours) |
 
 ## 8. Fix-forward log (2026-11-11 wave — most recent first)
 
 | Run | Error | Fix commit | Lesson |
 |---|---|---|---|
+| APK r70 (00f965b) | fix-forward: ON-DEVICE LAUNCH CRASH LOOP — r69 trap files show NPE in PasswordSettingsUpdaterDispatcherBridge.getSettingValue (settings-updater background thread, 2× at launch, 3.8 s apart). Root: patch 110's forced IsPasswordManagerAvailable() gate ALSO instantiates the GMS-backed PasswordManagerSettingsServiceAndroidImpl; un-branded builds ship no downstream PasswordSettingsAccessorFactory (UpstreamImpl is empty) → null accessor → NPE. Fix: Android uses the pref-backed PasswordManagerSettingsServiceImpl (upstream's designed no-GMS fallback), patch 112 | `00f965b` | THE CRASH TRAP PAID OFF — one device launch + two 4 KB text files replaced weeks of blind bisection. A forced gate must be audited for EVERY consumer, not just the one you patched (the gate had two call sites: backend factory + settings-service factory; only the first was considered). Upstream `@Nullable`-with-`assert` patterns are release-deadly: assert never fires in release APKs, so the null flies through to the deref |
+| APK r69 (345eb52) | — GREEN ARTIFACT (draft r69, 338,097,998 B = r67 + 14,420 B): bank resume dirty 5,042, ninja rc=0 after 63 min. On-device: launches → crash loop → trap wrote `aegis-crash-*.txt` = DIAGNOSTIC SUCCESS | — | Patch-111 4th-hunk gni registration was the complete fix. VERIFY the trap fires on a real crash before trusting it as instrumentation — it did (full Java stack + thread + device metadata captured, files land in Files/Downloads via MediaStore) |
 | APK #66 (35a8e90) | — **GREEN ARTIFACT** (draft r66): bank resume 11,658 dirty edges, ninja rc=0 after 148 min, v1+v2+v3 signed+verified. On-device install then failed "package appears to be invalid" — APK locally verified GOOD (zip/sign/manifest/libs all clean; r58 structurally identical; minSdk 29 = stock 156). Device-side suspected | — | ALWAYS dissect the artifact before blaming the build: byte-exact download + unzip -t + signing-block walk + AXML parse + .so alignment check took ~15 min and cleared the whole CI pipeline. minSdk=29 comes from config.gni default_min_sdk_version (Cronet-only =24) — Chromium 156 requires Android 10+ like stock Chrome. Installer CAN show the label while refusing install — parseability ≠ installability |
 | Linux #59 (da82b21) | — **GREEN ARTIFACT** (draft r59): bank resume 1,386 dirty edges, ninja rc=0 after 52 min, .deb 116 MB | — | Bank + surgical invalidation paid off completely: the whole link-stage fix cost was ONE 52-min run instead of a full rebuild. gfx::PNGCodec (//ui/gfx) encode + kN32 contract validated end-to-end on desktop. First 156-chain Linux deliverable |
 | Linux #58 (e0824f0) | LINK STAGE (first ever): `[1318/1329] LINK ./chrome` — `undefined symbol: SkPngEncoder::Encode(SkPixmap const&, Options const&)` from LoadAndNormalizeAvatar. ALL compile TUs green (e0824f0 UNSAFE_TODO fix held) — bank carried 182k+ edges to the finish line | `da82b21` | SKIA PNG ENCODE IS RUST AT 156: //skia compiles `skia_encode_rust_png_srcs`, NOT the libpng `SkPngEncoder.cpp` — the header declares the old static but nothing defines it (compile-clean, link-dead). Rule: for SkBitmap→PNG use `gfx::PNGCodec::EncodeBGRASkBitmap` (//ui/gfx, always linked; returns `std::optional<std::vector<uint8_t>>` at 156 → also DELETES the UNSAFE_TODO escape). Force kN32 in DecodeAndFitAvatar for the EncodeBGRASkBitmap contract. A compile-error-free run can still die at link — bank+invalidate made the retry cheap (dialog TU + relink only) |
@@ -459,16 +472,14 @@ script any time the list gets cluttered (never deletes live runs, never touches 
    windows` (expected: ~31.3k dirty edges, caps at ≈89% at 100 edges/min — just
    short; #37 finishes). GREEN artifact → verify draft `windows-...-r36` (.exe +
    .zip), report delivery.
-2. **APK launch-crash triage (r66 on Infinix Hot 60i) — user chose path (3).** 16 KB
-   hypothesis ELIMINATED (ELF p_align + zip offsets both 16K-compliant, see §4). Now:
-   (a) DONE 2026-11-12 — diagnostics ran on the phone, results in §4 (4K kernel,
-   audits green, loader machinery healthy). (b) DONE — r68 red on a compile error
-   (trap class unregistered, fixed 345eb52); r69 id=43276014308 verdict **GREEN
-   ARTIFACT** 2026-11-12T20:11Z — draft `build-...-r69` (.apk 338,097,998 B).
-   (c) USER NOW: install r69 on the Hot 60i → launch → check Files/Downloads for
-   `aegis-crash-*.txt`: file present = Java crash with full stack (send it); crash
-   with no file = native crash → path (1) LADB logcat or path (2) r58 install
-   bisection.
+2. **APK launch-crash triage — RESOLVED 2026-11-13 (root cause in hand).** The r69 crash
+   trap captured it: NPE in PasswordSettingsUpdaterDispatcherBridge.getSettingValue —
+   patch 110's forced availability gate also created the GMS-backed settings service,
+   whose Java accessor is null in un-branded builds. Patch 112 routes Android through
+   the pref-backed PasswordManagerSettingsServiceImpl; r70 (id=43361540474) builds it.
+   USER: when r70 verdict = GREEN ARTIFACT, install r70 → expected clean launch; if ANY
+   new crash appears, Files/Downloads gets a fresh `aegis-crash-*.txt` (send it — the
+   trap stays armed). The "no file = native crash" branch is moot — we got files.
 3. **PATCH 114 AUTHORED 2026-11-11 (P6 client)** — complete plan at
    `docs/PATCH_114_PLAN.md`; source staged `download/aegis-p114-src/`
    (aegis_password_sync.h 232 / .cc 916 lines); generated + validated patch at
@@ -476,13 +487,15 @@ script any time the list gets cluttered (never deletes live runs, never touches 
    `scripts/gen_114.py` (include lint + git apply --check vs post-108
    mini-tree, both green). **Deliberately NOT committed into aegis/patches/**:
    joining the chain invalidates the banks, so it rides the next desktop wave
-   with 112/113. All password API signatures verified against the
+   with 113/115. All password API signatures verified against the
    156.0.8078.79 pin (plan §3); flagged compile-time anchors in plan §8.4.
-4. Author **patch 112 (P1 de-Google identity)** from ready anchors, then
-   **patch 113 (P2 Capsules)** — dispatch as one desktop wave after Linux #53
-   settles (per user's one-wave-per-lane preference); the wave carries
-   112 + 113 + 114 in one bank invalidation.
-5. **Android parity pass** (small patch 115): username field + avatar in
+4. Author **patch 115 (P1 de-Google identity)** from ready anchors, then
+   **patch 113 (P2 Capsules)** — dispatch as one desktop wave (per user's
+   one-wave-per-lane preference); the wave carries 113 + 114 + 115 in one
+   bank invalidation. NOTE: the number 112 was used 2026-11-13 by the
+   crash-loop fix (settings service) — planned identity patch renumbered
+   112→115; 113/114 unchanged.
+5. **Android parity pass** (small patch 116): username field + avatar in
    Android Aegis ID (AegisIdManager.java / AegisEcosystemSettings.java), riding
    the next APK wave; Android password-sync counterpart after that.
 6. When user asks: publish chosen drafts (user decides which; never unprompted).
