@@ -10,7 +10,7 @@
 diff --git a/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java b/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java
 index 194b070..8846a44 100644
 --- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java
-+++ chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java
 @@ -5,39 +5,63 @@
  package org.chromium.chrome.browser.aegis.home;
  
