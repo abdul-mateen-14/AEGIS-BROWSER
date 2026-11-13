@@ -1,0 +1,101 @@
+# 121 - aegis-desktop-identity (user feedback 2026-11-13: "why chromium logo
+# is still there", settings header Chrome logo)
+# The version page (chrome://version) and the settings About page still paint
+# Chromium product logo PNGs (IDR_PRODUCT_LOGO / current-channel-logo are
+# binary theme assets, so the earlier SVG swap in patch 107 never reached
+# them). Both pages now render an inline Aegis mark (rounded dark tile +
+# outlined triangle) with the Aegis wordmark - no Chromium asset remains.
+# Also retitles the version page "About Aegis".
+
+--- a/chrome/browser/resources/settings/about_page/about_page.html.ts
++++ b/chrome/browser/resources/settings/about_page/about_page.html.ts
+@@ -13,11 +13,13 @@ export function getHtml(this: SettingsAboutPageElement) {
+   return html`<!--_html_template_start_-->
+ <settings-section page-title="$i18n{aboutPageTitle}">
+   <div class="cr-row two-line first">
+-    <img id="productLogo" @click="${this.onProductLogoClick_}"
+-        srcset="chrome://theme/current-channel-logo@1x 1x,
+-                chrome://theme/current-channel-logo@2x 2x"
+-        alt="$i18n{aboutProductLogoAlt}"
+-        role="presentation">
++    <svg id="productLogo" class="aegis-mark" viewBox="0 0 108 108" width="40"
++        height="40" @click="${this.onProductLogoClick_}"
++        role="img" aria-label="$i18n{aboutProductLogoAlt}">
++      <rect x="2" y="2" width="104" height="104" rx="26" fill="#1C1C1E"/>
++      <path d="M54 30 L79 80 L29 80 Z" fill="none" stroke="#F2F2F7"
++            stroke-width="7" stroke-linejoin="round"/>
++    </svg>
+     <div class="product-title">$i18n{aboutProductTitle}</div>
+   </div>
+   <div class="cr-row two-line">
+--- a/components/version_ui_strings.grdp
++++ b/components/version_ui_strings.grdp
+@@ -1,7 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <grit-part>
+   <message name="IDS_VERSION_UI_TITLE" desc="Title on the about:version page">
+-    About Version
++    About Aegis
+   </message>
+   <message name="IDS_VERSION_UI_OFFICIAL" desc="official build on the about:version page">
+     Official Build
+--- a/components/webui/version/resources/about_version.css
++++ b/components/webui/version/resources/about_version.css
+@@ -63,6 +63,19 @@ body {
+   width: 180px;
+ }
+ 
++/* Aegis identity mark (patch 121). */
++.aegis-mark {
++  display: inline-block;
++}
++
++.aegis-wordmark {
++  color: var(--cr-fallback-text-primary, #e8e8ed);
++  font-size: 1.6em;
++  font-weight: 400;
++  letter-spacing: 0.01em;
++  margin-top: 6px;
++}
++
+ #company {
+   font-size: 0.7em;
+   text-align: end;
+--- a/components/webui/version/resources/about_version.html
++++ b/components/webui/version/resources/about_version.html
+@@ -29,25 +29,16 @@ about:version template page
+   <body>
+     <div id="outer">
+       <div id="logo">
+-<if expr="not is_android and not is_ios">
+-        <!-- Version for themes. -->
+-        <picture>
+-          <source srcset="chrome://theme/IDR_PRODUCT_LOGO_WHITE,
+-                          chrome://theme/IDR_PRODUCT_LOGO_WHITE@2x 2x"
+-                  media="(prefers-color-scheme: dark)">
+-          <source srcset="chrome://theme/IDR_PRODUCT_LOGO,
+-                          chrome://theme/IDR_PRODUCT_LOGO@2x 2x"
+-                  media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)">
+-          <img alt="$i18n{logo_alt_text}" src="chrome://theme/IDR_PRODUCT_LOGO">
+-        </picture>
+-</if>
+-<if expr="is_ios or is_android">
+-        <picture>
+-          <source srcset="images/product_logo_white.png" media="(prefers-color-scheme: dark)">
+-          <source srcset="images/product_logo.png" media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)">
+-          <img alt="$i18n{logo_alt_text}" src="images/product_logo.png">
+-        </picture>
+-</if>
++<!-- Aegis identity mark (patch 121): replaces the Chromium product
++             logo on every platform with the inline Aegis mark, so no binary
++             Chromium asset is left on the version page. -->
++        <svg class="aegis-mark" viewBox="0 0 108 108" width="88" height="88"
++             role="img" aria-label="$i18n{logo_alt_text}">
++          <rect x="2" y="2" width="104" height="104" rx="26" fill="#1C1C1E"/>
++          <path d="M54 30 L79 80 L29 80 Z" fill="none" stroke="#F2F2F7"
++                stroke-width="7" stroke-linejoin="round"/>
++        </svg>
++        <div class="aegis-wordmark">Aegis</div>
+         <div id="company">$i18n{company}</div>
+         <div id="copyright">$i18n{copyright}</div>
+       </div>

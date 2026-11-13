@@ -1,0 +1,724 @@
+# 125 - aegis-ntp-custom (user-requested Android home rework)
+# Quick-shield tiles become user shortcuts: editable via long-press (remove)
+# and a plus tile (add, name + URL), persisted in app preferences. Every URL
+# tile shows the site favicon like Chrome (LargeIconBridge, letter fallback).
+# Wallpaper: long-press the home surface for six preset surfaces or any
+# device image (ACTION_OPEN_DOCUMENT, persistable URI, scrim overlay).
+# The wallpaper picker result is routed through the activity's
+# onActivityResult into AegisHomeView.onWallpaperResult.
+
+diff --git a/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java b/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java
+index 194b070..8846a44 100644
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java
++++ chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java
+@@ -5,39 +5,63 @@
+ package org.chromium.chrome.browser.aegis.home;
+ 
+ import android.app.Activity;
++import android.app.AlertDialog;
++import android.content.Intent;
++import android.graphics.Bitmap;
++import android.graphics.BitmapFactory;
++import android.graphics.Canvas;
++import android.graphics.Color;
++import android.graphics.Paint;
+ import android.graphics.Typeface;
++import android.graphics.drawable.BitmapDrawable;
++import android.graphics.drawable.Drawable;
+ import android.graphics.drawable.GradientDrawable;
++import android.graphics.drawable.LayerDrawable;
++import android.net.Uri;
+ import android.os.Handler;
+ import android.os.Looper;
+ import android.view.Gravity;
+ import android.view.View;
+ import android.view.ViewGroup;
++import android.widget.EditText;
+ import android.widget.FrameLayout;
+ import android.widget.GridLayout;
++import android.widget.ImageView;
+ import android.widget.LinearLayout;
+ import android.widget.TextView;
+ 
++import org.chromium.base.ApplicationStatus;
++import org.chromium.base.ContextUtils;
+ import org.chromium.build.annotations.NullMarked;
+ import org.chromium.build.annotations.Nullable;
+ import org.chromium.chrome.R;
+ import org.chromium.chrome.browser.ChromeTabbedActivity;
++import org.chromium.chrome.browser.profiles.Profile;
+ import org.chromium.chrome.browser.tab.Tab;
+ import org.chromium.chrome.browser.tab.TabObserver;
+ import org.chromium.components.embedder_support.util.UrlUtilities;
++import org.chromium.components.favicon.LargeIconBridge;
++import org.chromium.url.GURL;
+ 
++import java.io.InputStream;
+ import java.text.SimpleDateFormat;
++import java.util.ArrayList;
+ import java.util.Date;
++import java.util.List;
+ import java.util.Locale;
+ 
+ /**
+- * Aegis new-tab home (proposal Plate 01): clock, hardened status
+- * pill and quick-shields tiles over a monochrome gradient, edge to edge
+- * under the status bar. A full-screen opaque overlay, LAST child of the
+- * content root (paints above the coordinator: NTP, Hub, suggestions),
+- * visible whenever the current tab is the new-tab page; the glass dock
+- * installs right after it and floats above. Tiles open URLs in the
+- * current tab; the settings tile opens Aegis settings, the private tile
+- * a private tab.
++ * Aegis new-tab home (proposal Plate 01, patch 125 customization): clock,
++ * hardened status pill and quick-shields tiles over a user-selectable
++ * wallpaper, edge to edge under the status bar. A full-screen opaque
++ * overlay, LAST child of the content root (paints above the coordinator:
++ * NTP, Hub, suggestions), visible whenever the current tab is the new-tab
++ * page; the glass dock installs right after it and floats above.
++ *
++ * <p>Patch 125: tiles are user editable (long-press removes, the plus tile
++ * adds), each URL tile shows the site favicon like Chrome, and the
++ * wallpaper is selectable - six preset surfaces or any image from device
++ * storage. Tiles persist in app preferences.
+  */
+ @NullMarked
+ public class AegisHomeView extends FrameLayout {
+@@ -45,10 +69,24 @@ public class AegisHomeView extends FrameLayout {
+     private static final long CLOCK_MS = 30_000;
+     private static final long CHECK_MS = 1000;
+ 
++    /** Preference key holding the JSON shortcut list. */
++    static final String PREF_TILES = "aegis_ntp_tiles";
++    /** Preference key holding the wallpaper spec ("color:#RRGGBB" or "uri:..."). */
++    static final String PREF_WALLPAPER = "aegis_ntp_wallpaper";
++    /** Request code for the system image picker (patch 125 wallpaper). */
++    public static final int WALLPAPER_PICK_REQUEST = 42125;
++
++    /** Preset wallpaper surfaces (proposal Table 5 shades + accents). */
++    private static final String[] PRESET_WALLPAPERS =
++            new String[] {"#0A0A0B", "#141416", "#0B1B2B", "#0B1F14", "#1D0F1E", "#26200F"};
++
+     private final TextView mClock;
+     private final TextView mDate;
+     private final ChromeTabbedActivity mActivity;
+     private final Handler mHandler = new Handler(Looper.getMainLooper());
++    private final GridLayout mGrid;
++    private final LinearLayout mColumn;
++    private final LargeIconBridge mIconBridge;
+     /** One-shot flip: runs tick() without re-arming the polling loop. */
+     private final Runnable mTick = this::tick;
+     /** 1 Hz fallback loop (tab-switch detection; observer handles navs). */
+@@ -75,7 +113,7 @@ public class AegisHomeView extends FrameLayout {
+                 }
+ 
+                 @Override
+-                public void onPageLoadFinished(Tab tab, org.chromium.url.GURL url) {
++                public void onPageLoadFinished(Tab tab, GURL url) {
+                     mHandler.post(mTick);
+                 }
+             };
+@@ -83,6 +121,8 @@ public class AegisHomeView extends FrameLayout {
+             new SimpleDateFormat("HH:mm", Locale.getDefault());
+     private final SimpleDateFormat mDateFormat =
+             new SimpleDateFormat("EEE, MMMM d", Locale.getDefault());
++    /** Open wallpaper picker dialog, if any (dismissed on selection). */
++    private @Nullable AlertDialog mWallpaperDialog;
+ 
+     /** Installs the home overlay once, as the LAST child of the content root
+      *  (the dock installs right after and floats above it). */
+@@ -102,6 +142,30 @@ public class AegisHomeView extends FrameLayout {
+                         ViewGroup.LayoutParams.MATCH_PARENT));
+     }
+ 
++    /** Routes the wallpaper picker result (called from the activity). */
++    public static void onWallpaperResult(@Nullable Intent data) {
++        if (data == null || data.getData() == null) return;
++        Uri uri = data.getData();
++        Activity activity = ApplicationStatus.getLastTrackedFocusedActivity();
++        if (activity == null) return;
++        try {
++            activity.getContentResolver().takePersistableUriPermission(
++                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
++        } catch (SecurityException e) {
++            // Non-persistable grant; the wallpaper works for this session.
++        }
++        setWallpaperSpec("uri:" + uri.toString());
++        View home = activity.findViewById(R.id.aegis_home);
++        if (home instanceof AegisHomeView) {
++            ((AegisHomeView) home).applyWallpaper();
++        }
++    }
++
++    /** Stores the wallpaper spec preference. */
++    public static void setWallpaperSpec(String spec) {
++        ContextUtils.getAppSharedPreferences().edit().putString(PREF_WALLPAPER, spec).apply();
++    }
++
+     private AegisHomeView(ChromeTabbedActivity activity) {
+         super(activity);
+         mActivity = activity;
+@@ -110,9 +174,9 @@ public class AegisHomeView extends FrameLayout {
+         // (search box, tiles) never receives them through the overlay.
+         setClickable(true);
+ 
+-        LinearLayout column = new LinearLayout(getContext());
+-        column.setOrientation(LinearLayout.VERTICAL);
+-        column.setGravity(Gravity.CENTER_HORIZONTAL);
++        mColumn = new LinearLayout(getContext());
++        mColumn.setOrientation(LinearLayout.VERTICAL);
++        mColumn.setGravity(Gravity.CENTER_HORIZONTAL);
+ 
+         mClock = new TextView(getContext());
+         mClock.setTextSize(82);
+@@ -120,7 +184,7 @@ public class AegisHomeView extends FrameLayout {
+         mClock.setFontFeatureSettings("tnum");
+         mClock.setTextColor(getContext().getColor(R.color.aegis_text_primary));
+         mClock.setLetterSpacing(-0.02f);
+-        column.addView(mClock);
++        mColumn.addView(mClock);
+ 
+         mDate = new TextView(getContext());
+         mDate.setTextSize(10);
+@@ -129,8 +193,8 @@ public class AegisHomeView extends FrameLayout {
+         mDate.setTypeface(mDate.getTypeface(), Typeface.BOLD);
+         mDate.setTextColor(getContext().getColor(R.color.aegis_text_secondary));
+         int dateTop = (int) (6 * getResources().getDisplayMetrics().density);
+-        column.setPadding(0, (int) (110 * getResources().getDisplayMetrics().density), 0, 0);
+-        column.addView(mDate);
++        mColumn.setPadding(0, (int) (110 * getResources().getDisplayMetrics().density), 0, 0);
++        mColumn.addView(mDate);
+         ((LinearLayout.LayoutParams) mDate.getLayoutParams()).topMargin = dateTop;
+ 
+         TextView status = new TextView(getContext());
+@@ -154,7 +218,7 @@ public class AegisHomeView extends FrameLayout {
+                         ViewGroup.LayoutParams.WRAP_CONTENT,
+                         ViewGroup.LayoutParams.WRAP_CONTENT);
+         statusLp.topMargin = (int) (18 * getResources().getDisplayMetrics().density);
+-        column.addView(status, statusLp);
++        mColumn.addView(status, statusLp);
+ 
+         TextView quick = new TextView(getContext());
+         quick.setText(getContext().getString(R.string.aegis_home_quick));
+@@ -169,24 +233,17 @@ public class AegisHomeView extends FrameLayout {
+                         ViewGroup.LayoutParams.WRAP_CONTENT);
+         quickLp.topMargin = (int) (44 * getResources().getDisplayMetrics().density);
+         quickLp.gravity = Gravity.START;
+-        column.addView(quick, quickLp);
++        mColumn.addView(quick, quickLp);
+ 
+-        GridLayout grid = new GridLayout(getContext());
+-        grid.setColumnCount(3);
++        mGrid = new GridLayout(getContext());
++        mGrid.setColumnCount(3);
+         int gap = (int) (10 * getResources().getDisplayMetrics().density);
+-        addTile(grid, "aegis.dev", "https://aegis.dev");
+-        addTile(grid, "wikipedia", "https://wikipedia.org");
+-        addTile(grid, "github", "https://github.com");
+-        addTile(grid, "duckduckgo", "https://duckduckgo.com");
+-        addTile(grid, getContext().getString(R.string.aegis_menu_settings), null);
+-        addTile(grid, getContext().getString(R.string.aegis_menu_private_tab),
+-                "aegis:private");
+         LinearLayout.LayoutParams gridLp =
+                 new LinearLayout.LayoutParams(
+                         ViewGroup.LayoutParams.MATCH_PARENT,
+                         ViewGroup.LayoutParams.WRAP_CONTENT);
+         gridLp.topMargin = gap;
+-        column.addView(grid, gridLp);
++        mColumn.addView(mGrid, gridLp);
+ 
+         FrameLayout.LayoutParams columnLp =
+                 new FrameLayout.LayoutParams(
+@@ -195,8 +252,251 @@ public class AegisHomeView extends FrameLayout {
+                         Gravity.CENTER_HORIZONTAL);
+         int side = (int) (30 * getResources().getDisplayMetrics().density);
+         columnLp.setMargins(side, 0, side, 0);
+-        addView(column, columnLp);
++        addView(mColumn, columnLp);
++
++        // Long-press on empty home surface opens the wallpaper picker.
++        setOnLongClickListener(
++                v -> {
++                    showWallpaperPicker();
++                    return true;
++                });
++
++        Profile profile =
++                mActivity.getActivityTab() != null
++                        ? mActivity.getActivityTab().getProfile()
++                        : null;
++        mIconBridge = new LargeIconBridge(profile);
++        mIconBridge.createCache(512 * 1024);
++
++        applyWallpaper();
++        rebuildTiles();
++    }
++
++    /** Rebuilds the tile grid from preferences (patch 125 editable tiles). */
++    private void rebuildTiles() {
++        mGrid.removeAllViews();
++        int gap = (int) (5 * getResources().getDisplayMetrics().density);
++        for (String[] tile : loadTiles()) {
++            addUrlTile(mGrid, tile[0], tile[1], gap);
++        }
++        // System tiles: settings and private tab (always available).
++        addSystemTile(mGrid, getContext().getString(R.string.aegis_menu_settings), null, gap);
++        addSystemTile(
++                mGrid,
++                getContext().getString(R.string.aegis_menu_private_tab),
++                "aegis:private",
++                gap);
++        // The add tile: opens the shortcut editor.
++        TextView plus = new TextView(getContext());
++        plus.setText("+");
++        plus.setTextSize(22);
++        plus.setTextColor(getContext().getColor(R.color.aegis_text_secondary));
++        plus.setGravity(Gravity.CENTER);
++        plus.setClickable(true);
++        plus.setFocusable(true);
++        GradientDrawable pbg = new GradientDrawable();
++        pbg.setColor(getContext().getColor(R.color.aegis_glass_pill));
++        pbg.setCornerRadius(22 * getResources().getDisplayMetrics().density);
++        pbg.setStroke(1, getContext().getColor(R.color.aegis_hairline));
++        plus.setBackground(pbg);
++        plus.setMinimumHeight((int) (64 * getResources().getDisplayMetrics().density));
++        GridLayout.LayoutParams plp = new GridLayout.LayoutParams(
++                GridLayout.spec(GridLayout.UNDEFINED, 1f),
++                GridLayout.spec(GridLayout.UNDEFINED, 1f));
++        plp.setMargins(gap, gap, gap, gap);
++        plus.setLayoutParams(plp);
++        plus.setOnClickListener(v -> showAddTileDialog());
++        mGrid.addView(plus);
++    }
++
++    /** Loads the stored tile list; defaults when unset or unreadable. */
++    private List<String[]> loadTiles() {
++        List<String[]> tiles = new ArrayList<>();
++        String raw = ContextUtils.getAppSharedPreferences().getString(PREF_TILES, null);
++        if (raw != null) {
++            try {
++                org.json.JSONArray arr = new org.json.JSONArray(raw);
++                for (int i = 0; i < arr.length(); i++) {
++                    org.json.JSONObject o = arr.getJSONObject(i);
++                    String label = o.optString("label", "");
++                    String url = o.optString("url", "");
++                    if (!label.isEmpty() && !url.isEmpty()) {
++                        tiles.add(new String[] {label, url});
++                    }
++                }
++                return tiles;
++            } catch (org.json.JSONException e) {
++                // Fall through to the default set.
++            }
++        }
++        tiles.add(new String[] {"aegis.dev", "https://aegis.dev"});
++        tiles.add(new String[] {"wikipedia", "https://wikipedia.org"});
++        tiles.add(new String[] {"github", "https://github.com"});
++        tiles.add(new String[] {"duckduckgo", "https://duckduckgo.com"});
++        return tiles;
++    }
++
++    private void saveTiles(List<String[]> tiles) {
++        org.json.JSONArray arr = new org.json.JSONArray();
++        for (String[] tile : tiles) {
++            try {
++                org.json.JSONObject o = new org.json.JSONObject();
++                o.put("label", tile[0]);
++                o.put("url", tile[1]);
++                arr.put(o);
++            } catch (org.json.JSONException e) {
++                // Skip malformed entry.
++            }
++        }
++        ContextUtils.getAppSharedPreferences()
++                .edit()
++                .putString(PREF_TILES, arr.toString())
++                .apply();
++    }
++
++    /** Add-shortcut dialog: label + URL, saved to preferences. */
++    private void showAddTileDialog() {
++        AlertDialog.Builder b = new AlertDialog.Builder(getContext());
++        b.setTitle(getContext().getString(R.string.aegis_home_add_shortcut));
++        LinearLayout box = new LinearLayout(getContext());
++        box.setOrientation(LinearLayout.VERTICAL);
++        int pad = (int) (20 * getResources().getDisplayMetrics().density);
++        box.setPadding(pad, pad, pad, 0);
++        final EditText label = new EditText(getContext());
++        label.setHint(getContext().getString(R.string.aegis_home_shortcut_name));
++        box.addView(label);
++        final EditText url = new EditText(getContext());
++        url.setHint(getContext().getString(R.string.aegis_home_shortcut_url));
++        url.setInputType(android.text.InputType.TYPE_CLASS_TEXT
++                | android.text.InputType.TYPE_TEXT_VARIATION_URI);
++        box.addView(url);
++        b.setView(box);
++        b.setPositiveButton(
++                android.R.string.ok,
++                (d, w) -> {
++                    String l = label.getText() == null ? "" : label.getText().toString().trim();
++                    String u = url.getText() == null ? "" : url.getText().toString().trim();
++                    if (l.isEmpty() || u.isEmpty()) return;
++                    if (!u.contains("://")) u = "https://" + u;
++                    List<String[]> tiles = loadTiles();
++                    tiles.add(new String[] {l, u});
++                    saveTiles(tiles);
++                    rebuildTiles();
++                });
++        b.setNegativeButton(android.R.string.cancel, null);
++        b.show();
++    }
++
++    /** Remove-shortcut dialog for a URL tile. */
++    private void showRemoveTileDialog(String label, String url) {
++        AlertDialog.Builder b = new AlertDialog.Builder(getContext());
++        b.setTitle(label);
++        b.setMessage(getContext().getString(R.string.aegis_home_remove_confirm));
++        b.setPositiveButton(
++                getContext().getString(R.string.aegis_home_remove_shortcut),
++                (d, w) -> {
++                    List<String[]> tiles = loadTiles();
++                    List<String[]> next = new ArrayList<>();
++                    for (String[] t : tiles) {
++                        if (!t[1].equals(url)) next.add(t);
++                    }
++                    saveTiles(next);
++                    rebuildTiles();
++                });
++        b.setNegativeButton(android.R.string.cancel, null);
++        b.show();
++    }
++
++    /** Wallpaper picker: preset surfaces plus the system image chooser. */
++    private void showWallpaperPicker() {
++        AlertDialog.Builder b = new AlertDialog.Builder(getContext());
++        b.setTitle(getContext().getString(R.string.aegis_home_wallpaper));
++        LinearLayout box = new LinearLayout(getContext());
++        box.setOrientation(LinearLayout.VERTICAL);
++        int pad = (int) (20 * getResources().getDisplayMetrics().density);
++        box.setPadding(pad, pad, pad, 0);
++        LinearLayout row = new LinearLayout(getContext());
++        row.setOrientation(LinearLayout.HORIZONTAL);
++        row.setGravity(Gravity.CENTER);
++        for (final String color : PRESET_WALLPAPERS) {
++            View swatch = new View(getContext());
++            LinearLayout.LayoutParams lp =
++                    new LinearLayout.LayoutParams(0, (int) (44
++                            * getResources().getDisplayMetrics().density), 1f);
++            lp.setMargins((int) (5 * getResources().getDisplayMetrics().density), 0,
++                    (int) (5 * getResources().getDisplayMetrics().density), 0);
++            swatch.setLayoutParams(lp);
++            GradientDrawable g = new GradientDrawable();
++            g.setColor(Color.parseColor(color));
++            g.setCornerRadius(12 * getResources().getDisplayMetrics().density);
++            g.setStroke(1, getContext().getColor(R.color.aegis_hairline));
++            swatch.setBackground(g);
++            swatch.setClickable(true);
++            swatch.setOnClickListener(
++                    v -> {
++                        setWallpaperSpec("color:" + color);
++                        applyWallpaper();
++                        dismissWallpaper();
++                    });
++            row.addView(swatch);
++        }
++        box.addView(row);
++        TextView pick = new TextView(getContext());
++        pick.setText(getContext().getString(R.string.aegis_home_pick_image));
++        pick.setTextSize(14);
++        pick.setTextColor(getContext().getColor(R.color.aegis_text_primary));
++        int top = (int) (14 * getResources().getDisplayMetrics().density);
++        pick.setPadding(0, top, 0, 0);
++        pick.setClickable(true);
++        pick.setOnClickListener(
++                v -> {
++                    dismissWallpaper();
++                    Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
++                    i.addCategory(Intent.CATEGORY_OPENABLE);
++                    i.setType("image/*");
++                    mActivity.startActivityForResult(i, WALLPAPER_PICK_REQUEST);
++                });
++        box.addView(pick);
++        b.setView(box);
++        b.setNegativeButton(android.R.string.cancel, null);
++        mWallpaperDialog = b.show();
++    }
+ 
++    private void dismissWallpaper() {
++        if (mWallpaperDialog != null) {
++            mWallpaperDialog.dismiss();
++            mWallpaperDialog = null;
++        }
++    }
++
++    /** Applies the stored wallpaper (color surface or user image + scrim). */
++    private void applyWallpaper() {
++        String spec =
++                ContextUtils.getAppSharedPreferences().getString(PREF_WALLPAPER, "color:#0A0A0B");
++        if (spec == null) spec = "color:#0A0A0B";
++        if (spec.startsWith("uri:")) {
++            Drawable image = decodeWallpaper(Uri.parse(spec.substring(4)));
++            if (image != null) {
++                GradientDrawable scrim =
++                        new GradientDrawable(
++                                GradientDrawable.Orientation.TOP_BOTTOM,
++                                new int[] {0x26000000, 0x66000000});
++                setBackground(new LayerDrawable(new Drawable[] {image, scrim}));
++                return;
++            }
++        }
++        if (spec.startsWith("color:")) {
++            try {
++                int c = Color.parseColor(spec.substring(6));
++                GradientDrawable g = new GradientDrawable(
++                        GradientDrawable.Orientation.TOP_BOTTOM,
++                        new int[] {c, blendDown(c)});
++                setBackground(g);
++                return;
++            } catch (IllegalArgumentException e) {
++                // Fall through to the default surface.
++            }
++        }
+         GradientDrawable bg = new GradientDrawable(
+                 GradientDrawable.Orientation.TOP_BOTTOM,
+                 new int[] {getContext().getColor(R.color.aegis_bg),
+@@ -204,8 +504,92 @@ public class AegisHomeView extends FrameLayout {
+         setBackground(bg);
+     }
+ 
+-    private void addTile(GridLayout grid, String label, @Nullable String target) {
+-        int density = (int) getResources().getDisplayMetrics().density;
++    private @Nullable Drawable decodeWallpaper(Uri uri) {
++        try {
++            BitmapFactory.Options bounds = new BitmapFactory.Options();
++            bounds.inJustDecodeBounds = true;
++            try (InputStream in =
++                    getContext().getContentResolver().openInputStream(uri)) {
++                if (in == null) return null;
++                BitmapFactory.decodeStream(in, null, bounds);
++            }
++            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null;
++            int target = Math.max(getWidth(), getHeight());
++            int sample = 1;
++            while (bounds.outWidth / (sample * 2) >= target
++                    || bounds.outHeight / (sample * 2) >= target) {
++                sample *= 2;
++            }
++            BitmapFactory.Options opts = new BitmapFactory.Options();
++            opts.inSampleSize = sample;
++            try (InputStream in =
++                    getContext().getContentResolver().openInputStream(uri)) {
++                if (in == null) return null;
++                Bitmap bmp = BitmapFactory.decodeStream(in, null, opts);
++                if (bmp == null) return null;
++                return new BitmapDrawable(getResources(), bmp);
++            }
++        } catch (Exception e) {
++            return null;
++        }
++    }
++
++    private int blendDown(int color) {
++        int r = (Color.red(color) * 7) / 10;
++        int g = (Color.green(color) * 7) / 10;
++        int b = (Color.blue(color) * 7) / 10;
++        return Color.rgb(r, g, b);
++    }
++
++    private void addUrlTile(GridLayout grid, String label, String target, int gap) {
++        LinearLayout tile = new LinearLayout(getContext());
++        tile.setOrientation(LinearLayout.VERTICAL);
++        tile.setGravity(Gravity.CENTER);
++        tile.setClickable(true);
++        tile.setFocusable(true);
++        GradientDrawable bg = new GradientDrawable();
++        bg.setColor(getContext().getColor(R.color.aegis_glass_pill));
++        bg.setCornerRadius(22 * getResources().getDisplayMetrics().density);
++        bg.setStroke(1, getContext().getColor(R.color.aegis_hairline));
++        tile.setBackground(bg);
++        tile.setMinimumHeight((int) (64 * getResources().getDisplayMetrics().density));
++        GridLayout.LayoutParams glp = new GridLayout.LayoutParams(
++                GridLayout.spec(GridLayout.UNDEFINED, 1f),
++                GridLayout.spec(GridLayout.UNDEFINED, 1f));
++        glp.setMargins(gap, gap, gap, gap);
++        tile.setLayoutParams(glp);
++
++        // Favicon slot: letter fallback first, replaced by the site icon.
++        ImageView icon = new ImageView(getContext());
++        int iconSize = (int) (26 * getResources().getDisplayMetrics().density);
++        icon.setLayoutParams(new LinearLayout.LayoutParams(iconSize, iconSize));
++        icon.setImageBitmap(letterTile(label));
++        tile.addView(icon);
++        TextView text = new TextView(getContext());
++        text.setText(label);
++        text.setTextSize(12);
++        text.setTextColor(getContext().getColor(R.color.aegis_text_primary));
++        int top = (int) (5 * getResources().getDisplayMetrics().density);
++        text.setPadding(0, top, 0, 0);
++        tile.addView(text);
++        tile.setOnClickListener(
++                v -> {
++                    Tab tab = mActivity.getActivityTab();
++                    if (tab != null) {
++                        tab.loadUrl(
++                                new org.chromium.content_public.browser.LoadUrlParams(target));
++                    }
++                });
++        tile.setOnLongClickListener(
++                v -> {
++                    showRemoveTileDialog(label, target);
++                    return true;
++                });
++        fetchFavicon(icon, target, label);
++        grid.addView(tile);
++    }
++
++    private void addSystemTile(GridLayout grid, String label, @Nullable String target, int gap) {
+         TextView tile = new TextView(getContext());
+         tile.setText(label);
+         tile.setTextSize(12);
+@@ -218,12 +602,10 @@ public class AegisHomeView extends FrameLayout {
+         bg.setCornerRadius(22 * getResources().getDisplayMetrics().density);
+         bg.setStroke(1, getContext().getColor(R.color.aegis_hairline));
+         tile.setBackground(bg);
+-        int tileH = (int) (64 * density);
+-        tile.setMinimumHeight(tileH);
++        tile.setMinimumHeight((int) (64 * getResources().getDisplayMetrics().density));
+         GridLayout.LayoutParams glp = new GridLayout.LayoutParams(
+                 GridLayout.spec(GridLayout.UNDEFINED, 1f),
+                 GridLayout.spec(GridLayout.UNDEFINED, 1f));
+-        int gap = (int) (5 * density);
+         glp.setMargins(gap, gap, gap, gap);
+         tile.setLayoutParams(glp);
+         tile.setOnClickListener(
+@@ -238,18 +620,69 @@ public class AegisHomeView extends FrameLayout {
+                         mActivity.onMenuOrKeyboardAction(
+                                 R.id.new_incognito_tab_menu_id, /* fromMenu= */ false,
+                                 /* menuItemData= */ null, /* triggeringMotion= */ null);
+-                    } else {
+-                        Tab tab = mActivity.getActivityTab();
+-                        if (tab != null) {
+-                            tab.loadUrl(
+-                                    new org.chromium.content_public.browser.LoadUrlParams(
+-                                            target));
+-                        }
+                     }
+                 });
+         grid.addView(tile);
+     }
+ 
++    /** Draws the letter fallback tile shown before the favicon arrives. */
++    private Bitmap letterTile(String label) {
++        int size = (int) (26 * getResources().getDisplayMetrics().density);
++        Bitmap bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
++        Canvas canvas = new Canvas(bmp);
++        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
++        paint.setColor(0xFF2A2A2E);
++        canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint);
++        paint.setColor(0xFFF2F2F7);
++        paint.setTextSize(size * 0.52f);
++        paint.setTextAlign(Paint.Align.CENTER);
++        paint.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
++        Paint.FontMetrics fm = paint.getFontMetrics();
++        float textY = size / 2f - (fm.ascent + fm.descent) / 2f;
++        String letter = label.isEmpty() ? "?" : label.substring(0, 1).toUpperCase(Locale.ROOT);
++        canvas.drawText(letter, size / 2f, textY, paint);
++        return bmp;
++    }
++
++    /** Fetches the site favicon like Chrome (fallback style when missing). */
++    private void fetchFavicon(final ImageView icon, String target, String label) {
++        Profile profile =
++                mActivity.getActivityTab() != null
++                        ? mActivity.getActivityTab().getProfile()
++                        : null;
++        if (profile == null || mIconBridge == null) return;
++        try {
++            mIconBridge.getLargeIconForUrl(
++                    new GURL(target),
++                    (int) (48 * getResources().getDisplayMetrics().density),
++                    (bmp, fallbackColor, isDefaultColor, iconType) -> {
++                        mHandler.post(
++                                () -> {
++                                    if (bmp != null && !bmp.isRecycled()) {
++                                        icon.setImageBitmap(bmp);
++                                    } else if (fallbackColor != 0) {
++                                        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
++                                        ViewGroup.LayoutParams lp = icon.getLayoutParams();
++                                        int size =
++                                                lp != null && lp.width > 0
++                                                        ? lp.width
++                                                        : icon.getWidth();
++                                        if (size <= 0) size = 26;
++                                        Bitmap tile =
++                                                Bitmap.createBitmap(
++                                                        size, size, Bitmap.Config.ARGB_8888);
++                                        Canvas canvas = new Canvas(tile);
++                                        paint.setColor(fallbackColor | 0xFF000000);
++                                        canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint);
++                                        icon.setImageBitmap(tile);
++                                    }
++                                });
++                    });
++        } catch (Exception e) {
++            // Letter tile stays.
++        }
++    }
++
+     private final Runnable mClockTick = this::clockTick;
+ 
+     private void clockTick() {
+@@ -302,6 +735,6 @@ public class AegisHomeView extends FrameLayout {
+             mObservedTab.removeObserver(mTabObserver);
+             mObservedTab = null;
+         }
++        if (mIconBridge != null) mIconBridge.destroy();
+     }
+ }
+-
+
+--- /dev/null
++++ b/chrome/android/java/res/values/aegis_ntp_strings.xml
+@@ -0,0 +1,13 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Copyright 2026 The Aegis Browser Authors
++     Use of this source code is governed by a BSD-style license that can be
++     found in the LICENSE file.
++
++     Aegis new-tab home customization strings (patch 125). -->
++<resources>
++    <string name="aegis_home_add_shortcut">Add shortcut</string>
++    <string name="aegis_home_shortcut_name">Name</string>
++    <string name="aegis_home_shortcut_url">URL (e.g. example.com)</string>
++    <string name="aegis_home_remove_shortcut">Remove shortcut</string>
++    <string name="aegis_home_remove_confirm">Remove this shortcut from the home screen?</string>
++    <string name="aegis_home_wallpaper">Wallpaper</string>
++    <string name="aegis_home_pick_image">Pick an image from device</string>
++</resources>
+
+--- a/chrome/android/chrome_java_resources.gni
++++ b/chrome/android/chrome_java_resources.gni
+@@ -671,6 +671,7 @@ chrome_java_resources = [
+   "java/res/values-w800dp/dimens.xml",
+   "java/res/values/attrs.xml",
+   "java/res/values/aegis_tokens.xml",
++  "java/res/values/aegis_ntp_strings.xml",
+   "java/res/values/bools.xml",
+   "java/res/values/colors.xml",
+   "java/res/values/dimens.xml",
+
+--- a/chrome/android/java/src/org/chromium/chrome/browser/ChromeTabbedActivity.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/ChromeTabbedActivity.java
+@@ -5748,6 +5748,13 @@ public class ChromeTabbedActivity extends ChromeActivity implements PreAttachInt
+         try (TraceEvent e = TraceEvent.scoped("ChromeTabbedActivity.onActivityResult")) {
+             super.onActivityResult(requestCode, resultCode, data);
+         }
++        // Aegis (patch 125): route the home wallpaper picker result.
++        if (requestCode
++                == org.chromium.chrome.browser.aegis.home.AegisHomeView
++                        .WALLPAPER_PICK_REQUEST) {
++            org.chromium.chrome.browser.aegis.home.AegisHomeView.onWallpaperResult(
++                    data);
++        }
+     }
+ 
+     @Override

@@ -1,0 +1,48 @@
+# 126 - aegis-pw-updater-guard (crash trap 2026-11-13)
+# Device: Infinix X6728B / Android 15, r70. The crash trap captured two
+# dumps of a NullPointerException at
+# PasswordSettingsUpdaterDispatcherBridge.getSettingValue on a
+# ThreadPoolSingle thread: the accessor handed to the bridge is @Nullable by
+# type and can be null when no password settings backend exists for the
+# profile (same family as the patch 110/112 NPE). Release builds strip the
+# debug asserts, so the null accessor flows into
+# mSettingsAccessor.getOfferToSavePasswords(...) and crashes. Guard both
+# @CalledByNative entry points and route through the existing failure
+# callbacks so the native dispatcher receives its error response instead.
+
+--- a/chrome/browser/password_manager/android/java/src/org/chromium/chrome/browser/password_manager/PasswordSettingsUpdaterDispatcherBridge.java
++++ b/chrome/browser/password_manager/android/java/src/org/chromium/chrome/browser/password_manager/PasswordSettingsUpdaterDispatcherBridge.java
+@@ -64,6 +64,17 @@ public class PasswordSettingsUpdaterDispatcherBridge {
+                         setting,
+                         PasswordSettingsUpdaterMetricsRecorder.GET_VALUE_FUNCTION_SUFFIX,
+                         getStoreType(account));
++        // Aegis (patch 126): the accessor is nullable and can be null when
++        // no password settings backend exists for this profile. Crash trap
++        // 2026-11-13 (r70 device): NPE at this call site. Route through the
++        // standard failure callback instead of crashing.
++        if (mSettingsAccessor == null) {
++            handleFetchingExceptionOnUiThread(
++                    setting,
++                    new IllegalStateException("Aegis: no password settings accessor"),
++                    metricsRecorder);
++            return;
++        }
+         switch (setting) {
+             case OFFER_TO_SAVE_PASSWORDS:
+                 mSettingsAccessor.getOfferToSavePasswords(
+@@ -116,6 +127,15 @@ public class PasswordSettingsUpdaterDispatcherBridge {
+                         setting,
+                         PasswordSettingsUpdaterMetricsRecorder.SET_VALUE_FUNCTION_SUFFIX,
+                         getStoreType(account));
++        // Aegis (patch 126): same null-accessor guard as getSettingValue -
++        // report the error through the failure callback rather than crashing.
++        if (mSettingsAccessor == null) {
++            handleSettingExceptionOnUiThread(
++                    setting,
++                    new IllegalStateException("Aegis: no password settings accessor"),
++                    metricsRecorder);
++            return;
++        }
+         switch (setting) {
+             case OFFER_TO_SAVE_PASSWORDS:
+                 mSettingsAccessor.setOfferToSavePasswords(

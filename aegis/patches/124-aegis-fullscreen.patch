@@ -1,0 +1,112 @@
+# 124 - aegis-fullscreen (user feedback 2026-11-13: "why it is still showing
+# google header with address bar ... I told you I want full screen chrome
+# therefore we used dock and after that you still didn't remove its")
+# Patch 080 hid the top control container once during startup, but the
+# browser-controls machinery re-shows it, so content pages still had the
+# classic top toolbar (screenshot r70 device: URL bar + home/new-tab/tabs/
+# menu at the top while the dock floats at the bottom). This patch makes the
+# removal permanent: a chrome_java helper hides the container (and the
+# bottom controls host), re-asserts the hidden state every second, and
+# ToolbarControlContainer reports a zero top-controls height so nothing is
+# reserved above the page. The dock URL pill is the address line.
+
+--- a/chrome/android/chrome_java_sources.gni
++++ b/chrome/android/chrome_java_sources.gni
+@@ -62,6 +62,7 @@ chrome_java_sources = [
+   "java/src/org/chromium/chrome/browser/aegis/dock/AegisGlassSheet.java",
+   "java/src/org/chromium/chrome/browser/aegis/dock/AegisMenuSheet.java",
+   "java/src/org/chromium/chrome/browser/aegis/dock/AegisTabGridSheet.java",
++  "java/src/org/chromium/chrome/browser/aegis/dock/AegisTopToolbar.java",
+   "java/src/org/chromium/chrome/browser/about_settings/AboutChromeSettings.java",
+   "java/src/org/chromium/chrome/browser/aegis/AegisEcosystemSettings.java",
+   "java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java",
+--- a/chrome/android/java/src/org/chromium/chrome/browser/ChromeTabbedActivity.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/ChromeTabbedActivity.java
+@@ -89,6 +89,7 @@ import org.chromium.chrome.browser.actor.ActorForegroundServiceController;
+ import org.chromium.chrome.browser.actor.ActorNotificationService;
+ import org.chromium.chrome.browser.actor.ActorTabStateHelper;
+ import org.chromium.chrome.browser.aegis.dock.AegisDockView;
++import org.chromium.chrome.browser.aegis.dock.AegisTopToolbar;
+ import org.chromium.chrome.browser.app.ChromeActivity;
+ import org.chromium.chrome.browser.app.appmenu.AppMenuPropertiesDelegateImpl;
+ import org.chromium.chrome.browser.app.metrics.LaunchCauseMetrics;
+@@ -1669,6 +1670,10 @@ public class ChromeTabbedActivity extends ChromeActivity implements PreAttachInt
+             // the handler during native initialization.
+             AegisDockView.install(this, () -> mRootUiCoordinator.getAppMenuHandler());
+ 
++            // Aegis full screen (patch 124): the top control container
++            // is gone for the whole session; the dock is the only chrome.
++            AegisTopToolbar.hide(this);
++
+             // Deliberately not deferred to onDeferredStartup(): this timestamp is not just a
+             // metric, it gates feature eligibility (e.g. the Setup List time window, which treats
+             // a missing timestamp as "inactive"), and deferred startup is not guaranteed to run.
+new file mode 100644
+index 0000000..5b42fd0
+--- /dev/null
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisTopToolbar.java
+@@ -0,0 +1,48 @@
++// Copyright 2026 The Aegis Browser Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++package org.chromium.chrome.browser.aegis.dock;
++
++import android.os.Handler;
++import android.os.Looper;
++import android.view.View;
++
++import org.chromium.chrome.R;
++import org.chromium.chrome.browser.ChromeTabbedActivity;
++import org.chromium.chrome.browser.toolbar.top.ToolbarControlContainer;
++
++/**
++ * Aegis full-screen browsing (patch 124): the top control container is the
++ * "header with address bar" that the dock replaces. Patch 080 hid it once
++ * at startup, but the browser-controls machinery can bring it back later;
++ * this hides it and re-asserts the hidden state every second for the whole
++ * session. The reported top-controls height is zeroed (see
++ * ToolbarControlContainer.sAegisZeroHeight) so page content is laid out
++ * full screen below the status bar with no reserved strip.
++ */
++public final class AegisTopToolbar {
++    private static final long REASSERT_MS = 1000;
++    private static final Handler sHandler = new Handler(Looper.getMainLooper());
++    private static View sControlContainer;
++
++    private AegisTopToolbar() {}
++
++    /** Hides the top control container; keeps it hidden for the session. */
++    public static void hide(ChromeTabbedActivity activity) {
++        sControlContainer = activity.findViewById(R.id.control_container);
++        if (sControlContainer != null) sControlContainer.setVisibility(View.GONE);
++        View bottom = activity.findViewById(R.id.bottom_container);
++        if (bottom != null) bottom.setVisibility(View.GONE);
++        ToolbarControlContainer.sAegisZeroHeight = true;
++        sHandler.postDelayed(AegisTopToolbar::reassert, REASSERT_MS);
++    }
++
++    private static void reassert() {
++        if (sControlContainer != null
++                && sControlContainer.getVisibility() != View.GONE) {
++            sControlContainer.setVisibility(View.GONE);
++        }
++        sHandler.postDelayed(AegisTopToolbar::reassert, REASSERT_MS);
++    }
++}
+--- a/chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/top/ToolbarControlContainer.java
++++ b/chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/top/ToolbarControlContainer.java
+@@ -213,8 +213,13 @@ public class ToolbarControlContainer extends OptimizedFrameLayout
+         return mToolbar.getPrimaryColor();
+     }
+ 
++    /** Aegis (patch 124): when set, the top controls height is reported as 0
++     *  so page content fills the screen; the dock is the only browser chrome. */
++    public static boolean sAegisZeroHeight;
++
+     @Override
+     public int getToolbarHeight() {
++        if (sAegisZeroHeight) return 0;
+         // Include any top margin applied to mToolbarContainer when Vertical Tabs is active so
+         // TopControlsStacker accounts for the full top offset.
+         return mToolbarLayoutHeight + getVerticalTabsTopMargin();

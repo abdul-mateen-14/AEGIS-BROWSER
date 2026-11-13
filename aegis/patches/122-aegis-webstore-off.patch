@@ -1,0 +1,39 @@
+# 122 - aegis-webstore-off (user feedback 2026-11-13: "create original aegis
+# store using backend do not rename googles one")
+# The Google Web Store component app (chrome://apps tile, desktop icon) is
+# gone entirely rather than renamed: patch 089 had rebranded its strings and
+# the packaging patch swapped its icon, which produced the confusing "Aegis
+# triangle labeled Web Store" the user screenshotted. A real Aegis add-ons
+# store is a separate backend project (roadmap); until it exists no store is
+# shipped. Also removes the desktop three-dot menu "Visit Web Store" entry.
+
+--- a/chrome/browser/extensions/component_extensions_allowlist/allowlist.cc
++++ b/chrome/browser/extensions/component_extensions_allowlist/allowlist.cc
+@@ -99,7 +99,9 @@ bool IsComponentExtensionAllowlisted(int manifest_resource_id) {
+     case IDR_NETWORK_SPEECH_SYNTHESIS_MANIFEST:
+     case IDR_NETWORK_SPEECH_SYNTHESIS_MANIFEST_MV3:
+     case IDR_READING_MODE_GDOCS_HELPER_MANIFEST:
+-    case IDR_WEBSTORE_MANIFEST:
++    // Aegis (patch 122): the Google Web Store component app is not
++    // allowlisted, so it is never registered; its chrome://apps tile and
++    // its desktop entry disappear.
+ 
+ #if BUILDFLAG(IS_CHROMEOS)
+     // Separate ChromeOS list, as it is quite large.
+--- a/chrome/browser/ui/toolbar/app_menu_model.cc
++++ b/chrome/browser/ui/toolbar/app_menu_model.cc
+@@ -1189,12 +1189,8 @@ void ExtensionsMenuModel::Build(BrowserWindowInterface* browser) {
+   SetElementIdentifierAt(
+       GetIndexOfCommandId(IDC_EXTENSIONS_SUBMENU_MANAGE_EXTENSIONS).value(),
+       kManageExtensionsMenuItem);
+-  AddItemWithStringId(IDC_EXTENSIONS_SUBMENU_VISIT_CHROME_WEB_STORE,
+-                      IDS_EXTENSIONS_SUBMENU_CHROME_WEBSTORE_ITEM);
+-  SetElementIdentifierAt(
+-      GetIndexOfCommandId(IDC_EXTENSIONS_SUBMENU_VISIT_CHROME_WEB_STORE)
+-          .value(),
+-      kVisitChromeWebStoreMenuItem);
++  // Aegis (patch 122): no "Visit Web Store" entry - there is no store
++  // until the Aegis add-ons backend ships.
+ #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
+   SetCommandIcon(this, IDC_EXTENSIONS_SUBMENU_VISIT_CHROME_WEB_STORE,
+                  vector_icons::kGoogleChromeWebstoreIcon);

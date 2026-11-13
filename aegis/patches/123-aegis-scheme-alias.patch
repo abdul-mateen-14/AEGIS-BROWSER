@@ -1,0 +1,142 @@
+# 123 - aegis-scheme-alias (user feedback 2026-11-13: "did you changed the
+# path from chrome://version to Aegis://version")
+# aegis:// is registered as a standard + secure scheme and every WebUI
+# lookup resolves aegis://<host> to chrome://<host> before consulting the
+# WebUIConfigMap. Result: aegis://version, aegis://settings, aegis://history,
+# aegis://flags etc. all work AND keep working alongside chrome:// URLs.
+# Pages keep their internal chrome:// base href for resources, so nothing
+# inside a WebUI changes.
+
+--- a/content/common/url_schemes.cc
++++ b/content/common/url_schemes.cc
+@@ -30,6 +30,7 @@ const char* const kDefaultSavableSchemes[] = {
+   url::kFileSystemScheme,
+   kChromeDevToolsScheme,
+   kChromeUIScheme,
++  kAegisUIScheme,
+   url::kDataScheme
+ };
+ 
+@@ -60,6 +61,7 @@ void RegisterContentSchemes(bool should_lock_registry) {
+ 
+   url::AddStandardScheme(kChromeDevToolsScheme, url::SCHEME_WITH_HOST);
+   url::AddStandardScheme(kChromeUIScheme, url::SCHEME_WITH_HOST);
++  url::AddStandardScheme(kAegisUIScheme, url::SCHEME_WITH_HOST);
+   url::AddStandardScheme(kChromeUIUntrustedScheme, url::SCHEME_WITH_HOST);
+   url::AddStandardScheme(kChromeErrorScheme, url::SCHEME_WITH_HOST);
+   for (auto& scheme : schemes.standard_schemes)
+@@ -70,6 +72,7 @@ void RegisterContentSchemes(bool should_lock_registry) {
+ 
+   schemes.secure_schemes.push_back(kChromeDevToolsScheme);
+   schemes.secure_schemes.push_back(kChromeUIScheme);
++  schemes.secure_schemes.push_back(kAegisUIScheme);
+   schemes.secure_schemes.push_back(kChromeUIUntrustedScheme);
+   schemes.secure_schemes.push_back(kChromeErrorScheme);
+   for (auto& scheme : schemes.secure_schemes)
+@@ -90,6 +93,7 @@ void RegisterContentSchemes(bool should_lock_registry) {
+     url::AddNoAccessScheme(scheme.c_str());
+ 
+   schemes.cors_enabled_schemes.push_back(kChromeUIScheme);
++  schemes.cors_enabled_schemes.push_back(kAegisUIScheme);
+   schemes.cors_enabled_schemes.push_back(kChromeUIUntrustedScheme);
+   for (auto& scheme : schemes.cors_enabled_schemes)
+     url::AddCorsEnabledScheme(scheme.c_str());
+@@ -118,6 +122,7 @@ void RegisterContentSchemes(bool should_lock_registry) {
+   // service workers don't work for chrome[-untrusted]:// when the flag is not
+   // enabled.
+   schemes.service_worker_schemes.push_back(kChromeUIScheme);
++  schemes.service_worker_schemes.push_back(kAegisUIScheme);
+   schemes.service_worker_schemes.push_back(kChromeUIUntrustedScheme);
+ 
+   // Prevent future modification of the scheme lists. This is to prevent
+--- a/content/public/browser/webui_config_map.cc
++++ b/content/public/browser/webui_config_map.cc
+@@ -21,6 +21,19 @@ namespace content {
+ 
+ namespace {
+ 
++// Aegis (patch 123): aegis:// is an alias scheme for chrome:// WebUIs. The
++// alias is registered as a standard/secure scheme in url_schemes.cc and is
++// resolved to chrome:// before every WebUIConfigMap lookup, so
++// aegis://version and chrome://version serve the same WebUI.
++GURL ResolveAegisWebUIUrl(const GURL& url) {
++  if (!url.SchemeIs(kAegisUIScheme)) {
++    return url;
++  }
++  GURL::Replacements replacements;
++  replacements.SetSchemeStr(kChromeUIScheme);
++  return url.ReplaceComponents(replacements);
++}
++
+ // Owned by WebUIConfigMap. Used to hook up with the existing WebUI infra.
+ class WebUIConfigMapWebUIControllerFactory : public WebUIControllerFactory {
+  public:
+@@ -30,21 +43,23 @@ class WebUIConfigMapWebUIControllerFactory : public WebUIControllerFactory {
+ 
+   WebUI::TypeID GetWebUIType(BrowserContext* browser_context,
+                              const GURL& url) override {
+-    auto* config = config_map_->GetConfig(browser_context, url);
++    auto* config =
++        config_map_->GetConfig(browser_context, ResolveAegisWebUIUrl(url));
+     return config ? reinterpret_cast<WebUI::TypeID>(config) : WebUI::kNoWebUI;
+   }
+ 
+   bool UseWebUIForURL(BrowserContext* browser_context,
+                       const GURL& url) override {
+-    return config_map_->GetConfig(browser_context, url);
++    return config_map_->GetConfig(browser_context, ResolveAegisWebUIUrl(url));
+   }
+ 
+   std::unique_ptr<WebUIController> CreateWebUIControllerForURL(
+       WebUI* web_ui,
+       const GURL& url) override {
+     auto* browser_context = web_ui->GetWebContents()->GetBrowserContext();
+-    auto* config = config_map_->GetConfig(browser_context, url);
+-    return config ? config->CreateWebUIController(web_ui, url) : nullptr;
++    const GURL resolved = ResolveAegisWebUIUrl(url);
++    auto* config = config_map_->GetConfig(browser_context, resolved);
++    return config ? config->CreateWebUIController(web_ui, resolved) : nullptr;
+   }
+ 
+  private:
+@@ -94,19 +109,22 @@ WebUIConfig* WebUIConfigMap::GetConfig(BrowserContext* browser_context,
+   // don't want navigations to these URLs to have WebUI bindings, e.g.
+   // chrome.send() or Mojo.bindInterface(), since some WebUIs currently expose
+   // untrusted content via these schemes.
+-  if (url.GetScheme() != kChromeUIScheme &&
+-      url.GetScheme() != kChromeUIUntrustedScheme) {
++  // Aegis (patch 123): resolve the aegis:// alias before the WebUI
++  // lookup so alias URLs share the chrome:// config origins.
++  const GURL resolved = ResolveAegisWebUIUrl(url);
++  if (resolved.GetScheme() != kChromeUIScheme &&
++      resolved.GetScheme() != kChromeUIUntrustedScheme) {
+     return nullptr;
+   }
+ 
+-  auto origin_and_config = configs_map_.find(url::Origin::Create(url));
++  auto origin_and_config = configs_map_.find(url::Origin::Create(resolved));
+   if (origin_and_config == configs_map_.end()) {
+     return nullptr;
+   }
+ 
+   auto& config = origin_and_config->second;
+   if (!config->IsWebUIEnabled(browser_context) ||
+-      !config->ShouldHandleURL(url)) {
++      !config->ShouldHandleURL(resolved)) {
+     return nullptr;
+   }
+ 
+--- a/content/public/common/url_constants.h
++++ b/content/public/common/url_constants.h
+@@ -22,6 +22,11 @@ inline constexpr char kChromeUIScheme[] = "chrome";  // Used for WebUIs.
+ inline constexpr char kChromeNativeScheme[] = "chrome-native";
+ inline constexpr char kChromeUIUntrustedScheme[] = "chrome-untrusted";
+ inline constexpr char kViewSourceScheme[] = "view-source";
++
++// Aegis (patch 123): alias scheme for chrome:// WebUIs. Registered in
++// content/common/url_schemes.cc; resolved back to chrome:// in
++// WebUIConfigMap::GetConfig.
++inline constexpr char kAegisUIScheme[] = "aegis";
+ #if BUILDFLAG(IS_CHROMEOS)
+ inline constexpr char kExternalFileScheme[] = "externalfile";
+ #endif
