@@ -5,7 +5,7 @@
 > trust the file, then verify against GitHub API. Update this file + commit + push after
 > EVERY working pass so a context loss or sandbox recycle never loses state.
 >
-> Last updated: **2026-11-13 16:0x UTC (21:0x PKT)** — by main session (wave 121-126 dispatched).
+> Last updated: **2026-11-13 17:45 UTC (22:45 PKT)** — by main session (verdicts 63/72 verified, APK #73 dispatched).
 
 ---
 
@@ -70,13 +70,11 @@ start with `python3 scripts/run_verdict.py <run_id>`. Dispatch discipline (iron 
 
 | Lane | Latest run | State | Head | Meaning |
 |---|---|---|---|---|
-| Lane | Latest run | State | Head | Meaning |
-|---|---|---|---|---|
-| **APK** | #72 id=43419387001 (dispatched 2026-11-13T11:43Z) | **in_progress — bank-resume from #71's cap-bank** | `28c0e60` | #71 verdict 11:36Z: CAP BANK RUN, no APK (wave 113-118 compiled to 118,910 edges; bank gen 43376020530, 3 vols, 1,873,237,631 B size-verified). r70 = newest PUBLISHED apk. #72 restores that gen — wave pre-compiled, expect GREEN ARTIFACT. **When #72 concludes (lane idle + 30-min rule): dispatch #73** — carries wave **121-126** (identity/desktop unaffected; Android-side = 124 fullscreen + 125 NTP customization + 126 pw-updater guard). User crash dumps `aegis-crash-2026-11-13 08:26*.txt` = r69-era (timestamps predate r70's 03:49Z build; r69 lacked patch 112) — r70 on-device sessions in the user's screenshots show a stable browser; patch 126 hardens the same bridge against any future null accessor. NO watchdog — manual check. |
+| **APK** | #73 id=43473772644 (dispatched 2026-11-13T17:32Z) | **in_progress — bank-resume from #72's cap-bank, head `74de8c3`** | `74de8c3` | #72 verdict 17:15Z: CAP BANK RUN again — stopped at **[11385/41436] ≈ 27.5%** of the restored tail (observed lane rate ≈36-44 edges/min ⇒ ~30k edges left can NOT fit 280 min), no APK; bank gen **43419387001** (3 vols) size-verified and old gens pruned. r70 = newest PUBLISHED apk. **#73 dispatched 17:32Z at `74de8c3`** — restores gen 43419387001, carries wave **121-126** Android-side (124 fullscreen top-toolbar removal, 125 NTP customization: editable shortcuts+favicons+wallpaper, 123 aegis:// alias, 126 pw-updater guard). Expect #73 to cap-bank again (~30k edges) with successor #74 projected GREEN ARTIFACT — dispatch #74 on same head when #73 concludes. User crash dumps `aegis-crash-2026-11-13 08:26*.txt` = r69-era (predate r70's 03:49Z build; r69 lacked patch 112) — r70 stable; patch 126 hardens the same bridge. NO watchdog — manual check. |
 
-| **Linux** | #63 (dispatch after wave push) | **pending dispatch** | `3d4e523+` | #61 GREEN ARTIFACT (.deb 115,623,972 B, draft r61) + desktop artifact test: frame/toolbar/identity/AI-sweep/promos ✓, two gaps fixed in `b7f6cda` (116 AI-nav hard-off, 118 NTP body #141416). #62 verdict 13:26Z: GREEN .deb r62 = redundant rebuild of the r61 tree (dispatch-before-commit slip) — NOT a deliverable. **#63 = first run with wave 121-126** (patch 121 about/settings identity, 122 webstore-off, 123 aegis:// alias) + b7f6cda fixes. Desktop re-test after #63: AI-nav entry gone, NTP body #141416, version page = Aegis mark (no chromium logo/wordmark), settings About logo = Aegis mark, no Web Store tile/menu item, `aegis://version` resolves. NO watchdog. |
+| **Linux** | #63 id=43456673038 | **GREEN ARTIFACT (delivered)** | `74de8c3` | **#63 verdict 17:11Z: GREEN — `AegisBrowser_156.0.8078.79_linux_x64_r63.deb` 115,649,064 B**, artifact `aegis-linux-x64-63` uploaded (282,348,397 B zip, artifact ID 14059749067). **First .deb with wave 121-126** (121 about/settings identity, 122 webstore-off, 123 aegis:// alias, 116 AI-nav hard-off, 118 NTP #141416). Desktop re-test now unblocked (§10.5): version page + settings About = Aegis mark, no Web Store tile/menu item, `aegis://version` resolves, AI-nav entry gone, NTP body #141416. NO watchdog. |
 
-| **Windows** | #38 (dispatch after wave push) | **pending dispatch** | `3d4e523+` | #36 GREEN bank (gen 43351285749) → #37 restored it and CAPPED at 68,339 edges (14:11Z verdict): **cap-bank again, no exe**, gen 43392811502 streamed (2 vols, 1,447,532,054 B size-verified). **#38 restores gen 43392811502** — remaining ~31k edges should finally fit inside 280 min ⇒ expect the first Windows exe artifact. #38 also carries wave 121-126 + b7f6cda (its head 10d93fa predated those). Banking pattern intact (3 gens consumed cleanly). NO watchdog. |
+| **Windows** | #38 id=43456715166 (dispatched 2026-11-13T15:51Z) | **in_progress — bank-resume from #37's cap-bank** | `74de8c3` | #37 verdict 14:11Z confirmed: CAPPED at 68,339 edges — **cap-bank, no exe**, gen 43392811502 streamed (2 vols, 1,447,532,054 B size-verified; old gen 43276366118 pruned). #36 also cap-bank (gen 43351285749) — pattern intact, 4 gens consumed cleanly. **#38 in flight since 15:51Z (280-min cap ≈ 20:10Z)**, restores gen 43392811502 — remaining ~31k edges should fit ⇒ expect the **first Windows exe artifact**. #38 carries wave 121-126 + b7f6cda. Verdict check manual (~20:10Z or user ping). NO watchdog. |
 
 **Note:** Linux #59 built `da82b21` (= `e0824f0` + gfx::PNGCodec avatar encode); APK #66
 builds `35a8e90` = `e0824f0` + Android-only login-db constants — da82b21 does not touch
@@ -492,10 +490,11 @@ script any time the list gets cluttered (never deletes live runs, never touches 
 
 ## 10. Next actions queue (in order)
 
-1. **DONE 2026-11-13 16:0xZ:** all three lanes' verdicts verified (see §4).
-   Linux #61 GREEN + desktop test (2 gaps → `b7f6cda`), #62 GREEN redundant; Windows #37
-   cap-bank (68,339 edges, gen 43392811502 banked); APK #71 cap-bank (gen 43376020530),
-   #72 in flight.
+1. **DONE 2026-11-13 17:45Z:** verdicts verified against GitHub API:
+   Linux **#63 GREEN ARTIFACT** (`.deb` 115,649,064 B, artifact 14059749067 — wave 121-126
+   delivered); Windows #37 = cap-bank (gen 43392811502), **#38 in flight** (cap ≈ 20:10Z);
+   APK #72 = cap-bank #2 at [11385/41436] (gen 43419387001 banked), **#73 dispatched
+   17:32Z at `74de8c3`** (id 43473772644).
 2. **WAVE 121-126 COMMITTED+PUSHED 2026-11-13** (user feedback 2026-11-13):
    - **121 desktop identity** — chrome://version + settings About now render the inline
      Aegis mark (replaces IDR_PRODUCT_LOGO / current-channel-logo binary PNGs patch 107
@@ -518,13 +517,20 @@ script any time the list gets cluttered (never deletes live runs, never touches 
    All hunks generated via git diff vs pristine/chain-replayed trees;
    apply-tested: 121-124+126 vs pristine, 124→125 sequential apply green
    (scripts/patchgen/apply_test_wave.py + /tmp-style manual verify).
-3. **Dispatch order (30-min lane rule, commit+push FIRST):** Linux #63 + Windows #38
-   immediately after push; **APK #73 only after #72 concludes + 30 min**.
-4. On-device (user) after APK #73 GREEN: full-screen browsing (no top toolbar at all),
-   editable shortcuts + favicons + wallpaper on NTP, dock URL pill, splash, icon,
-   no promos; trap stays armed (fresh aegis-crash-*.txt = triage input).
-5. Desktop re-test after Linux #63 GREEN: version page + settings About = Aegis mark;
-   no Web Store anywhere; aegis://version resolves; AI-nav entry gone; NTP #141416.
+3. **DONE 2026-11-13:** Linux #63 + Windows #38 dispatched 15:50Z after wave push;
+   APK #73 dispatched 17:32Z (id 43473772644, head `74de8c3`, restores gen 43419387001).
+3b. **When #73 concludes:** expect cap-bank (~30k edges left, lane rate ≈36-44/min > 280 min)
+   → dispatch **#74 on the same head** (`74de8c3`, lane idle + 30-min-from-start rule) —
+   projected GREEN ARTIFACT. If #73 surprises GREEN, skip straight to step 4.
+4. On-device (user) after APK #74 (or #73) GREEN: full-screen browsing (no top toolbar at
+   all — patch 124), editable shortcuts + favicons + wallpaper on NTP (patch 125),
+   `aegis://version` resolves (123), dock URL pill, splash, icon, no promos; trap stays
+   armed (fresh aegis-crash-*.txt = triage input). Verify on device from the user's
+   defect list: AI-innovations entry absent, no Chromium logo, Aegis ID not a renamed
+   Google ID (Aegis ID parity pass = step 6).
+5. Desktop re-test after Linux #63 GREEN **(artifact ready — test on r63 .deb)**:
+   version page + settings About = Aegis mark; no Web Store anywhere; aegis://version
+   resolves; AI-nav entry gone; NTP #141416.
 6. Numbering after 126: password-sync staged patch 114 → renumber **127**; P2 Capsules →
    **120 is taken by nothing yet but reserved** (capsules = 128 if 119-126 consumed);
    Android Aegis ID parity pass after that.
