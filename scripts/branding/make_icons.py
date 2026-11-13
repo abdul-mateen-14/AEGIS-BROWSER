@@ -44,9 +44,9 @@ WHITE = (255, 255, 255)
 LEGACY = {"mdpi": 48, "hdpi": 72, "xhdpi": 96, "xxhdpi": 144, "xxxhdpi": 192}
 LAYERED = {"mdpi": 108, "hdpi": 162, "xhdpi": 216, "xxhdpi": 324, "xxxhdpi": 432}
 
-BITMAP_FILL = 0.62      # legacy + composed bitmaps (safe even if circle-masked)
-FG_FIT_DP = 46.0        # adaptive foreground vector, in the 108dp viewport
-THEMED_FIT_DP = 34.0    # monochrome themed icon, in the 90dp viewport
+BITMAP_FILL = 0.48      # legacy + composed bitmaps (r60: user wants the mark smaller)
+FG_FIT_DP = 32.0        # adaptive foreground vector (r60: mark well clear of every mask)
+THEMED_FIT_DP = 30.0    # monochrome themed icon
 
 
 def load_mark():

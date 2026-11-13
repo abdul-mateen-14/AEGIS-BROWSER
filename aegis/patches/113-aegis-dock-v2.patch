@@ -1,0 +1,448 @@
+# 113 - aegis-dock-v2 (r60 wave, user feedback 2026-11-13)
+# Behavior amendments to the Liquid Glass dock, straight from the user:
+#   1. No more automatic hiding: the 4 s idle timer and the 2.4 s nav-peek
+#      collapse are gone. The dock stays until the user hides it.
+#   2. New hide button on the dock (chevron, aegis_ic_collapse) - the user
+#      decides when the chrome goes away.
+#   3. Collapsed state moves to the bottom-LEFT CORNER (aligned with the
+#      dock's vertical band instead of mid-edge), idle bar widened 5->8dp
+#      and swell 9->10dp so it is actually findable; tap/swipe-right
+#      recalls.
+#   4. Auto-hide only while scrolling: TabObserver.onBrowserControls
+#      OffsetChanged tracks the content offset - scrolling down arms a
+#      1.2 s idle collapse, scrolling up cancels it and brings the dock
+#      back. (Keyboard-owns-the-bottom-edge behavior is unchanged.)
+#   5. The URL pill is the address line: it always shows the current page
+#      URL (scheme stripped, middle-elided) instead of the page title.
+#   6. A horizontal fling on the dock switches tabs (right = previous,
+#      left = next) via TabModelUtils.setIndex - the dock swipe mirrors
+#      Chrome Android's address-bar swipe.
+# Files: AegisDockView.java (behavior), aegis_tokens.xml (sliver dimens +
+# aegis_dock_hide string), aegis_ic_collapse.xml (new drawable, registered
+# in chrome_java_resources.gni).
+
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
+@@ -29,29 +29,40 @@
+ import org.chromium.chrome.browser.ChromeTabbedActivity;
+ import org.chromium.chrome.browser.tab.Tab;
+ import org.chromium.chrome.browser.tab.TabObserver;
++import org.chromium.chrome.browser.tabmodel.TabModel;
++import org.chromium.chrome.browser.tabmodel.TabModelUtils;
+ import org.chromium.chrome.browser.ui.appmenu.AppMenuHandler;
+ import org.chromium.url.GURL;
+ 
+ /**
+- * Aegis Liquid Glass dock (patch 099, spec section 03): the browser chrome
+- * compressed into one 260x52dp capsule - URL/trust pill, new-tab, menu -
+- * that collapses into a 5x120dp sliver flush against the LEFT edge.
++ * Aegis Liquid Glass dock (patch 113, r60 wave): the browser chrome
++ * compressed into one 260x52dp capsule - URL/trust pill, new-tab, menu and
++ * a hide button - that collapses into a bar at the bottom-left corner.
+  *
+- * Motion (spec Table 9): collapse 360 ms cubic-bezier(.32,.72,0,1); expand
+- * 420 ms spring with a 4 dp overshoot; the sliver appears 240 ms after the
+- * capsule leaves and swells 5->9 dp while a finger approaches it.
+- *
+- * Auto-hide (spec section 3.1): idle collapse, a 2.4 s peek after each
+- * navigation completes, keyboard-owns-the-bottom-edge (stay hidden while a
+- * text field has focus), fling down/left to dismiss, tap or swipe-right on
+- * the sliver to recall.
++ * Behavior follows the user's 2026-11-13 feedback (which amends proposal
++ * section 3.1):
++ *   - The dock never hides by itself. There is no idle timer and no
++ *     auto-collapse after navigation: it stays until the user hides it
++ *     (hide button or fling down) or scrolls the page down.
++ *   - Scroll-driven hiding only: scrolling the page down starts a 1.2 s
++ *     timer (paused while scrolling continues); scrolling up or stopping
++ *     past the deadline collapses the dock into the corner bar. Scrolling
++ *     up always brings the dock back.
++ *   - The corner bar (8x120dp, generous 24x140dp touch target) sits at the
++ *     bottom-left corner, aligned with the dock's vertical band; a tap or
++ *     swipe-right restores the full dock.
++ *   - The URL pill is the address line: it always shows the current page
++ *     URL (scheme stripped), middle-elided; tap opens the search/address
++ *     overlay.
++ *   - A horizontal fling on the dock switches tabs (left = next, right =
++ *     previous), mirroring Chrome Android's address-bar swipe.
++ *   - Keyboard-owns-the-bottom-edge is unchanged: the dock hides while a
++ *     text field has focus.
+  */
+ @NullMarked
+ public class AegisDockView extends FrameLayout {
+-    /** Idle collapse delay after the last interaction, in ms. */
+-    private static final long COLLAPSE_DELAY_MS = 4000;
+-    /** Peek duration after a navigation completes, in ms (spec 3.1). */
+-    private static final long PEEK_DELAY_MS = 2400;
++    /** Idle delay after the last downward scroll before collapsing, in ms. */
++    private static final long SCROLL_IDLE_MS = 1200;
+     /** Sliver fade-in delay after the capsule leaves, in ms (Table 2). */
+     private static final long SLIVER_DELAY_MS = 240;
+     /** Collapse duration, in ms (spec: 360 ms emphasized). */
+@@ -63,29 +74,31 @@
+ 
+     private final LinearLayout mPill;
+     private final TextView mUrlPill;
+-    /** Touch container at the left edge (24x140dp); hosts the 5..9dp bar. */
++    /** Touch container at the left edge (24x140dp); hosts the 8dp bar. */
+     private final FrameLayout mSliverTouch;
+-    /** The visible sliver bar (width animates 5<->9dp as a live affordance). */
++    /** The visible sliver bar (width animates 8<->10dp as a live affordance). */
+     private final View mSliverBar;
+     private final Supplier<@Nullable AppMenuHandler> mMenuSupplier;
+-    private final Runnable mCollapse = this::collapse;
+     private final Runnable mRefresh = this::refreshUrl;
+-    private final Runnable mPeekEnd = this::collapse;
++    /** Armed while the page scrolls down; fires SCROLL_IDLE_MS after the
++     *  last downward movement. */
++    private final Runnable mScrollCollapse = this::collapse;
+     private final GestureDetector mDockGestures;
+     private final GestureDetector mSliverGestures;
+     private boolean mExpanded;
+     private boolean mImeOpen;
+-    private boolean mWasLoading;
+     private @Nullable String mLastBound;
+     private @Nullable Tab mObservedTab;
+-    /** Navigation-driven refresh + peek (spec 3.1); the 1 Hz poll stays as
+-     *  a fallback for fast same-document navigations and tab switches. */
++    /** Last seen content offset (physical px); drives scroll direction. */
++    private int mLastContentOffsetY;
++    private boolean mHasContentOffset;
++    /** Navigation-driven URL refresh; the 1 Hz poll stays as a fallback
++     *  for fast same-document navigations and tab switches. */
+     private final TabObserver mTabObserver =
+             new TabObserver() {
+                 @Override
+                 public void onShown(Tab tab, int type) {
+                     refreshUrl();
+-                    schedulePeekAfterNavigation();
+                 }
+ 
+                 @Override
+@@ -96,12 +109,35 @@
+                 @Override
+                 public void onPageLoadFinished(Tab tab, GURL url) {
+                     refreshUrl();
+-                    schedulePeekAfterNavigation();
+                 }
+ 
+                 @Override
+-                public void didFirstVisuallyNonEmptyPaint(Tab tab) {
+-                    schedulePeekAfterNavigation();
++                public void onBrowserControlsOffsetChanged(
++                        Tab tab,
++                        int topControlsOffsetY,
++                        int bottomControlsOffsetY,
++                        int contentOffsetY,
++                        int topControlsMinHeightOffsetY,
++                        int bottomControlsMinHeightOffsetY) {
++                    // Scroll-driven auto-hide (patch 113): the content
++                    // offset moves with the page, so its delta is the
++                    // scroll direction. Down -> arm the idle collapse;
++                    // up -> cancel it and bring the dock back.
++                    if (!mHasContentOffset) {
++                        mHasContentOffset = true;
++                        mLastContentOffsetY = contentOffsetY;
++                        return;
++                    }
++                    int delta = contentOffsetY - mLastContentOffsetY;
++                    mLastContentOffsetY = contentOffsetY;
++                    if (delta < 0) {
++                        removeCallbacks(mScrollCollapse);
++                        if (AegisGlassSheet.isAnySheetShowing() || mImeOpen) return;
++                        postDelayed(mScrollCollapse, SCROLL_IDLE_MS);
++                    } else if (delta > 0) {
++                        removeCallbacks(mScrollCollapse);
++                        if (!mExpanded) expand();
++                    }
+                 }
+             };
+     /** False when the OS asks for reduced motion or the device is low-RAM:
+@@ -145,8 +181,8 @@
+         Resources res = getResources();
+ 
+         // Full-width hit surface; the capsule is centered inside it. The pill
+-        // carries exactly three controls (spec section 02): the URL/trust
+-        // pill, new-tab and the menu.
++        // carries the URL/trust pill, new-tab, menu and the hide button
++        // (patch 113 user feedback).
+         mPill = new LinearLayout(getContext());
+         mPill.setOrientation(LinearLayout.HORIZONTAL);
+         mPill.setGravity(Gravity.CENTER_VERTICAL);
+@@ -178,8 +214,13 @@
+                 this::onNewTabClicked));
+         mPill.addView(makeButton(R.drawable.aegis_ic_menu, R.string.aegis_dock_menu,
+                 this::onMenuClicked));
+-
+-        // Fling down/left dismisses the capsule (spec Table 3).
++        // Hide affordance (patch 113): the user decides when the dock goes.
++        mPill.addView(makeButton(R.drawable.aegis_ic_collapse, R.string.aegis_dock_hide,
++                this::collapse));
++
++        // Fling down dismisses the capsule; horizontal flings switch tabs
++        // (patch 113: the dock doubles as Chrome Android's address-bar
++        // swipe surface).
+         mDockGestures =
+                 new GestureDetector(
+                         getContext(),
+@@ -198,8 +239,9 @@
+                                     openTabGrid(); // swipe up opens the tab grid
+                                     return true;
+                                 }
+-                                if (vx < 0 && Math.abs(dx) > Math.abs(dy)) {
+-                                    collapse(); // fling left
++                                if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 40
++                                        && Math.abs(vx) > 500) {
++                                    switchTab(dx > 0 ? -1 : 1); // right = previous, left = next
+                                     return true;
+                                 }
+                                 return false;
+@@ -215,9 +257,10 @@
+         pillLp.bottomMargin = vmargin;
+         addView(mPill, pillLp);
+ 
+-        // Collapsed edge sliver (spec section 2.1): a 5x120dp bar flush
+-        // against the LEFT edge, vertically centered, inside a generous
+-        // 24x140dp touch target. Tap or swipe right recalls the dock.
++        // Collapsed corner bar (patch 113): the sliver now lives at the
++        // bottom-left CORNER, vertically aligned with the dock's band, so
++        // it is discoverable and one tap restores the dock. The generous
++        // 24x140dp touch target extends upward from the corner.
+         mSliverTouch = new FrameLayout(getContext());
+         mSliverBar = new View(getContext());
+         mSliverBar.setBackgroundResource(R.drawable.aegis_dock_sliver);
+@@ -232,7 +275,11 @@
+                 new FrameLayout.LayoutParams(
+                         res.getDimensionPixelSize(R.dimen.aegis_sliver_touch_w),
+                         res.getDimensionPixelSize(R.dimen.aegis_sliver_touch_h),
+-                        Gravity.CENTER_VERTICAL | Gravity.START);
++                        Gravity.BOTTOM | Gravity.START);
++        sliverLp.bottomMargin =
++                vmargin
++                        + res.getDimensionPixelSize(R.dimen.aegis_dock_height) / 2
++                        - res.getDimensionPixelSize(R.dimen.aegis_sliver_touch_h) / 2;
+         mSliverTouch.setVisibility(GONE);
+         mSliverTouch.setContentDescription(getContext().getString(R.string.aegis_dock_recall));
+         mSliverTouch.setClickable(true);
+@@ -261,7 +308,7 @@
+         mSliverTouch.setOnTouchListener(
+                 (v, event) -> {
+                     if (mSliverGestures.onTouchEvent(event)) return true;
+-                    // Proximity swell: the bar swells 5 -> 9 dp while touched.
++                    // Proximity swell: the bar swells 8 -> 10 dp while touched.
+                     switch (event.getActionMasked()) {
+                         case MotionEvent.ACTION_DOWN:
+                             swellSliver(true);
+@@ -323,11 +370,11 @@
+         mSliverBar.setLayoutParams(lp);
+     }
+ 
+-    /** Collapses the capsule into the left-edge sliver (360 ms emphasized). */
++    /** Collapses the capsule into the corner bar (360 ms emphasized). */
+     public void collapse() {
+         if (!mExpanded) return;
+         mExpanded = false;
+-        removeCallbacks(mPeekEnd);
++        removeCallbacks(mScrollCollapse);
+         Resources res = getResources();
+         int sliverH = res.getDimensionPixelSize(R.dimen.aegis_sliver_touch_h);
+         int shiftX =
+@@ -375,13 +422,12 @@
+     public void expand() {
+         if (mExpanded) return;
+         mExpanded = true;
+-        removeCallbacks(mPeekEnd);
++        removeCallbacks(mScrollCollapse);
+         if (!mAnimate) {
+             mSliverTouch.setVisibility(GONE);
+             mPill.setAlpha(1f);
+             mPill.setVisibility(VISIBLE);
+             refreshUrl();
+-            scheduleCollapse();
+             return;
+         }
+         mSliverBar.animate()
+@@ -399,27 +445,19 @@
+                 .setInterpolator(new OvershootInterpolator(1.2f))
+                 .start();
+         refreshUrl();
+-        scheduleCollapse();
+     }
+ 
+-    private void scheduleCollapse() {
+-        removeCallbacks(mCollapse);
+-        // The dock never collapses while a glass sheet covers it.
+-        if (AegisGlassSheet.isAnySheetShowing()) return;
+-        // The keyboard owns the bottom edge (spec Table 11): stay hidden.
+-        if (mImeOpen) return;
+-        postDelayed(mCollapse, COLLAPSE_DELAY_MS);
+-    }
+-
+-    /** Peeks after a navigation completes so the trust line is readable. */
+-    private void schedulePeekAfterNavigation() {
+-        if (!mExpanded) {
+-            expand();
+-        } else {
+-            scheduleCollapse();
+-        }
+-        removeCallbacks(mPeekEnd);
+-        postDelayed(mPeekEnd, COLLAPSE_DELAY_MS + PEEK_DELAY_MS);
++    /** Switches tabs with wraparound (patch 113 dock swipe). */
++    private void switchTab(int delta) {
++        Activity activity = (Activity) getContext();
++        if (!(activity instanceof ChromeTabbedActivity)) return;
++        ChromeTabbedActivity cta = (ChromeTabbedActivity) activity;
++        TabModel model = cta.getTabModelSelector().getCurrentModel();
++        int count = model.getCount();
++        if (count < 2) return;
++        int target = (model.index() + delta + count) % count;
++        TabModelUtils.setIndex(model, target);
++        refreshUrl();
+     }
+ 
+     /** Keeps the navigation observer attached to the current activity tab. */
+@@ -440,25 +478,20 @@
+         ChromeTabbedActivity cta = (ChromeTabbedActivity) activity;
+         Tab tab = cta.getActivityTab();
+         String next;
+-        boolean loading = tab != null && tab.isLoading();
+-        // The trust line shows the current page at all times (spec section
+-        // 2.2); the search hint only appears when no tab exists.
+-        if (tab == null) {
++        // The URL pill is the address line (patch 113 user feedback): it
++        // always shows the current page URL, not the page title.
++        if (tab == null || tab.getUrl() == null) {
+             next = getContext().getString(R.string.aegis_dock_search_hint);
+         } else {
+-            String title = tab.getTitle();
+-            next = (title == null || title.isEmpty())
+-                    ? stripScheme(tab.getUrl().getSpec())
+-                    : title;
++            next = stripScheme(tab.getUrl().getSpec());
++        }
++        if (next == null || next.isEmpty()) {
++            next = getContext().getString(R.string.aegis_dock_search_hint);
+         }
+-        if (next == null) next = getContext().getString(R.string.aegis_dock_search_hint);
+         if (!next.equals(mLastBound)) {
+             mLastBound = next;
+             mUrlPill.setText(next);
+         }
+-        // Auto-hide trigger (spec 3.1): navigation complete -> 2.4 s peek.
+-        if (mWasLoading && !loading) schedulePeekAfterNavigation();
+-        mWasLoading = loading;
+     }
+ 
+     private static String stripScheme(@Nullable String spec) {
+@@ -502,8 +535,7 @@
+     protected void onDetachedFromWindow() {
+         super.onDetachedFromWindow();
+         removeCallbacks(mRefresh);
+-        removeCallbacks(mCollapse);
+-        removeCallbacks(mPeekEnd);
++        removeCallbacks(mScrollCollapse);
+         if (mObservedTab != null) {
+             mObservedTab.removeObserver(mTabObserver);
+             mObservedTab = null;
+@@ -514,7 +546,6 @@
+     public boolean dispatchTouchEvent(MotionEvent event) {
+         mDockGestures.onTouchEvent(event);
+         boolean result = super.dispatchTouchEvent(event);
+-        scheduleCollapse();
+         return result;
+     }
+ 
+@@ -530,7 +561,7 @@
+         if (imeNow != mImeOpen) {
+             mImeOpen = imeNow;
+             if (imeNow) {
+-                removeCallbacks(mCollapse);
++                removeCallbacks(mScrollCollapse);
+                 if (mExpanded) collapse();
+             } else if (!mExpanded) {
+                 expand();
+@@ -544,6 +575,25 @@
+                 lp.bottomMargin = wanted;
+                 mPill.setLayoutParams(lp);
+             }
++            // The corner bar tracks the pill's vertical band.
++            if (mSliverTouch.getLayoutParams() instanceof FrameLayout.LayoutParams) {
++                FrameLayout.LayoutParams slp =
++                        (FrameLayout.LayoutParams) mSliverTouch.getLayoutParams();
++                int sliverWanted =
++                        wanted
++                                + getResources()
++                                                .getDimensionPixelSize(
++                                                        R.dimen.aegis_dock_height)
++                                        / 2
++                                - getResources()
++                                                .getDimensionPixelSize(
++                                                        R.dimen.aegis_sliver_touch_h)
++                                        / 2;
++                if (slp.bottomMargin != sliverWanted) {
++                    slp.bottomMargin = sliverWanted;
++                    mSliverTouch.setLayoutParams(slp);
++                }
++            }
+         }
+     }
+ }
+
+--- a/chrome/android/java/res/values/aegis_tokens.xml
++++ b/chrome/android/java/res/values/aegis_tokens.xml
+@@ -45,8 +45,8 @@
+     <dimen name="aegis_dock_gap">4dp</dimen>
+     <dimen name="aegis_dock_bottom_margin">16dp</dimen>
+     <dimen name="aegis_url_pill_height">40dp</dimen>
+-    <dimen name="aegis_sliver_idle">5dp</dimen>
+-    <dimen name="aegis_sliver_touch">9dp</dimen>
++    <dimen name="aegis_sliver_idle">8dp</dimen>
++    <dimen name="aegis_sliver_touch">10dp</dimen>
+     <dimen name="aegis_sliver_bar_h">120dp</dimen>
+     <dimen name="aegis_sliver_touch_w">24dp</dimen>
+     <dimen name="aegis_sliver_touch_h">140dp</dimen>
+@@ -70,6 +70,7 @@
+     <string name="aegis_dock_search">Search</string>
+     <string name="aegis_dock_search_hint">Search or type URL</string>
+     <string name="aegis_dock_recall">Show dock</string>
++    <string name="aegis_dock_hide">Hide dock</string>
+     <string name="aegis_sheet_search">Search %1$s or type a URL</string>
+     <string name="aegis_sheet_tabs_title">Tabs</string>
+     <string name="aegis_sheet_tabs_empty">No tabs yet</string>
+
+--- a/chrome/android/chrome_java_resources.gni
++++ b/chrome/android/chrome_java_resources.gni
+@@ -242,6 +242,7 @@
+   "java/res/drawable/aegis_ic_search.xml",
+   "java/res/drawable/aegis_ic_tabs.xml",
+   "java/res/drawable/aegis_ic_bookmark.xml",
++  "java/res/drawable/aegis_ic_collapse.xml",
+   "java/res/drawable/aegis_ic_desktop.xml",
+   "java/res/drawable/aegis_ic_download.xml",
+   "java/res/drawable/aegis_ic_history.xml",
+
+diff --git a/chrome/android/java/res/drawable/aegis_ic_collapse.xml b/chrome/android/java/res/drawable/aegis_ic_collapse.xml
+new file mode 100644
+--- /dev/null
++++ b/chrome/android/java/res/drawable/aegis_ic_collapse.xml
+@@ -0,0 +1,20 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Copyright 2026 The Aegis Browser Authors
++     Use of this source code is governed by a BSD-style license that can be
++     found in the LICENSE file.
++
++     Hide button (patch 113): a left-pointing chevron - the dock retreats
++     to the bottom-left corner bar. 21dp glyph, 1.7dp round-capped stroke. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24">
++    <path
++        android:pathData="M14.5,5.5 L8.2,11.8 A0.85,0.85 0 0,0 8.2,13 L14.5,19.3"
++        android:strokeWidth="1.7"
++        android:strokeColor="@color/aegis_glass_icon"
++        android:strokeLineCap="round"
++        android:strokeLineJoin="round"
++        android:fillColor="@android:color/transparent"/>
++</vector>

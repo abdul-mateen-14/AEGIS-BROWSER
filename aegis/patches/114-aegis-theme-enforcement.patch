@@ -1,0 +1,91 @@
+# 114 - aegis-theme-enforcement (r60 wave, user feedback 2026-11-13)
+# The user reports the Android launch logo looks wrong because the splash
+# background is Chromium's Google-grey Material color, not the proposal
+# palette (proposal Table 5: dark bg #0A0A0B, light bg #F6F6F7 - "the
+# black color in google theme and my proposal are different").
+#
+# Fix: override the activity launch themes on API 31+ (the system splash
+# screen reads windowSplashScreenBackground there) and in values-night
+# (pre-31 dark devices get the same true-black status bar), for:
+#   - Base.Theme.Chromium.TabbedMode (ChromeTabbedActivity - the launch
+#     surface) and Theme.Chromium.Activity (settings and friends).
+# The referenced @color/aegis_bg already resolves per theme via the
+# aegis_tokens values / values-night pair (patches 080/099), so both
+# themes are handled by one resource. Pre-31 light devices keep the
+# upstream theme untouched (white is already paper-white).
+# Files: values-v31/aegis_theme.xml, values-night/aegis_theme.xml (new,
+# registered in chrome_java_resources.gni).
+
+--- a/chrome/android/chrome_java_resources.gni
++++ b/chrome/android/chrome_java_resources.gni
+@@ -654,12 +654,14 @@
+   "java/res/values-large/drawables.xml",
+   "java/res/values-ldrtl/drawables.xml",
+   "java/res/values-night/aegis_tokens.xml",
++  "java/res/values-night/aegis_theme.xml",
+   "java/res/values-night/colors.xml",
+   "java/res/values-night/drawables.xml",
+   "java/res/values-sw600dp-v30/styles.xml",
+   "java/res/values-sw600dp/dimens.xml",
+   "java/res/values-sw600dp/styles.xml",
+   "java/res/values-sw600dp/values.xml",
++  "java/res/values-v31/aegis_theme.xml",
+   "java/res/values-v31/styles.xml",
+   "java/res/values-w1000dp/dimens.xml",
+   "java/res/values-w1200dp/dimens.xml",
+
+diff --git a/chrome/android/java/res/values-v31/aegis_theme.xml b/chrome/android/java/res/values-v31/aegis_theme.xml
+new file mode 100644
+--- /dev/null
++++ b/chrome/android/java/res/values-v31/aegis_theme.xml
+@@ -0,0 +1,24 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Copyright 2026 The Aegis Browser Authors
++     Use of this source code is governed by a BSD-style license that can be
++     found in the LICENSE file.
++
++     Aegis launch theme (patch 114): the Android 12+ system splash draws
++     windowSplashScreenBackground behind the launcher icon. Aegis forces
++     the proposal palette (aegis_bg resolves per theme: #0A0A0B night,
++     #F6F6F7 light) so the Aegis mark sits on true black / paper white,
++     never on Chromium's grey. The status bar follows the same color.
++     Everything else inherits the upstream definitions unchanged. -->
++<resources>
++    <style name="Base.Theme.Chromium.TabbedMode" parent="Theme.Chromium.WithWindowAnimation">
++        <item name="android:windowSplashScreenBackground">@color/aegis_bg</item>
++        <item name="android:statusBarColor">@color/aegis_bg</item>
++        <item name="android:windowLightStatusBar">@bool/window_light_status_bar</item>
++    </style>
++
++    <style name="Theme.Chromium.Activity" parent="Theme.Chromium.WithWindowAnimation">
++        <item name="android:windowSplashScreenBackground">@color/aegis_bg</item>
++        <item name="android:statusBarColor">@color/aegis_bg</item>
++        <item name="android:windowLightStatusBar">@bool/window_light_status_bar</item>
++    </style>
++</resources>
+
+diff --git a/chrome/android/java/res/values-night/aegis_theme.xml b/chrome/android/java/res/values-night/aegis_theme.xml
+new file mode 100644
+--- /dev/null
++++ b/chrome/android/java/res/values-night/aegis_theme.xml
+@@ -0,0 +1,20 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Copyright 2026 The Aegis Browser Authors
++     Use of this source code is governed by a BSD-style license that can be
++     found in the LICENSE file.
++
++     Aegis launch theme, night variant (patch 114): pre-Android-12 dark
++     devices get the proposal's true-black status bar (#0A0A0B) instead of
++     Chromium's Material grey. API 31+ devices are covered by the
++     values-v31 variant (windowSplashScreenBackground there). -->
++<resources>
++    <style name="Base.Theme.Chromium.TabbedMode" parent="Theme.Chromium.WithWindowAnimation">
++        <item name="android:statusBarColor">@color/aegis_bg</item>
++        <item name="android:windowLightStatusBar">@bool/window_light_status_bar</item>
++    </style>
++
++    <style name="Theme.Chromium.Activity" parent="Theme.Chromium.WithWindowAnimation">
++        <item name="android:statusBarColor">@color/aegis_bg</item>
++        <item name="android:windowLightStatusBar">@bool/window_light_status_bar</item>
++    </style>
++</resources>

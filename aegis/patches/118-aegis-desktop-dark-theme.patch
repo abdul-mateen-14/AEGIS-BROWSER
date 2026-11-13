@@ -1,0 +1,69 @@
+# 118 - aegis-desktop-dark-theme (r60 wave, user feedback 2026-11-13)
+# The desktop dark theme used Chromium's Google greys (#202124 frame,
+# #35363A toolbar, #292A2D surfaces); the proposal specifies true black
+# and a calibrated grey ramp (Table 5: bg #0A0A0B, surface #141416).
+#
+#   ui/color/core_default_color_mixer.cc:
+#     kColorPrimaryBackground (dialog/bubble/WebUI base) dark
+#       #292A2D -> #141416 (aegis surface)
+#   ui/color/ui_color_mixer.cc:
+#     kColorFrameActiveUnthemed dark kGoogleGrey900 #202124 -> #0A0A0B
+#       (aegis bg - window frame + tab strip)
+#     kColorFrameInactive dark kGoogleGrey800 #3C3F43 -> #141416
+#   chrome/browser/ui/color/chrome_color_mixer.cc:
+#     kColorToolbar dark #35363A -> #141416 (toolbar, omnibox, bookmark
+#     bar, side panel and infobars all derive from this)
+# Text colors (GetColorWithMaxContrast / kGoogleGrey200) keep working:
+# contrast ratios IMPROVE against the darker surfaces.
+--- a/ui/color/core_default_color_mixer.cc
++++ b/ui/color/core_default_color_mixer.cc
+@@ -58,8 +58,9 @@
+                  gfx::kGoogleGreyAlpha200);
+   mixer[kColorMidground] = {dark_mode ? gfx::kGoogleGrey800
+                                       : gfx::kGoogleGrey300};
+-  mixer[kColorPrimaryBackground] = {dark_mode ? SkColorSetRGB(0x29, 0x2A, 0x2D)
+-                                              : SK_ColorWHITE};
++  mixer[kColorPrimaryBackground] = {
++      // Aegis (patch 118): proposal Table 5 surface #141416.
++      dark_mode ? SkColorSetRGB(0x14, 0x14, 0x16) : SK_ColorWHITE};
+   mixer[kColorPrimaryForeground] = {dark_mode ? gfx::kGoogleGrey200
+                                               : gfx::kGoogleGrey900};
+   mixer[kColorSecondaryForeground] = {dark_mode ? gfx::kGoogleGrey500
+
+--- a/ui/color/ui_color_mixer.cc
++++ b/ui/color/ui_color_mixer.cc
+@@ -79,13 +79,16 @@
+   mixer[kColorFocusableBorderUnfocused] = {kColorMidground};
+   mixer[kColorFrameActive] = {kColorFrameActiveUnthemed};
+   mixer[kColorFrameActiveUnthemed] = {
+-      dark_mode ? gfx::kGoogleGrey900 : SkColorSetRGB(0xDE, 0xE1, 0xE6)};
++      // Aegis (patch 118): proposal Table 5 bg #0A0A0B (true black).
++      dark_mode ? SkColorSetRGB(0x0A, 0x0A, 0x0B)
++                : SkColorSetRGB(0xDE, 0xE1, 0xE6)};
+   mixer[kColorFrameCaptionForegroundActive] =
+       GetColorWithMaxContrast(kColorFrameActive);
+   mixer[kColorFrameCaptionForegroundInactive] =
+       AlphaBlend(kColorFrameCaptionForegroundActive, kColorFrameInactive, 0x80);
+-  mixer[kColorFrameInactive] = {dark_mode ? gfx::kGoogleGrey800
+-                                          : gfx::kGoogleGrey200};
++  mixer[kColorFrameInactive] = {
++      // Aegis (patch 118): proposal Table 5 surface #141416.
++      dark_mode ? SkColorSetRGB(0x14, 0x14, 0x16) : gfx::kGoogleGrey200};
+   mixer[kColorHelpIconActive] = {kColorPrimaryForeground};
+   mixer[kColorHelpIconInactive] = {kColorSecondaryForeground};
+   mixer[kColorIcon] = {kColorSecondaryForeground};
+
+--- a/chrome/browser/ui/color/chrome_color_mixer.cc
++++ b/chrome/browser/ui/color/chrome_color_mixer.cc
+@@ -802,8 +802,9 @@
+       ui::GetColorWithMaxContrast(kColorThumbnailTabBackground);
+   mixer[kColorThumbnailTabStripBackgroundActive] = {ui::kColorFrameActive};
+   mixer[kColorThumbnailTabStripBackgroundInactive] = {ui::kColorFrameInactive};
+-  mixer[kColorToolbar] = {dark_mode ? SkColorSetRGB(0x35, 0x36, 0x3A)
+-                                    : SK_ColorWHITE};
++  mixer[kColorToolbar] = {
++      // Aegis (patch 118): proposal Table 5 surface #141416.
++      dark_mode ? SkColorSetRGB(0x14, 0x14, 0x16) : SK_ColorWHITE};
+   mixer[kColorToolbarContextualTasksButtonShadow] = {
+       ui::SetAlpha(ui::kColorShadowBase, 0x255 * 17 / 100)};
+   mixer[kColorToolbarButtonBackgroundHighlightedDefault] =

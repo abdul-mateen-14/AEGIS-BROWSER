@@ -1,0 +1,95 @@
+# 115 - aegis-ai-sweep-2 (r60 wave, user feedback 2026-11-13)
+# "There should not be any Gemini or other AI service outside the tab."
+# Patches 073 (Glic/Compose/sign-in defaults) and 105 (Android JNI gates)
+# killed the first wave; this one catches the rest at the feature-flag
+# level so no Google AI surface can ship outside the page, on any lane:
+#
+# chrome/common/chrome_features.cc:
+#   - kGlicRollout: the master Glic rollout gate (also registers the Glic
+#     edition in What's New) -> DISABLED.
+#   - kGlicActor / kGlicActorUi: Gemini actor UI tasks in the browser
+#     chrome -> DISABLED (were ENABLED_BY_DEFAULT).
+#   - kGlicUserStatusCheck: periodic Gemini user-status fetch -> DISABLED.
+# components/lens/lens_features.cc:
+#   - kLensStandalone, kShowContextualTasksMenuIcon,
+#     kLensOverlayContextualSearchbox (the omnibox Lens button),
+#     kLensOverlayRoutingInfo: Google Lens/AI search surfaces
+#     -> DISABLED.
+#   - kLensOverlay: desktop branch ENABLED -> DISABLED (Android/iOS
+#     branches were already disabled upstream).
+# Websites (gemini.google.com etc.) remain reachable - only browser-owned
+# AI chrome is removed (per docs/design/DEGOOGLE-MAP.md).
+--- a/chrome/common/chrome_features.cc
++++ b/chrome/common/chrome_features.cc
+@@ -248,7 +248,7 @@
+ #endif  // BUILDFLAG(IS_CHROMEOS)
+ 
+ // Controls whether the actor component of Glic is enabled.
+-BASE_FEATURE(kGlicActor, base::FEATURE_ENABLED_BY_DEFAULT);
++BASE_FEATURE(kGlicActor, base::FEATURE_DISABLED_BY_DEFAULT);
+ 
+ BASE_FEATURE(kGlicActorApcComparison, base::FEATURE_ENABLED_BY_DEFAULT);
+ 
+@@ -298,7 +298,7 @@
+         "https://gemini.google.com/app"};
+ 
+ // Controls whether the Actor UI components are enabled.
+-BASE_FEATURE(kGlicActorUi, base::FEATURE_ENABLED_BY_DEFAULT);
++BASE_FEATURE(kGlicActorUi, base::FEATURE_DISABLED_BY_DEFAULT);
+ BASE_FEATURE(kGlicConfirmTabClose, base::FEATURE_ENABLED_BY_DEFAULT);
+ // Controls whether we ignore users preference of reduced motion enabled and
+ // still show the tab indicator spinner. No-op if kGlicActorUiTabIndicator is
+@@ -864,9 +864,9 @@
+ 
+ BASE_FEATURE(kGlicTieredRollout, base::FEATURE_ENABLED_BY_DEFAULT);
+ 
+-BASE_FEATURE(kGlicRollout, base::FEATURE_ENABLED_BY_DEFAULT);
++BASE_FEATURE(kGlicRollout, base::FEATURE_DISABLED_BY_DEFAULT);
+ 
+-BASE_FEATURE(kGlicUserStatusCheck, base::FEATURE_ENABLED_BY_DEFAULT);
++BASE_FEATURE(kGlicUserStatusCheck, base::FEATURE_DISABLED_BY_DEFAULT);
+ 
+ // When enabled, if GlicUserStatusFetcher receives an error when checking for
+ // managed status, and the refresh token is missing, it will retry. This fixes
+
+--- a/components/lens/lens_features.cc
++++ b/components/lens/lens_features.cc
+@@ -16,15 +16,17 @@
+ 
+ namespace lens::features {
+ 
+-BASE_FEATURE(kLensStandalone, base::FEATURE_ENABLED_BY_DEFAULT);
++BASE_FEATURE(kLensStandalone, base::FEATURE_DISABLED_BY_DEFAULT);
+ 
+-BASE_FEATURE(kShowContextualTasksMenuIcon, base::FEATURE_ENABLED_BY_DEFAULT);
++BASE_FEATURE(kShowContextualTasksMenuIcon, base::FEATURE_DISABLED_BY_DEFAULT);
+ 
+ BASE_FEATURE(kLensOverlay,
+ #if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
+              base::FEATURE_DISABLED_BY_DEFAULT
+ #else
+-             base::FEATURE_ENABLED_BY_DEFAULT
++             // Aegis: the Lens overlay is a Google AI surface outside the
++             // tab; disabled on desktop as well (patch 115).
++             base::FEATURE_DISABLED_BY_DEFAULT
+ #endif
+ );
+ 
+@@ -37,7 +39,7 @@
+ BASE_FEATURE(kLensOverlayImageContextMenuActions,
+              base::FEATURE_ENABLED_BY_DEFAULT);
+ 
+-BASE_FEATURE(kLensOverlayContextualSearchbox, base::FEATURE_ENABLED_BY_DEFAULT);
++BASE_FEATURE(kLensOverlayContextualSearchbox, base::FEATURE_DISABLED_BY_DEFAULT);
+ 
+ BASE_FEATURE(kLensOverlaySuggestionsMigration,
+              base::FEATURE_DISABLED_BY_DEFAULT);
+@@ -45,7 +47,7 @@
+ BASE_FEATURE(kLensOverlayLatencyOptimizations,
+              base::FEATURE_DISABLED_BY_DEFAULT);
+ 
+-BASE_FEATURE(kLensOverlayRoutingInfo, base::FEATURE_ENABLED_BY_DEFAULT);
++BASE_FEATURE(kLensOverlayRoutingInfo, base::FEATURE_DISABLED_BY_DEFAULT);
+ 
+ BASE_FEATURE(kLensOverlaySurvey, base::FEATURE_DISABLED_BY_DEFAULT);
+ 
