@@ -70,11 +70,37 @@ start with `python3 scripts/run_verdict.py <run_id>`. Dispatch discipline (iron 
 
 | Lane | Latest run | State | Head | Meaning |
 |---|---|---|---|---|
-| **APK** | #74 id=43484233926 (dispatched 2026-11-13T18:36Z) | **in_progress — head `3b8df05` (all fix-wave patches)** | `3b8df05` | **#73 verdict 18:23Z: RED — compile error**: `ninja: error: AegisHomeView.java ... missing and no known rule` (chrome_java.generated.srcjar). **ROOT CAUSE (repro'd locally, scripts/chain-test): patch 125's diff header was malformed — `+++ chrome/...` missing the `b/` prefix — so `git apply` moved the file to `android/java/...` (wrong path) and it vanished from `chrome/android/.../aegis/home/`**; the srcjar regen (invalidation deleted it) then hit the missing input. Linux lane unaffected (desktop doesn't compile that java file). **FIX: 1-char header fix (3b8df05), chain test 103→109→125 green (740-line file at correct path).** #74 rides 123 v2 + invalidations + this fix. Wave 121-126 Android-side on board (124 fullscreen, 125 NTP customization, 126 pw guard). NO watchdog — manual check. |
+| **APK** | #75 id=43503023521 (dispatched 2026-11-13T20:35:53Z) | **in_progress — head `706d707`** | `706d707` | **#74 verdict 19:2xZ: RED — resources parse error**: `RuntimeError: Failure parsing chrome/android/java/res/values/aegis_ntp_strings.xml: no element found: line 14` (prepare_resources.py). **ROOT CAUSE: hunk header said `@@ -0,0 +1,13 @@` but the body carried 15 `+` lines — `git apply` consumes strictly by header counts and silently DROPPED the trailing `aegis_home_pick_image` + `</resources>` lines, so the shipped XML had an unclosed root.** (3b8df05's b/-prefix fix was correct but a second, independent corruption lived in the same file.) **FIX `706d707`: header → `+1,15`** + full-chain hunk audit (see verdict note below). #75 restores gen 43484233926 (banked 3 vols, 1,962,805,417 B, edges 146529). Wave 121-126 Android-side on board (124 fullscreen, 125 NTP customization, 126 pw guard). NO watchdog — manual check. |
 
-| **Linux** | #63 id=43456673038 | **GREEN ARTIFACT — FULL DESKTOP TEST DONE (2 blocking findings, fix wave pushed)** | `74de8c3` | **#63 GREEN: `.deb` 115,649,064 B** (artifact 14059749067). Full r63 desktop test (scripts/r63_deb_test.py + static sweeps): 12/22 auto-checks PASS. **VERIFIED:** package fields (aegis-browser-stable, Aegis description), wrapper + desktop files + icons + setuid chrome-sandbox, product_logo PNGs = Aegis branding (sha-verified), `--version` = "Aegis 156.0.8078.79 stable", chrome://version text branding (Aegis/156/The Aegis Authors), settings About = "About Aegis", AI Innovations + Gemini + Web Store absent from UI, NTP body = #141416 in forced dark (4/4 trials, patch 118 ✓), UA rule OK, non-WebUI aegis:// navs rejected safely, binary contains "Aegis Search"+worker keyword (patch 098 ✓). **BLOCKING FINDING 1 (RED): aegis://version nav CRASHES THE WHOLE BROWSER** (patch 123 v1 process-lock/WebUI mismatch; ud2/SIGTRAP core verified, repro 3×; any WebUI-host aegis:// URL). **FIX: patch 123 v2** (drop WebUIConfigMap aliasing; rewrite typed aegis://→chrome:// in AutocompleteInput — about:version-style). **BLOCKING FINDING 2 (stale build): patch 121's about_version.html/css + version_ui_strings.grdp did NOT reach the artifact** — version page still renders Chromium logo + wordmark + "About Version" (bank-restore skipped build_webui/grit ACTION edges; only 2 of 27 invalidation paths existed on Linux gen layout). **FIX: invalidation_extra.txt +7 gen paths** (gen:components/webui, gen:components/strings, …). **MINOR:** settings UI still shows Google services/Google Account/Gmail (en-US.pak 26/206/16 string hits — new sweep wave 127), "relaunch Chromium"/"Chromium logo"/"Chrome is made possible" strings dangling. ⚠️ **Do NOT ship r63 .deb to the user.** Retest list on r64: version page logo+title, typed aegis://version via omnibox rewrite, aegis://navs safe-reject, settings Google sweep (not yet patched — expect unchanged). |
+| **Linux** | #65 id=43502987189 (dispatched 2026-11-13T20:35:39Z) | **in_progress — head `706d707` (fix-verification lane)** | `706d707` | **#64 verdict 19:2xZ: RED — compile error after 5 min ninja** ([183/1556]): `autocomplete_input.cc:315: no member named 'kChromeUIScheme' in namespace 'url'` — patch 123 v2 referenced `url::kChromeUIScheme` but 156 defines it only in `content/public/common/url_constants.h` (components/ must not depend on content/; the patch comment even said the literal was intentional). **FIX `706d707`: literal `SetSchemeStr("chrome")`** (`SetSchemeStr(const CHAR*)` overload verified at url_canon.h:927 @156.0.8078.79). #65 restores gen 43482576442 (banked 3 vols, 1,548,258,028 B, edges 140284). **Prior record: #63 GREEN ARTIFACT — full desktop test done, 2 blocking findings fixed; see test record below + §10.3a.** NO watchdog — manual check. |
 
-| **Windows** | #38 id=43456715166 (dispatched 2026-11-13T15:51Z) | **in_progress — bank-resume from #37's cap-bank** | `74de8c3` | #37 verdict 14:11Z confirmed: CAPPED at 68,339 edges — cap-bank, no exe, gen 43392811502 streamed (2 vols, 1,447,532,054 B size-verified). **#38 in flight since 15:51Z (280-min cap ≈ 20:10Z)**, restores gen 43392811502. ⚠️ Head `74de8c3` = patch 123 v1 (aegis:// crash) + stale-webui risk on desktop surfaces — **if #38 yields an exe, do NOT ship to user; the fix wave (123 v2 + invalidations) rides #39+**. Verdict check manual (~20:10Z or user ping). NO watchdog. |
+| **Windows** | #38 id=43456715166 (dispatched 2026-11-13T15:51Z) | **cap moment ≈ 20:31Z — verdict pending** | `74de8c3` | #37 verdict 14:11Z confirmed: CAPPED at 68,339 edges — cap-bank, no exe, gen 43392811502 streamed (2 vols, 1,447,532,054 B size-verified). **#38 in flight since 15:51Z (280-min cap ≈ 20:31Z)**, restores gen 43392811502; ninja observed [16.5k/58.5k] at 19:58Z → expect cap-bank, **#39 resumes (~42k edges left) and carries `706d707`** (123 v2 fix + invalidations ride the successor). ⚠️ If #38 surprises GREEN, do NOT ship: head predates 123 v2 (aegis:// crash) + stale-webui risk. Verdict check manual. NO watchdog. |
+
+**Linux #63 (r63 .deb) full desktop test record (DO NOT SHIP r63; fix wave pushed):**
+#63 GREEN: `.deb` 115,649,064 B (artifact 14059749067), head `74de8c3`. Full desktop test
+(scripts/r63_deb_test.py + static sweeps): 12/22 auto-checks PASS. **VERIFIED:** package
+fields (aegis-browser-stable, Aegis description), wrapper + desktop files + icons +
+setuid chrome-sandbox, product_logo PNGs = Aegis branding (sha-verified), `--version` =
+"Aegis 156.0.8078.79 stable", chrome://version text branding (Aegis/156/The Aegis
+Authors), settings About = "About Aegis", AI Innovations + Gemini + Web Store absent
+from UI, NTP body = #141416 in forced dark (4/4 trials, patch 118 ✓), UA rule OK,
+non-WebUI aegis:// navs rejected safely, binary contains "Aegis Search"+worker keyword
+(patch 098 ✓). **BLOCKING FINDING 1 (RED): aegis://version nav CRASHES THE WHOLE BROWSER**
+(patch 123 v1 process-lock/WebUI mismatch; ud2/SIGTRAP core verified, repro 3×; any
+WebUI-host aegis:// URL) → fixed by patch 123 v2 (drop WebUIConfigMap aliasing; rewrite
+typed aegis://→chrome:// in AutocompleteInput — about:version-style). **BLOCKING FINDING 2
+(stale build): patch 121's about_version.html/css + version_ui_strings.grdp did NOT reach
+the artifact** — version page still renders Chromium logo + wordmark + "About Version"
+(bank-restore skipped build_webui/grit ACTION edges; only 2 of 27 invalidation paths
+existed on Linux gen layout) → fixed by invalidation_extra.txt +7 gen paths
+(gen:components/webui, gen:components/strings, …). **MINOR:** settings UI still shows
+Google services/Google Account/Gmail (en-US.pak 26/206/16 string hits — sweep wave 127),
+"relaunch Chromium"/"Chromium logo"/"Chrome is made possible" strings dangling.
+**Retest list on r65 GREEN:** version page logo+title, typed aegis://version via omnibox
+rewrite, aegis://navs safe-reject, settings Google sweep (not yet patched — expect
+unchanged).
+
+**Verdict note 2026-11-13 20:3xZ — full-chain hunk audit:** #64 + #74 REDs traced to two INDEPENDENT silent-corruption classes in hand-written hunks: (a) wrong symbol (`url::kChromeUIScheme` doesn't exist in 156's url/), (b) **hunk header count < body lines — `git apply` consumes strictly by header counts and silently drops the excess, truncating new files mid-content (the 13-vs-15 XML case); at EOF it also tolerates a wrong count and drops pure-context tails (patch 103's 6/6 vs 7/7 body — applied result was identical, header now 7/7)**. NEW GUARD: `scripts/patch_hunk_audit.py` validates every `@@` header against its body across all 54 patch files (count-strict, git-apply semantics, separator-aware) — **run after ANY hand edit to patches; currently 0 mismatches** at `706d707`.
 
 **Note:** Linux #59 built `da82b21` (= `e0824f0` + gfx::PNGCodec avatar encode); APK #66
 builds `35a8e90` = `e0824f0` + Android-only login-db constants — da82b21 does not touch
@@ -529,15 +555,15 @@ script any time the list gets cluttered (never deletes live runs, never touches 
    (gen:components/webui, gen:components/strings, …). Full test detail: Linux lane row
    §4 + scripts/r63_deb_test.py + scratch/r63-deb-test/ (core dump, served html,
    screenshots, results.json).
-3b. **NEXT: dispatch Linux #64** (fix-verification lane, fastest) as soon as pushed —
-   30-min lane rule OK (last Linux start 15:50Z). On r64 GREEN + desktop re-test:
+3b. **DONE 2026-11-13 20:35Z:** Linux #64 RED verdict + fix `706d707`; **Linux #65 dispatched**
+   id=43502987189 (restores gen 43482576442). On r65 GREEN + desktop re-test:
    version page = inline Aegis SVG mark + "About Aegis" title; typed aegis://version
    navigates to the version page (URL bar shows chrome://version); aegis://version
    direct nav = safe error page (no crash); all r63-verified items stay green.
-3c. **When #73 concludes:** expect cap-bank (~30k edges left) → dispatch **#74** (rides
-   123 v2 + invalidations; same head as push). If #73 surprises GREEN, still re-dispatch
-   #74 so the APK carries the fix wave.
-4. On-device (user) after APK #74 GREEN: full-screen browsing (no top toolbar at
+3c. **DONE 2026-11-13 20:35Z:** APK #74 RED verdict (hunk-count XML truncation, see §4
+   APK row) + fix `706d707`; **APK #75 dispatched** id=43503023521 (restores gen
+   43484233926). If #75 cap-banks, dispatch #76 same head; if GREEN, straight to item 4.
+4. On-device (user) after APK #75 GREEN: full-screen browsing (no top toolbar at
    all — patch 124), editable shortcuts + favicons + wallpaper on NTP (patch 125),
    dock URL pill, splash, icon, no promos; trap stays armed (fresh aegis-crash-*.txt =
    triage input). Verify on device from the user's defect list: AI-innovations entry
@@ -551,7 +577,10 @@ script any time the list gets cluttered (never deletes live runs, never touches 
    "Crash reporting is not available in Chromium" → Aegis, omnibox preview string
    "Chrome is made possible by the Chromium open source project" → Aegis; dangling
    pak strings (Web Store/AI Innovations/What's New) optionally pruned from grd so no
-   dead data ships. Windows #38/#39 + APK #74 also carry 123 v2.
+   dead data ships. Windows #39+ and APK #75 also carry 123 v2.
+3d. **Windows: #38 cap-bank expected ≈ 20:31Z** (ninja [16.5k/58.5k] at 19:58Z, ~42k
+   edges left) → after verdict, dispatch **#39** (same lane rules; carries `706d707`).
+   Do NOT cancel #38 even past the nominal cap moment — verify verdict first.
 6. Numbering after 126: password-sync staged patch 114 → renumber **128**; P2 Capsules →
    **129**; sweep wave 127 consumes the gap. Android Aegis ID parity pass after that.
 7. When user asks: publish chosen drafts (user decides which; never unprompted).
