@@ -1,0 +1,50 @@
+# 112 - aegis-settings-service-prefs (fix-forward: startup NPE crash loop)
+# On-device crash trap evidence (r69): uncaught NullPointerException in
+# PasswordSettingsUpdaterDispatcherBridge.getSettingValue on the settings
+# updater background thread, twice ~3.8 s apart right after launch.
+#   - Patch 110 forces password_manager_android_util::IsPasswordManagerAvailable()
+#     to always pass (required for the local LoginDatabase backend).
+#   - Side effect: PasswordManagerSettingsServiceFactory::CreateService()
+#     instantiates the GMS-backed PasswordManagerSettingsServiceAndroidImpl,
+#     which unconditionally creates PasswordSettingsUpdaterAndroidBridgeHelper
+#     -> Java PasswordSettingsUpdaterDispatcherBridge.create().
+#   - In un-branded builds PasswordSettingsAccessorFactory.createAccessor()
+#     returns null (PasswordSettingsAccessorFactoryUpstreamImpl is empty),
+#     so the bridge holds a null accessor; release builds strip asserts and
+#     the next getSettingValue call NPEs -> process death -> crash loop.
+#   - Upstream's own no-GMS path returns nullptr here (safe state) and the
+#     pref-backed PasswordManagerSettingsServiceImpl is upstream's designed
+#     fallback for "GMS Core not in use" (compiled on Android already).
+# Fix: route Android through the pref-backed impl, same as desktop. No JNI,
+# no GMS; toggles read/write kCredentialsEnableService / kCredentialsEnableAutosignin.
+
+--- a/chrome/browser/password_manager/factories/password_manager_settings_service_factory.cc
++++ b/chrome/browser/password_manager/factories/password_manager_settings_service_factory.cc
+@@ -83,16 +83,17 @@ PasswordManagerSettingsServiceFactory::BuildServiceInstanceForBrowserContext(
+ 
+ std::unique_ptr<password_manager::PasswordManagerSettingsService>
+ PasswordManagerSettingsServiceFactory::CreateService(Profile* profile) const {
+-#if BUILDFLAG(IS_ANDROID)
+-  if (password_manager_android_util::IsPasswordManagerAvailable(
+-          std::make_unique<
+-              password_manager_android_util::PasswordManagerUtilBridge>())) {
+-    return std::make_unique<PasswordManagerSettingsServiceAndroidImpl>(
+-        profile->GetPrefs(), SyncServiceFactory::GetForProfile(profile));
+-  }
+-  return nullptr;
+-#else
++  // Aegis: the local-backend patch keeps IsPasswordManagerAvailable() always
++  // true so the on-device password store can be built, but that also
++  // instantiates the GMS-backed PasswordManagerSettingsServiceAndroidImpl.
++  // Un-branded builds ship no downstream PasswordSettingsAccessorFactory,
++  // so the Java dispatcher bridge would hold a null PasswordSettingsAccessor
++  // and the startup settings read would crash with a NullPointerException in
++  // PasswordSettingsUpdaterDispatcherBridge.getSettingValue on the background
++  // task runner (verified on device via the Aegis crash trap). Use the
++  // pref-backed cross-platform impl that upstream designed exactly for the
++  // "GMS Core not in use" case: settings live in local prefs and no JNI
++  // bridge is created.
+   return std::make_unique<password_manager::PasswordManagerSettingsServiceImpl>(
+       profile->GetPrefs());
+-#endif
+ }
