@@ -46,3 +46,18 @@ index e6bb9a0..32a9c5a 100644
    }
  
    protected computeDefaultIcon_(): string {
+diff --git a/chrome/app/generated_resources.grd b/chrome/app/generated_resources.grd
+--- a/chrome/app/generated_resources.grd
++++ b/chrome/app/generated_resources.grd
+@@ -7655,9 +7655,9 @@
+         Try again
+       </message>
+       <message name="IDS_GOOGLE_SEARCH_BOX_EMPTY_HINT_MD" desc="The text displayed in the fakebox (on the New Tab page) when it is empty, Google is the default search engine, and the Material Design UI is enabled.">
+-        Search Google or type a URL
++        Search or type a URL
+       </message>
+       <message name="IDS_GOOGLE_SEARCH_BOX_EMPTY_HINT_SHORT" desc="The text displayed in the fakebox (on the New Tab page) when it is empty, Google is the default search engine, and short hint text is enabled.">
+-        Search Google
++        Search
+       </message>
+       <message name="IDS_GOOGLE_SEARCH_BOX_EMPTY_HINT_MULTIMODAL" desc="The text displayed in the multimodal searchbox when it is empty. It is meant to invite the user to add a text query to the existing image query in order to issue a 'multimodal' (image + text) query.">

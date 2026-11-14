@@ -281,6 +281,38 @@ def main():
             elif os.path.exists(p):
                 os.remove(p)
                 print(f"force-invalidated gen file: {rel}")
+    # DURABLE webui/locale/theme invalidation (r68 lesson, 2026-11-14):
+    # grit/repack/rollup products (grd/grdp -> pak, webui TS bundles, locale
+    # paks, theme paks, copied raw resources) are ACTION edges - ninja -t
+    # deps cannot map them (see the gen: comment above) and a pack action
+    # whose input list omits the changed file never reruns, so patched
+    # webui sources can ship a stale packed product (r68: patch 127's aegis
+    # NTP glyph + neutral hint were absent from the deb while patch 128's
+    # theme PNGs landed via explicit repack inputs). When a patch touches
+    # anything in these domains, delete the packed gen subtrees AND the
+    # final paks directly; webui + locale repack is minutes and the chrome
+    # binary itself never embeds pak content.
+    WEBUI_PREFIXES = (
+        "chrome/browser/resources/", "ui/webui/resources/",
+        "chrome/app/theme/", "chrome/app/resources/",
+        "chrome/app/generated_resources.grd",
+        "components/resources/", "components/search_provider_logos/",
+    )
+    if any(t.startswith(WEBUI_PREFIXES) for t in targets):
+        print("webui/locale/theme domain touched - force-invalidating packed outputs")
+        for rel in ("gen/chrome/browser/resources", "gen/ui/webui/resources",
+                    "gen/chrome/app/resources", "gen/chrome/app/theme",
+                    "gen/components/resources", "locales"):
+            p = os.path.join(out, rel)
+            if os.path.isdir(p):
+                shutil.rmtree(p, ignore_errors=True)
+                print(f"force-invalidated gen dir: {rel}")
+        for rel in ("resources.pak", "chrome_100_percent.pak",
+                    "chrome_200_percent.pak", "chrome_300_percent.pak"):
+            p = os.path.join(out, rel)
+            if os.path.exists(p):
+                os.remove(p)
+                print(f"force-invalidated pak: {rel}")
     if not targets:
         print("aegis changes touch no compiled sources - tree is consistent")
         return
