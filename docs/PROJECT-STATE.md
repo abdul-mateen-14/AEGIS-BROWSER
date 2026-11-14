@@ -604,3 +604,6 @@ Fix wave dispatched for the r66 findings (cosmetic layer; no data/search change)
 
 *Maintenance protocol: after every pass, update §4 snapshot, §5 ledger if releases changed,
 §7 roadmap statuses, §8 fix log, §10 queue — then `git add docs/PROJECT-STATE.md docs/DEPLOYMENT-PLAN.md && git commit && git push`.*
+
+
+**Version pump 2026-11-14:** Chrome stable moved to 157.0.8103.78. The first wave dispatches (#67/#77) resolved empty input -> 157 and died at bank restore (bank is 156.0.8078.79; the version guard aborted correctly before any patching). All lanes re-dispatched pinned to **156.0.8078.79** (Linux #68, APK #78, Windows #41, all @ d7b9a19; queued Windows #40 cancelled before it started to avoid a doomed runner). Rule going forward: every dispatch passes chromium_version explicitly. The 157 bump is a deliberate follow-up task (fetch, audit, preflight, fresh bank), not something to piggyback on a wave.
