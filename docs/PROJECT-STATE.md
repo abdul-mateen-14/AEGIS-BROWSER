@@ -585,6 +585,23 @@ script any time the list gets cluttered (never deletes live runs, never touches 
      inputs (also heals #79's bank, which was taken AFTER the deletion). Smoke-tested
      the protect/walk/heal logic locally. **#80 restores #79's bank gen; the heal
      regenerates the missing typemaps, then patch 130's java-only dirty wave runs.**
+   - **ROUND 2 (2026-11-14 ~15:0xZ): BOTH lanes RED again on the SAME gn-owned
+     class.** APK #80 verdict 14:44Z: RED — the manifest-safe walk worked, the heal
+     did NOT fire, ninja died past self-regeneration on a REGULAR-EDGE input:
+     `gen/ui/webui/resources/js/metrics_reporter/mojo_bindings.build_metadata`
+     ("missing and no known rule to make it") — .build_metadata files are gn
+     write_file() products consumed by regular edges and are NOT in build.ninja.d,
+     so the manifest-scoped heal structurally misses them. Linux #69 verdict
+     13:26Z: RED at the OLD head f791fa2 (pre-fix) — same class,
+     `gen/chrome/browser/resources/certificate_manager/mojom.ts_typemap_config`.
+     **FIX v3 (this commit): `heal_manifest_inputs` → `resume_gn_gen` = UNCONDITIONAL
+     `gn gen` on every kept-tree resume** (same-sha, no-targets, unresolvable-sha and
+     pre-mapping paths). gn gen rewrites the manifest AND every missing gn-owned
+     write_file() product; it never writes ACTION outputs, so forced packed-output
+     invalidations stay invalidated. Cost ~1-3 min/run. Smoke-tested (no-gn path +
+     missing-detection). **Successors: APK #81 + Linux #70 dispatch @ the fix head,
+     restoring the #80/#69 banks respectively; gn gen rebuilds their gutted gen trees
+     before ninja resumes (java dirty wave for the APK lane = patch 130 only).**
 1. **DONE 2026-11-13 17:45Z:** verdicts verified against GitHub API:
    Linux **#63 GREEN ARTIFACT** (`.deb` 115,649,064 B, artifact 14059749067 — wave 121-126
    delivered); Windows #37 = cap-bank (gen 43392811502), **#38 in flight** (cap ≈ 20:10Z);

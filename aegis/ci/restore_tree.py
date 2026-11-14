@@ -136,24 +136,38 @@ def manifest_protect_set(out):
     return prot
 
 
-def heal_manifest_inputs(src, out, odir):
-    """Restore gn-written manifest inputs the bank may lack (#79 lesson)."""
-    if not os.path.exists(os.path.join(out, "build.ninja.d")):
-        return  # no manifest to read; drop paths handle their own regen
+def resume_gn_gen(src, out, odir):
+    """gn gen on EVERY kept-tree resume (the #79/#80 lesson).
+
+    gn-owned gen products are written by gn itself (write_file()) with NO
+    ninja rule, and the r68-class packed-output invalidation can delete
+    them (and banks taken after such a deletion lack them outright):
+      - mojo *_ts_typemap_config files = manifest inputs ("needed by
+        build.ninja.stamp, missing and no known rule" - APK #79, Linux #69);
+      - mojo_bindings .build_metadata files = REGULAR-EDGE inputs, not in
+        build.ninja.d, so a manifest-scoped check misses them ("missing
+        and no known rule to make it" - APK #80 died on
+        js/metrics_reporter/mojo_bindings.build_metadata after the heal).
+    gn gen rewrites the manifest set AND every missing gn-owned product
+    before ninja runs; it never writes ACTION outputs, so the forced
+    packed-output invalidations stay invalidated. Cost: ~1-3 min.
+    """
     prot = manifest_protect_set(out)
     missing = []
     for rel in sorted(prot):
         if rel in MANIFEST_FILES or rel.endswith(".ninja"):
             continue  # rewritten together with the manifest set itself
         if rel.startswith("out/") or rel.startswith("../"):
-            continue  # source tree or out-root entries gn gen rebuilds anyway
+            continue  # source-tree / out-root entries gn gen rebuilds anyway
         if not os.path.exists(os.path.join(out, rel)):
             missing.append(rel)
-    if not missing:
-        return
-    print(f"manifest inputs missing from the bank ({len(missing)}): "
-          f"{missing[:3]}{'...' if len(missing) > 3 else ''} - healing via gn gen")
-    regenerate_manifest(src, os.path.join("out", odir))
+    if missing:
+        print(f"manifest inputs missing from the bank ({len(missing)}): "
+              f"{missing[:3]}{'...' if len(missing) > 3 else ''}")
+    ok = regenerate_manifest(src, os.path.join("out", odir))
+    print("resume gn gen: " + ("manifest + gn-owned gen inputs refreshed"
+                               if ok else "gn unavailable or failed - continuing"))
+    return ok
 
 
 def patch_target_paths(content):
@@ -194,9 +208,13 @@ def main():
     cur_sha = sh(["git", "rev-parse", "HEAD"], cwd=arepo, check=False)
     if not cur_sha:
         print("cannot resolve current aegis sha - keeping bank (assume unchanged)")
+        resume_gn_gen(src, out, odir)
         return
     if cur_sha == bsha:
         print(f"aegis inputs unchanged since bank ({bsha[:10]}) - tree is consistent")
+        # Still gn gen before ninja: the bank itself can lack gn-owned gen
+        # products (banks taken after an r68-class deletion, #79/#80).
+        resume_gn_gen(src, out, odir)
         return
 
     # aegis repo changed: diff it (deepen the shallow clone if needed)
@@ -361,17 +379,16 @@ def main():
                 print(f"force-invalidated pak: {rel}")
     if not targets:
         print("aegis changes touch no compiled sources - tree is consistent")
-        heal_manifest_inputs(src, out, odir)
+        resume_gn_gen(src, out, odir)
         return
 
-    # Manifest-input heal (the #79 lesson): a bank taken AFTER an r68-class
-    # deletion (or any deletion above) can lack files build.ninja.d lists -
-    # gn-written gen inputs such as the mojo TS typemap configs, which have
-    # no ninja rule. ninja's self-regeneration then dies before compiling a
-    # single edge. Verify the protect set and heal via gn gen (args.gn
-    # survives and pins the args; gn rewrites the manifest set and any
-    # gn-owned gen inputs, never the ACTION outputs the invalidation killed).
-    heal_manifest_inputs(src, out, odir)
+    # gn gen BEFORE the ninja -t deps mapping (the #79/#80 lesson): the bank
+    # can lack gn-written gen inputs the manifest and regular edges consume
+    # (mojo TS typemap configs and .build_metadata files - write_file()
+    # products with no ninja rule); gn gen restores all of them and rewrites
+    # the manifest set. It never writes ACTION outputs, so the forced
+    # packed-output invalidations above stay invalidated.
+    resume_gn_gen(src, out, odir)
 
     print(f"patches touch {len(targets)} chromium files - mapping dependents...")
     r = subprocess.run(["ninja", "-C", os.path.join("out", odir), "-t", "deps"],
