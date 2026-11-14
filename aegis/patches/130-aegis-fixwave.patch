@@ -1131,7 +1131,14 @@ index 3512dc3..b84efaf 100644
 +                    context, referrer, syncService, loadingDialogCoordinator, account);
          }
      }
-@@ -404,6 +407,32 @@ public class PasswordManagerHelper {
+@@ -396,5 +399,6 @@ public void showPasswordSettings(
+     @VisibleForTesting
+     void launchTheCredentialManager(
++            Context context,
+             @ManagePasswordsReferrer int referrer,
+             @Nullable SyncService syncService,
+             LoadingModalDialogCoordinator loadingDialogCoordinator,
+@@ -404,6 +408,32 @@ public class PasswordManagerHelper {
          assert PasswordManagerUtilBridge.isPasswordManagerAvailable();
          CredentialManagerLauncher credentialManagerLauncher =
                  CredentialManagerLauncherFactory.getInstance().createLauncher();
