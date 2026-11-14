@@ -136,6 +136,26 @@ def manifest_protect_set(out):
     return prot
 
 
+def heal_manifest_inputs(src, out, odir):
+    """Restore gn-written manifest inputs the bank may lack (#79 lesson)."""
+    if not os.path.exists(os.path.join(out, "build.ninja.d")):
+        return  # no manifest to read; drop paths handle their own regen
+    prot = manifest_protect_set(out)
+    missing = []
+    for rel in sorted(prot):
+        if rel in MANIFEST_FILES or rel.endswith(".ninja"):
+            continue  # rewritten together with the manifest set itself
+        if rel.startswith("out/") or rel.startswith("../"):
+            continue  # source tree or out-root entries gn gen rebuilds anyway
+        if not os.path.exists(os.path.join(out, rel)):
+            missing.append(rel)
+    if not missing:
+        return
+    print(f"manifest inputs missing from the bank ({len(missing)}): "
+          f"{missing[:3]}{'...' if len(missing) > 3 else ''} - healing via gn gen")
+    regenerate_manifest(src, os.path.join("out", odir))
+
+
 def patch_target_paths(content):
     """chromium-relative paths a patch file writes to (its '+++ b/' lines)."""
     paths = set()
@@ -300,13 +320,39 @@ def main():
     )
     if any(t.startswith(WEBUI_PREFIXES) for t in targets):
         print("webui/locale/theme domain touched - force-invalidating packed outputs")
+        prot = manifest_protect_set(out)
+        packed_killed = 0
         for rel in ("gen/chrome/browser/resources", "gen/ui/webui/resources",
                     "gen/chrome/app/resources", "gen/chrome/app/theme",
                     "gen/components/resources", "locales"):
             p = os.path.join(out, rel)
-            if os.path.isdir(p):
-                shutil.rmtree(p, ignore_errors=True)
-                print(f"force-invalidated gen dir: {rel}")
+            if not os.path.isdir(p):
+                continue
+            # MANIFEST-SAFE deletion (the #79 lesson, 2026-11-14): build.ninja.d
+            # lists gn-written gen inputs under these dirs - mojo TS typemap
+            # configs are gn write_file() products with NO ninja rule, so a
+            # blanket rmtree made ninja's self-regeneration die with "needed
+            # by build.ninja.stamp, missing and no known rule to make it"
+            # (APK #79). Walk instead of rmtree; anything build.ninja.d
+            # depends on (and any *.ninja manifest) stays, now-empty dirs go.
+            for root, dirs, files in os.walk(p, topdown=False):
+                for name in files:
+                    if name.endswith(".ninja") or name.endswith(".ninja.d"):
+                        continue
+                    fp = os.path.join(root, name)
+                    rp = os.path.relpath(fp, out).replace(os.sep, "/")
+                    if rp in prot:
+                        continue
+                    os.remove(fp)
+                    packed_killed += 1
+                for name in dirs:
+                    try:
+                        os.rmdir(os.path.join(root, name))
+                    except OSError:
+                        pass  # still holds protected/kept files
+            print(f"force-invalidated packed outputs under: {rel}")
+        print(f"force-invalidated {packed_killed} packed gen files "
+              f"(manifest-protected files kept)")
         for rel in ("resources.pak", "chrome_100_percent.pak",
                     "chrome_200_percent.pak", "chrome_300_percent.pak"):
             p = os.path.join(out, rel)
@@ -315,7 +361,17 @@ def main():
                 print(f"force-invalidated pak: {rel}")
     if not targets:
         print("aegis changes touch no compiled sources - tree is consistent")
+        heal_manifest_inputs(src, out, odir)
         return
+
+    # Manifest-input heal (the #79 lesson): a bank taken AFTER an r68-class
+    # deletion (or any deletion above) can lack files build.ninja.d lists -
+    # gn-written gen inputs such as the mojo TS typemap configs, which have
+    # no ninja rule. ninja's self-regeneration then dies before compiling a
+    # single edge. Verify the protect set and heal via gn gen (args.gn
+    # survives and pins the args; gn rewrites the manifest set and any
+    # gn-owned gen inputs, never the ACTION outputs the invalidation killed).
+    heal_manifest_inputs(src, out, odir)
 
     print(f"patches touch {len(targets)} chromium files - mapping dependents...")
     r = subprocess.run(["ninja", "-C", os.path.join("out", odir), "-t", "deps"],

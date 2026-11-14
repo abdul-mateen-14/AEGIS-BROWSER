@@ -571,6 +571,20 @@ script any time the list gets cluttered (never deletes live runs, never touches 
    aegis_tokens.xml (+aegis_ic_close.xml drawable). **APK #80 = dispatch AFTER #79
    settles (30-min lane rule); Linux/Windows successors ride the next desktop wave.**
    Generator: scripts/gen_patch_130.py + gen130_files.py (anchors asserted unique).
+   - **APK #79 verdict 13:50Z: RED before the wave** (head f791fa2, the f791fa2
+     verification run): ninja died BEFORE any compile — "rebuilding 'build.ninja':
+     gen/ui/webui/resources/cr_components/composebox/mojo_bindings.ts_typemap_config,
+     needed by 'build.ninja.stamp', missing and no known rule to make it". Root cause:
+     f791fa2's r68-class durable invalidation did a blanket rmtree of gen/ui/webui/
+     resources, deleting gn-written manifest inputs (mojo TS typemap configs are gn
+     write_file() products with NO ninja rule) — a violation of restore_tree.py's own
+     "never delete anything build.ninja.d lists" invariant. Banked at the error. FIX
+     (this commit): manifest-safe walk (keep build.ninja.d-protected files + *.ninja,
+     delete packed products, prune empty dirs) + heal_manifest_inputs() — verify the
+     build.ninja.d protect set before ninja and `gn gen`-regenerate missing gn-owned
+     inputs (also heals #79's bank, which was taken AFTER the deletion). Smoke-tested
+     the protect/walk/heal logic locally. **#80 restores #79's bank gen; the heal
+     regenerates the missing typemaps, then patch 130's java-only dirty wave runs.**
 1. **DONE 2026-11-13 17:45Z:** verdicts verified against GitHub API:
    Linux **#63 GREEN ARTIFACT** (`.deb` 115,649,064 B, artifact 14059749067 — wave 121-126
    delivered); Windows #37 = cap-bank (gen 43392811502), **#38 in flight** (cap ≈ 20:10Z);
