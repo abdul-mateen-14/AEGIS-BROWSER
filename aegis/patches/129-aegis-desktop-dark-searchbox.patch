@@ -1,0 +1,61 @@
+# 129 - aegis-desktop-dark-searchbox (r66 test F3 follow-up)
+# Dark mode: the NTP realbox stayed white and the settings body kept
+# Chromium grey #202124 (both upstream hardcodings):
+#   chrome/browser/ui/color/new_tab_page_color_mixer.cc
+#     AddSearchboxColors() hardcodes SK_ColorWHITE surfaces with no
+#     dark branch ("realbox is at this time always themed light") ->
+#     branch on the in-scope dark_mode with the aegis ramp
+#     (#141416 surface / #1E1E21 hovered / grey200-500 text).
+#   chrome/browser/ui/color/chrome_color_mixer.cc
+#     kColorSettingsWebuiPageBackground = kColorSysSurface2
+#     (=RefNeutral15 = #202124 in dark) -> #141416 in dark.
+# Follows patch 118 (frame/toolbar/primary background ramp).
+diff --git a/chrome/browser/ui/color/new_tab_page_color_mixer.cc b/chrome/browser/ui/color/new_tab_page_color_mixer.cc
+index ecd4191..9136a4d 100644
+--- a/chrome/browser/ui/color/new_tab_page_color_mixer.cc
++++ b/chrome/browser/ui/color/new_tab_page_color_mixer.cc
+@@ -380,12 +380,21 @@ void AddSearchboxColors(ui::ColorMixer& mixer, const ui::ColorProviderKey& key)
+       SkColorSetRGB(0xD3, 0xE3, 0xFD)};
+   mixer[kColorSearchboxAnswerIconForeground] = {
+       SkColorSetRGB(0x04, 0x1E, 0x49)};
+-  mixer[kColorSearchboxBackground] = {SK_ColorWHITE};
+-  mixer[kColorSearchboxBackgroundHovered] = {SK_ColorWHITE};
+-  mixer[kColorSearchboxBorder] = {SkColorSetRGB(0xDA, 0xDC, 0xE0)};
+-  mixer[kColorSearchboxForeground] = {SK_ColorBLACK};
+-  mixer[kColorSearchboxPlaceholder] = {gfx::kGoogleGrey700};
+-  mixer[kColorSearchboxResultsBackground] = {SK_ColorWHITE};
++  // Aegis (patch 129): upstream hardcodes the realbox light ("always
++  // themed light"); theme it to the aegis surface ramp in dark mode.
++  mixer[kColorSearchboxBackground] = {
++      dark_mode ? SkColorSetRGB(0x14, 0x14, 0x16) : SK_ColorWHITE};
++  mixer[kColorSearchboxBackgroundHovered] = {
++      dark_mode ? SkColorSetRGB(0x1E, 0x1E, 0x21) : SK_ColorWHITE};
++  mixer[kColorSearchboxBorder] = {
++      dark_mode ? SkColorSetRGB(0x3A, 0x3A, 0x3E)
++                : SkColorSetRGB(0xDA, 0xDC, 0xE0)};
++  mixer[kColorSearchboxForeground] = {
++      dark_mode ? gfx::kGoogleGrey200 : SK_ColorBLACK};
++  mixer[kColorSearchboxPlaceholder] = {dark_mode ? gfx::kGoogleGrey500
++                                                 : gfx::kGoogleGrey700};
++  mixer[kColorSearchboxResultsBackground] = {
++      dark_mode ? SkColorSetRGB(0x14, 0x14, 0x16) : SK_ColorWHITE};
+   mixer[kColorSearchboxResultsBackgroundHovered] =
+       ui::SetAlpha(gfx::kGoogleGrey900,
+                    /* 10% opacity */ 0.1 * SK_AlphaOPAQUE);
+diff --git a/chrome/browser/ui/color/chrome_color_mixer.cc b/chrome/browser/ui/color/chrome_color_mixer.cc
+index 91571ae..fde960f 100644
+--- a/chrome/browser/ui/color/chrome_color_mixer.cc
++++ b/chrome/browser/ui/color/chrome_color_mixer.cc
+@@ -875,7 +875,11 @@ void AddChromeColorMixer(ui::ColorProvider* provider,
+   mixer[kColorToolbarTopSeparatorFrameInactive] =
+       GetToolbarTopSeparatorColorTransform(kColorToolbar,
+                                            ui::kColorFrameInactive);
+-  mixer[kColorSettingsWebuiPageBackground] = {ui::kColorSysSurface2};
++  // Aegis (patch 129): settings body follows the aegis surface ramp
++  // in dark mode instead of Chromium grey #202124 (RefNeutral15).
++  mixer[kColorSettingsWebuiPageBackground] = {
++      dark_mode ? SkColorSetRGB(0x14, 0x14, 0x16)
++                 : ui::kColorSysSurface2};
+   mixer[kColorWebContentsBackground] =
+       ui::SetAlpha(kColorNewTabPageBackground, SK_AlphaOPAQUE);
+   mixer[kColorWebContentsBackgroundLetterboxing] =
