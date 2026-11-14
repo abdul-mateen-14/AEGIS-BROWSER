@@ -618,6 +618,22 @@ script any time the list gets cluttered (never deletes live runs, never touches 
      (55/58; 128's 3 PNG errors = known binary-fetch artifact). **APK #82 dispatch
      @ 4cb96cb after the 16:43Z cooldown; Linux #70 (ef52cf7) still in flight and
      unaffected (no Java on that lane).**
+   - **ROUND 4 (2026-11-14 17:3xZ): Linux #70 GREEN + deb artifact TESTED.** Artifact
+     14123451694 downloaded, `AegisBrowser_156.0.8078.79_linux_x64_r70.deb` (115.7 MB)
+     saved to download/. Static tests PASS: valid v2.0 deb (aegis-browser-stable,
+     156.0.8078.79-1, amd64, chromium-standard deps); /opt/aegis-browser tree +
+     aegis-browser-stable launcher symlink + both branded .desktop entries + cron.daily;
+     291 MB x86-64 PIE ELF with 156.0.8078.79 + aegis-browser.pages.dev URLs embedded;
+     en-US.pak 72 aegis hits (About Aegis x2, Aegis Passwords x32); resources.pak
+     zero-aegis is EXPECTED (121/127 = image resources, 129 = CSS only).
+     **Windows #41 was a CAP-BANK (BUILD_REASON cap, 70864 edges) not a real success;
+     #42 dispatched 17:32Z @ 2c342db (id 43621633895).**
+   - **ROUND 5 (17:4xZ): APK #82 RED 17:29Z — the 4cb96cb round updated the CALLER and
+     GUARD but forgot the METHOD DEFINITION hunk** (`required: int,SyncService,...,
+     found: Context,...`). FIX (commit 90d07de): signature hunk
+     `@@ -396,5 +399,6` adds `Context context,` as first param; guard header shifted
+     to +408,32. chain_preflight clean; reflection cast PROVEN fine (no error on those
+     lines in #82). **APK #83 dispatch @ 90d07de after the 17:59Z cooldown.**
 1. **DONE 2026-11-13 17:45Z:** verdicts verified against GitHub API:
    Linux **#63 GREEN ARTIFACT** (`.deb` 115,649,064 B, artifact 14059749067 — wave 121-126
    delivered); Windows #37 = cap-bank (gen 43392811502), **#38 in flight** (cap ≈ 20:10Z);
