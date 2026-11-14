@@ -5,7 +5,8 @@
 > trust the file, then verify against GitHub API. Update this file + commit + push after
 > EVERY working pass so a context loss or sandbox recycle never loses state.
 >
-> Last updated: **2026-11-13 18:4x UTC (23:4x PKT)** — by main session (r63 .deb FULL desktop test done: crash + stale-build findings; patch 123 v2 + invalidation fix pushed).
+> Last updated: **2026-11-14 13:5x UTC (18:5x PKT)** — by main session (device review
+> wave 130 authored+validated+pushed; APK successor pending #79 verdict).
 
 ---
 
@@ -520,6 +521,56 @@ script any time the list gets cluttered (never deletes live runs, never touches 
 
 ## 10. Next actions queue (in order)
 
+0. **DEVICE REVIEW WAVE 130 pushed 2026-11-14 (`130-aegis-fixwave.patch`)** — user
+   tested the r70+ build on the Hot 60i (crash trap file + screen recording + 2
+   screenshots). Fixes:
+   - **Passwords settings row crashed the app** (crash trap 2026-11-14, NPE inside
+     `PasswordManagerLauncher`): root cause = `CredentialManagerLauncherFactory
+     .getInstance().createLauncher()` returns NULL in unbranded builds (upstream factory
+     is an empty stub; downstream fills it with the GMS launcher), the assert is
+     release-stripped, `getLocalCredentialManagerIntent` NPEs — same family as the 110/
+     112/126 NPEs. Guard in `PasswordManagerHelper.launchTheCredentialManager` routes to
+     the NEW `AegisPasswordsSettings` page (ChromeBaseSettingsFragment, two
+     `ChromeSwitchPreference`s bound to `Pref.CREDENTIALS_ENABLE_SERVICE` /
+     `CREDENTIALS_ENABLE_AUTOSIGNIN` via `UserPrefs` — the pref-backed settings service
+     patch 112 installed; no GMS, no JNI). Registered in chrome_java_sources.gni +
+     aegis_passwords_preferences.xml in chrome_java_resources.gni.
+   - **Chrome NTP removed entirely**: `NewTabPage.java` sets `mNewTabPageLayout
+     .setVisibility(GONE)` after coordinator init — stock NTP (Google search box,
+     most-visited tiles, Chrome tips) never paints again (no more flash beneath the
+     Aegis home overlay, the mp4 effect). Views stay attached so coordinator references
+     stay valid.
+   - **Home default = system theme**: `applyWallpaper` treats a missing/"system" spec as
+     the theme-aware aegis token gradient (the forced `#0A0A0B` default made light-theme
+     links unreadable — user report).
+   - **Warm wallpaper presets**: `PRESET_WALLPAPERS` is now six warm {light, dark}
+     pairs (cream/sand/apricot/terracotta/rosewood/mocha), resolved per system theme;
+     spec storage `warm:<index>` (legacy `color:` still honored).
+   - **Favicon letter fallback fixed**: `letterTile(label, bgColor)` keeps the first
+     letter when a site has no icon (luminance-picked ink/paper text); the old fallback
+     erased the letter with a plain circle.
+   - **aegis.dev tile → "Aegis Search"** on the real engine site (`https://
+     aegis-search.aegis-search.workers.dev`, the patch 098 DSE), with an in-memory
+     migration for stored tile prefs.
+   - **Private tab is visible**: the home status pill swaps to "Private · nothing is
+     saved" while the current model is incognito (the tab itself was already opening
+     foreground via `launchNtp(FROM_CHROME_UI)` — it was just indistinguishable).
+   - **Address bar (Top/Bottom) settings entry removed** (no address bar in Aegis):
+     main_preferences.xml entry + MainSettings `PREF_ADDRESS_BAR` machinery (update/
+     shouldShow methods, onConfigurationChanged, TOOLBAR_TOP_ANCHORED listener body,
+     search-index block, 3 now-unused imports).
+   - **Dock pill shows `aegis://newtab`** on default pages instead of
+     `chrome-native://newtab/` (UrlUtilities.isNtpUrl branch in refreshUrl).
+   - **Tab manager** (AegisTabGridSheet rewrite): sections Tabs / Groups / Private —
+     per-tab close chips, section close-all, group cards (TabModel group API verified at
+     the pin: getAllTabGroupIds/getTabsInGroup/getTabCountForGroup/getGroupLastShownTabId
+     + TabClosureParams), footer New tab + New private tab pills.
+   Validated: patch_lint_includes OK (all), validate_patches OK (43 hunks),
+   chain_preflight 55/58 (098/106/128 = the preflight's binary/JSON fetch artifacts,
+   green in every real CI run), brace/XML well-formedness checked. New strings in
+   aegis_tokens.xml (+aegis_ic_close.xml drawable). **APK #80 = dispatch AFTER #79
+   settles (30-min lane rule); Linux/Windows successors ride the next desktop wave.**
+   Generator: scripts/gen_patch_130.py + gen130_files.py (anchors asserted unique).
 1. **DONE 2026-11-13 17:45Z:** verdicts verified against GitHub API:
    Linux **#63 GREEN ARTIFACT** (`.deb` 115,649,064 B, artifact 14059749067 — wave 121-126
    delivered); Windows #37 = cap-bank (gen 43392811502), **#38 in flight** (cap ≈ 20:10Z);
