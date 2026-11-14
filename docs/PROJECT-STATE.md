@@ -602,6 +602,22 @@ script any time the list gets cluttered (never deletes live runs, never touches 
      missing-detection). **Successors: APK #81 + Linux #70 dispatch @ the fix head,
      restoring the #80/#69 banks respectively; gn gen rebuilds their gutted gen trees
      before ninja resumes (java dirty wave for the APK lane = patch 130 only).**
+   - **ROUND 3 (2026-11-14 16:2xZ): APK #81 verdict 16:13Z — RED but a REAL
+     milestone: gn gen healed the bank, ninja ran 198,686 edges and died on
+     patch 130's own Java — two genuine code bugs, not infra:** (1) `import
+     org.chromium.chrome.browser.aegis.AegisPasswordsSettings` in
+     PasswordManagerHelper needs chrome_java = CIRCULAR dep (password_manager:java
+     is INSIDE chrome_java); (2) `launchTheCredentialManager` has no `context` in
+     scope (upstream signature: referrer, syncService, loadingDialogCoordinator,
+     account). FIX (commit 4cb96cb): resolve the page class reflectively via
+     `SettingsNavigationFactory.createSettingsNavigation().startSettings(context,
+     (Class<? extends Fragment>) Class.forName("...AegisPasswordsSettings"))`
+     (androidx Fragment import added; local @SuppressWarnings("unchecked")); thread
+     `Context context` through `launchTheCredentialManager` as first param (single
+     same-package caller showPasswordSettings). chain_preflight: 130 applies clean
+     (55/58; 128's 3 PNG errors = known binary-fetch artifact). **APK #82 dispatch
+     @ 4cb96cb after the 16:43Z cooldown; Linux #70 (ef52cf7) still in flight and
+     unaffected (no Java on that lane).**
 1. **DONE 2026-11-13 17:45Z:** verdicts verified against GitHub API:
    Linux **#63 GREEN ARTIFACT** (`.deb` 115,649,064 B, artifact 14059749067 — wave 121-126
    delivered); Windows #37 = cap-bank (gen 43392811502), **#38 in flight** (cap ≈ 20:10Z);
