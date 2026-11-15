@@ -815,3 +815,17 @@ Fix wave dispatched for the r66 findings (cosmetic layer; no data/search change)
      mid-session; origin/main always authoritative - reset --hard before
      editing. Awaiting user: download popup screenshot, original image 2
      (settings page to remove); share tile routing still deferred.
+1. **DONE 2026-11-15 13:3xZ (ROUND 12): #89 RED restored #88's POISONED bank
+     -> bank schema token added; #90 = full rebuild.** #89's AEGIS-RESTORE
+     gen=43699042696 proves it restored #88's bank: the #88 res-drop rule is
+     diff-based (targets from bsha..HEAD), but 5993d2b->6bd088e touches only
+     ci/docs - and the stale R.java lives in the BANKED tree while the banked
+     SOURCES already carry 131/132's res strings (patches apply before
+     restore). No diff-based rule can ever see that state. Fix: .aegis_head
+     gains token 3 = AEGIS_BANK_SCHEMA (bank.sh writes it, default 1;
+     restore_tree.py drops any bank with schema != 1; old 2-token banks read
+     as 0). ac382c1. #90 (43719157303) 13:28Z: restore drops ALL existing
+     banks -> one guaranteed-green full rebuild (#82 class, ~2.5-3h), then
+     banks schema=1 so hot runs resume. LESSON: poisoning lives in the bank,
+     not the diff - version the bank format itself. Still awaiting user:
+     download popup screenshot, original image 2 (settings page to remove).
