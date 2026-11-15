@@ -147,7 +147,7 @@ new file mode 100644
 index 0000000..e8b5378
 --- /dev/null
 +++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisPasswordsSettings.java
-@@ -0,0 +1,86 @@
+@@ -0,0 +1,89 @@
 +// Copyright 2026 The Aegis Browser Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
