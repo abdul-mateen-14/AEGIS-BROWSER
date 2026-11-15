@@ -600,3 +600,12 @@ script any time the list gets cluttered (never deletes live runs, never touches 
 
 *Maintenance protocol: after every pass, update §4 snapshot, §5 ledger if releases changed,
 §7 roadmap statuses, §8 fix log, §10 queue — then `git add docs/PROJECT-STATE.md docs/DEPLOYMENT-PLAN.md && git commit && git push`.*
+1. **DONE 2026-11-15 19:1xZ (ROUND 14): #90 = schema drop + 55% full rebuild +
+     cap-bank; #91 resume dispatched.** #90 log line 5212 confirms the gate
+     fired ('banked schema 0 != 1 - dropping bank'); ninja rebuilt 128471 of
+     ~232576 edges (~55%) in 4h45m before the graceful budget stop (BUILD_
+     REASON=cap, Sign/Upload/Attach skipped = banking green, no APK yet);
+     banked tree carries the schema=1 marker. #91 (43750655006) 19:07Z
+     resumes: remaining ~45% -> javac clean expected (fresh R.java defines
+     131/132 strings) -> sign -> attach APK draft. WIN #44 still in its
+     build step (resumed #43 bank; windows slower); check next ping.
