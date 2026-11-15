@@ -147,7 +147,7 @@ new file mode 100644
 index 0000000..e8b5378
 --- /dev/null
 +++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisPasswordsSettings.java
-@@ -0,0 +1,81 @@
+@@ -0,0 +1,86 @@
 +// Copyright 2026 The Aegis Browser Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -169,6 +169,7 @@ index 0000000..e8b5378
 +import org.chromium.chrome.browser.settings.search.ChromeBaseSearchIndexProvider;
 +import org.chromium.components.browser_ui.settings.ChromeSwitchPreference;
 +import org.chromium.components.browser_ui.settings.EmbeddableSettingsPage;
++import org.chromium.components.browser_ui.settings.SettingsFragment;
 +import org.chromium.components.browser_ui.settings.SettingsUtils;
 +import org.chromium.components.prefs.PrefService;
 +import org.chromium.components.user_prefs.UserPrefs;
@@ -210,6 +211,13 @@ index 0000000..e8b5378
 +        Preference note = findPreference("aegis_pw_note");
 +        if (note == null) return;
 +        note.setIconSpaceReserved(false);
++    }
++
++    // Aegis (APK #83 lesson): the SettingsFragment contract requires the
++    // animation-type override; mirror AegisEcosystemSettings (patch 054).
++    @Override
++    public @SettingsFragment.AnimationType int getAnimationType() {
++        return SettingsFragment.AnimationType.PROPERTY;
 +    }
 +
 +    private void bindSwitch(String key, PrefService prefs, String prefKey) {
