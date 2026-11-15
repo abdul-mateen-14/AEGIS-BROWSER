@@ -791,3 +791,14 @@ Fix wave dispatched for the r66 findings (cosmetic layer; no data/search change)
      need the actual popup screenshot), original screenshots 2/3/4/5
      (settings page to remove, home-link long-press menu options detail,
      dock long-press detail, swipe detail).
+1. **DONE 2026-11-15 09:2xZ (ROUND 10): #87 javac RED root-caused + CI fixed;
+     #88 dispatched.** #87 failed with 5 'cannot find symbol' for patch 131's
+     new strings: res/values xml edits feed only ACTION edges
+     (process_resources -> gen/chrome/android/chrome_java.generated.srcjar R
+     srcjar) which ninja -t deps cannot map - the hot bank kept a STALE
+     R.java while the java hunks recompiled. Durable fix in restore_tree.py:
+     any patch target that is a res xml now force-deletes
+     chrome_java.generated.srcjar (+ assetres) so the res action reruns.
+     131 java code itself compiled CLEAN (dock swipe/insets/TabCreator all
+     green). #88 (43699042696) @ 5993d2b 09:23Z = 131 + 132 + CI fix; bank
+     #87 = post-131 sources so javac rebuilds against fresh R.
