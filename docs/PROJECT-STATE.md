@@ -750,4 +750,23 @@ Fix wave dispatched for the r66 findings (cosmetic layer; no data/search change)
 
 **Version pump 2026-11-14:** Chrome stable moved to 157.0.8103.78. The first wave dispatches (#67/#77) resolved empty input -> 157 and died at bank restore (bank is 156.0.8078.79; the version guard aborted correctly before any patching). All lanes re-dispatched pinned to **156.0.8078.79** (Linux #68, APK #78, Windows #41, all @ d7b9a19; queued Windows #40 cancelled before it started to avoid a doomed runner). Rule going forward: every dispatch passes chromium_version explicitly. The 157 bump is a deliberate follow-up task (fetch, audit, preflight, fresh bank), not something to piggyback on a wave.
 
-**r68 verdict 2026-11-14 (Linux #68 @ d7b9a19, wave 127/128/129): RED.** 127 svg leg = right target, shipped STALE (grit/repack ACTION edges are invisible to ninja -t deps and restamp pins sources to the bank epoch - the NTP still served the 1829-byte old google_logo.svg); 127 ts hint fallback = masked (the NTP renders locale string IDS_GOOGLE_SEARCH_BOX_EMPTY_HINT_MD, fallback never reached); 128 = the 4 aegis PNGs shipped byte-exact but chrome://version renders IDR_PRODUCT_LOGO (171x32 chromium lockup), never _NAME_22; 129 realbox dark ramp VERIFIED (#141416, white_ratio 0.0007), settings leg ineffective (page paints the --google-grey-900 webui CSS token; the patched C++ provider color is unused by the page). Fresh-profile DSE = aegis search re-confirmed. Fix pushed f791fa2: restore_tree.py now force-deletes packed gen subtrees + final paks when a patch touches any webui/locale/theme domain (ends the stale-webui class), and patch 127 neutralizes the real hint strings in generated_resources.grd. Linux #69 + APK #79 dispatched @ f791fa2 (pinned 156.0.8078.79); Windows #41 still on the pre-fix head - re-cut before release. Follow-ups: 128 asset swap (171x32 lockup behind IDR_PRODUCT_LOGO), 129 settings css token leg. Full evidence: download/aegis-r68-review/r68_report.md.
+**r68 verdict 2026-11-14 (Linux #68 @ d7b9a19, wave 127/128/129): RED.** 127 svg leg = right target, shipped STALE (grit/repack ACTION edges are invisible to ninja -t deps and restamp pins sources to the bank epoch - the NTP still served the 1829-byte old google_logo.svg); 127 ts hint fallback = masked (the NTP renders locale string IDS_GOOGLE_SEARCH_BOX_EMPTY_HINT_MD, fallback never reached); 128 = the 4 aegis PNGs shipped byte-exact but chrome://version renders IDR_PRODUCT_LOGO (171x32 chromium lockup), never _NAME_22; 129 realbox dark ramp VERIFIED (#141416, white_ratio 0.0007), settings leg ineffective (page paints the --google-grey-900 webui CSS token; the patched C++ provider color is unused by the page). Fresh-profile DSE = aegis search re-confirmed. Fix pushed f791fa2: restore_tree.py now force-deletes packed gen subtrees + final paks when a patch touches any webui/locale/theme domain (ends the stale-webui class), and patch 127 neutralizes the real hint strings in generated_resources.grd. Linux #69 + APK #79 dispatched @ f791fa2 (pinned 156.0.8078.79); Windows #41 still on the pre-fix head - re-cut before release. Follow-ups: 128 asset swap (171x32 lockup behind IDR_PRODUCT_LOGO), 129 settings css token leg. Full evidence: download/aegis-r68-review/r68_report.md.1. **DONE 2026-11-15 07:0xZ (ROUND 8, user Android review wave): patch 131
+     dispatched @ 59b344d.** 9 screenshots were requested, only 1 reached
+     upload/ (NTP: tile labels left-aligned + stale dock URL - both confirmed
+     and fixed). Shipped in 131: NTP tile label + favicon centering; tile
+     long-press menu (open new tab / private tab / remove via TabCreator
+     FQN); dock URL poll re-arms itself (stale URL root cause: refreshUrl
+     never re-posted the 1 Hz poll) + NTP maps to search hint; dock
+     long-press -> tab grid; horizontal swipe consumed wholesale (pill taps
+     no longer misfire as search) + fresh tab auto-opens search sheet;
+     search sheet rides IME insets with WindowInsetsAnimation (API 30+) so
+     the input sits above the keyboard frame-smooth; menu sheet + manage
+     tabs / translate / download page tiles (ids verified routed in
+     ChromeActivity); bookmarks + reading list Google sign-in promo disabled
+     (canShowSigninPromo=false). chain_preflight 53/55. **APK #86 (id
+     43688376209) @ 59b344d 07:05Z; Windows #43 in flight.** DEFERRED to
+     patch 132 (recon done, hunks not yet safe): autofill options +
+     payment-methods Google branding (AutofillPaymentMethodsFragment,
+     google strings live in res xml), safety check page details, share tile
+     (share_menu_id action routing unverified - need ShareDelegate fetch),
+     download popup (screenshot 1 never uploaded - need re-send).
