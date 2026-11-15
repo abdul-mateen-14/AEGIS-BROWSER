@@ -770,3 +770,24 @@ Fix wave dispatched for the r66 findings (cosmetic layer; no data/search change)
      google strings live in res xml), safety check page details, share tile
      (share_menu_id action routing unverified - need ShareDelegate fetch),
      download popup (screenshot 1 never uploaded - need re-send).
+1. **DONE 2026-11-15 08:2xZ (ROUND 9): #86 RED root-caused + fixed; patch 132
+     pushed.** #86 failed 'AegisDockView.java:480 patch does not apply': the
+     sandbox recycle had rolled the local aegis-repo back to post-126, so the
+     first preflight + gen_patch131 built dock hunks against a PRE-130 dock;
+     CI (post-130, where 130 already added the isNtpUrl->aegis://newtab
+     branch) rejected hunk 7. LESSON: verify the patch set count before
+     gen (chain_preflight prints patches=N; compare vs git). 131 rebuilt
+     against the true post-130 tree (NTP branch now shows the search hint
+     instead of aegis://newtab - matches user ask), CI-identical strict
+     git apply --check PASS. APK #87 (43694245692) @ 4df6087 08:23Z in
+     flight = first compile of 131 java. Patch 132 pushed @ 5f1c411 (user
+     screenshots finally arrived): payment methods page de-Googled (loyalty
+     cards/Google Wallet row removed + import dropped, add-first-card
+     summary -> local-storage Aegis string) + safety check page
+     de-Googled (passwords_account row setVisible(false), Chrome-logo
+     sign-in sheet trigger gone). Strict apply PASS. Dispatch #88 after
+     #87 verdict. STILL OPEN: download 'allow from this source' popup
+     (REQUEST_INSTALL_PACKAGES confirmed present; no patch touches it;
+     need the actual popup screenshot), original screenshots 2/3/4/5
+     (settings page to remove, home-link long-press menu options detail,
+     dock long-press detail, swipe detail).
