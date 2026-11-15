@@ -829,3 +829,17 @@ Fix wave dispatched for the r66 findings (cosmetic layer; no data/search change)
      banks schema=1 so hot runs resume. LESSON: poisoning lives in the bank,
      not the diff - version the bank format itself. Still awaiting user:
      download popup screenshot, original image 2 (settings page to remove).
+1. **DONE 2026-11-15 14:2xZ (ROUND 13): WIN #43 'green' was a cap-banking run,
+     not a build -> android-only schema gate + WIN #44 resume dispatched.**
+     WIN #43 (02:49Z) succeeded at BANKING: collect/upload/attach-artifact
+     steps all SKIPPED; last real Windows installer = r31 draft. Also the
+     schema gate as written would have dropped the windows/linux banks on
+     their next dispatch (shared restore_tree.py, 2-token markers) - a
+     pointless 4-6h rebuild. b81c32d: gate now probes out/args.gn for
+     target_os = "android"; non-android banks keep running hot (the poison
+     cannot live there). WIN #44 (43723449745) 14:16Z @ b81c32d resumes
+     #43's bank: remaining edges -> sign -> attach installer draft.
+     APK #90 still in the build step (past the early-failure window);
+     full-rebuild ETA ~17:15Z. NOTE for future banks: banking drafts are
+     banking-android/-windows/-linux; artifact drafts are linux-*/build-*/
+     windows-*/rNN.
