@@ -205,13 +205,26 @@ def main():
     # (res edges never ran with 131/132's strings) and no diff-based rule
     # can see that, because the res patch is ALREADY applied in the banked
     # sources. Only a full rebuild (schema drop) clears it.
+    # The poison lives ONLY in the android gen tree, so the gate applies
+    # just to android banks (args.gn is always banked): windows/linux
+    # pre-schema banks stay hot instead of paying a pointless full rebuild.
     schema = int(tok[2]) if len(tok) > 2 and tok[2].isdigit() else 0
     BANK_SCHEMA = 1
+    args_gn = ""
+    try:
+        args_gn = open(os.path.join(out, "args.gn")).read()
+    except OSError:
+        pass
+    is_android_bank = 'target_os = "android"' in args_gn
     if schema != BANK_SCHEMA:
-        print(f"banked schema {schema} != {BANK_SCHEMA} - dropping bank "
-              "(stale-R poison: #88/#89; forces one full rebuild)")
-        drop_tree(out, src, odir)
-        return
+        if is_android_bank:
+            print(f"banked schema {schema} != {BANK_SCHEMA} (android) - dropping bank "
+                  "(stale-R poison: #88/#89; forces one full rebuild)")
+            drop_tree(out, src, odir)
+            return
+        print(f"banked schema {schema} != {BANK_SCHEMA} but bank is not android "
+              "(no target_os=android in args.gn) - poison cannot live here, "
+              "keeping bank")
 
     if btag != cur_tag:
         print(f"banked chromium tag {btag} != requested {cur_tag} - dropping bank")
