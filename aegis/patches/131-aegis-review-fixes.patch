@@ -1,7 +1,7 @@
 diff --git a/chrome/android/java/res/values/aegis_tokens.xml b/chrome/android/java/res/values/aegis_tokens.xml
 --- a/chrome/android/java/res/values/aegis_tokens.xml
 +++ b/chrome/android/java/res/values/aegis_tokens.xml
-@@ -89,4 +89,10 @@
+@@ -101,4 +101,10 @@
      <string name="aegis_home_status">Hardened · %1$s hosts blocked</string>
      <string name="aegis_home_quick">Quick shields</string>
      <string name="aegis_hosts_blocked">92,957</string>
@@ -15,7 +15,7 @@ diff --git a/chrome/android/java/res/values/aegis_tokens.xml b/chrome/android/ja
 diff --git a/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java b/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java
 --- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java
 +++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java
-@@ -405,6 +405,40 @@
+@@ -434,6 +434,40 @@
                  });
          b.setNegativeButton(android.R.string.cancel, null);
          b.show();
@@ -56,7 +56,7 @@ diff --git a/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/Aegi
      }
  
      /** Wallpaper picker: preset surfaces plus the system image chooser. */
-@@ -562,7 +596,11 @@
+@@ -630,7 +664,11 @@
          // Favicon slot: letter fallback first, replaced by the site icon.
          ImageView icon = new ImageView(getContext());
          int iconSize = (int) (26 * getResources().getDisplayMetrics().density);
@@ -69,7 +69,7 @@ diff --git a/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/Aegi
          icon.setImageBitmap(letterTile(label));
          tile.addView(icon);
          TextView text = new TextView(getContext());
-@@ -571,7 +609,15 @@
+@@ -639,7 +677,15 @@
          text.setTextColor(getContext().getColor(R.color.aegis_text_primary));
          int top = (int) (5 * getResources().getDisplayMetrics().density);
          text.setPadding(0, top, 0, 0);
@@ -86,7 +86,7 @@ diff --git a/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/Aegi
          tile.setOnClickListener(
                  v -> {
                      Tab tab = mActivity.getActivityTab();
-@@ -580,9 +626,11 @@
+@@ -648,9 +694,11 @@
                                  new org.chromium.content_public.browser.LoadUrlParams(target));
                      }
                  });
@@ -102,7 +102,7 @@ diff --git a/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/Aegi
 diff --git a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
 --- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
 +++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
-@@ -217,6 +217,13 @@
+@@ -218,6 +218,13 @@
          // Hide affordance (patch 113): the user decides when the dock goes.
          mPill.addView(makeButton(R.drawable.aegis_ic_collapse, R.string.aegis_dock_hide,
                  this::collapse));
@@ -116,22 +116,21 @@ diff --git a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/Aegi
  
          // Fling down dismisses the capsule; horizontal flings switch tabs
          // (patch 113: the dock doubles as Chrome Android's address-bar
-@@ -480,7 +487,13 @@
-         String next;
-         // The URL pill is the address line (patch 113 user feedback): it
-         // always shows the current page URL, not the page title.
--        if (tab == null || tab.getUrl() == null) {
-+        // APK review 2026-11-15: a new-tab page is a clear tab - the pill
-+        // shows the search hint instead of the chrome-native://newtab URL
-+        // (or a stale URL left over from the previous page).
-+        if (tab == null
-+                || tab.getUrl() == null
-+                || org.chromium.components.embedder_support.util.UrlUtilities
-+                        .isNtpUrl(tab.getUrl())) {
+@@ -484,9 +491,10 @@
+         if (tab == null || tab.getUrl() == null) {
              next = getContext().getString(R.string.aegis_dock_search_hint);
+         } else if (UrlUtilities.isNtpUrl(tab.getUrl())) {
+-            // Aegis (patch 130): default pages carry Aegis branding -
+-            // the dock shows the Aegis alias, never chrome-native://.
+-            next = "aegis://newtab";
++            // Aegis (patch 130 + APK review 2026-11-15): a clear tab shows
++            // the search hint - the dock never speaks in URLs, so a new
++            // page never displays "aegis://newtab" or a stale address.
++            next = getContext().getString(R.string.aegis_dock_search_hint);
          } else {
              next = stripScheme(tab.getUrl().getSpec());
-@@ -492,6 +505,12 @@
+         }
+@@ -497,6 +505,12 @@
              mLastBound = next;
              mUrlPill.setText(next);
          }
@@ -144,7 +143,7 @@ diff --git a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/Aegi
      }
  
      private static String stripScheme(@Nullable String spec) {
-@@ -513,6 +532,9 @@
+@@ -518,6 +532,9 @@
                  .onMenuOrKeyboardAction(
                          R.id.new_tab_menu_id, /* fromMenu= */ false,
                          /* menuItemData= */ null, /* triggeringMotion= */ null);
@@ -154,7 +153,7 @@ diff --git a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/Aegi
      }
  
      /** Opens the Aegis glass tab grid (patch 100). */
-@@ -542,11 +564,54 @@
+@@ -547,11 +564,54 @@
          }
      }
  
