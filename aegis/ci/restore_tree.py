@@ -199,6 +199,19 @@ def main():
         drop_tree(out, src, odir)
         return
     btag, bsha = tok[0], tok[1]
+    # Token 3 = bank schema (bank.sh writes it). Old banks (2 tokens) are
+    # schema 0. Bump BANK_SCHEMA in lockstep with bank.sh to poison all
+    # existing banks once - #89 restored #88's bank whose R.java is stale
+    # (res edges never ran with 131/132's strings) and no diff-based rule
+    # can see that, because the res patch is ALREADY applied in the banked
+    # sources. Only a full rebuild (schema drop) clears it.
+    schema = int(tok[2]) if len(tok) > 2 and tok[2].isdigit() else 0
+    BANK_SCHEMA = 1
+    if schema != BANK_SCHEMA:
+        print(f"banked schema {schema} != {BANK_SCHEMA} - dropping bank "
+              "(stale-R poison: #88/#89; forces one full rebuild)")
+        drop_tree(out, src, odir)
+        return
 
     if btag != cur_tag:
         print(f"banked chromium tag {btag} != requested {cur_tag} - dropping bank")

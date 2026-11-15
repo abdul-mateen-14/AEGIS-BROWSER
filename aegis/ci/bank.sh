@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # bank.sh - Aegis CI build-tree persistence across GitHub Actions runs.
 #
+# BANK_SCHEMA: written as token 3 of .aegis_head; restore_tree.py drops any
+# bank whose schema differs. Bump it (in BOTH this file and restore_tree.py)
+# to poison all existing banks once - e.g. when a run banks a tree with
+# unrecoverable stale products (the #88/#89 stale-R.java poisoning).
+AEGIS_BANK_SCHEMA="${AEGIS_BANK_SCHEMA:-1}"
+#
 # WHY: Chromium 156 compiles all C++ with C++20 modules (clang PCM), and
 # ccache cannot cache module compilation units (it silently passes them
 # through - proven: the old design's "Save compiler cache" step stored
@@ -287,7 +293,7 @@ if [ "$CMD" = save ]; then
   # linux #41 AND #42 both logged "build tree dropped" 60s after a clean
   # 1.2 GB restore. Stamping here is safe: restore_tree.py already consumed
   # the OLD marker earlier this window (it runs before this save step).
-  echo "${WANT_CHROMIUM_TAG:-unknown} ${AEGIS_HEAD_SHA:-unknown}" > "$OUT_DIR/.aegis_head"
+  echo "${WANT_CHROMIUM_TAG:-unknown} ${AEGIS_HEAD_SHA:-unknown} ${AEGIS_BANK_SCHEMA}" > "$OUT_DIR/.aegis_head"
 
   OBJ_MB=$(du -sm "$OUT_DIR/obj" | cut -f1)
   GEN_MB=$(du -sm "$OUT_DIR/gen" 2>/dev/null | cut -f1); GEN_MB="${GEN_MB:-0}"
