@@ -1,0 +1,70 @@
+diff --git a/chrome/android/java/res/values/aegis_tokens.xml b/chrome/android/java/res/values/aegis_tokens.xml
+--- a/chrome/android/java/res/values/aegis_tokens.xml
++++ b/chrome/android/java/res/values/aegis_tokens.xml
+@@ -107,4 +107,6 @@
+     <string name="aegis_menu_download_page">Download page</string>
+     <string name="aegis_menu_open_new_tab">Open in new tab</string>
+     <string name="aegis_menu_open_private_tab">Open in private tab</string>
++    <!-- Patch 132 (de-Google payment methods page). -->
++    <string name="aegis_payment_card_summary">Save a payment method on this device to autofill it for purchases made in Aegis.</string>
+ </resources>
+diff --git a/chrome/android/java/src/org/chromium/chrome/browser/autofill/settings/AutofillPaymentMethodsFragment.java b/chrome/android/java/src/org/chromium/chrome/browser/autofill/settings/AutofillPaymentMethodsFragment.java
+--- a/chrome/android/java/src/org/chromium/chrome/browser/autofill/settings/AutofillPaymentMethodsFragment.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/autofill/settings/AutofillPaymentMethodsFragment.java
+@@ -34,7 +34,6 @@
+ import org.chromium.chrome.browser.autofill.AutofillEditorBase;
+ import org.chromium.chrome.browser.autofill.AutofillImageFetcherFactory;
+ import org.chromium.chrome.browser.autofill.AutofillUiUtils;
+-import org.chromium.chrome.browser.autofill.GoogleWalletLauncher;
+ import org.chromium.chrome.browser.autofill.PersonalDataManager;
+ import org.chromium.chrome.browser.autofill.PersonalDataManager.CreditCard;
+ import org.chromium.chrome.browser.autofill.PersonalDataManagerFactory;
+@@ -396,7 +395,9 @@
+             CardWithButtonPreference addFirstCardPref =
+                     new CardWithButtonPreference(getStyledContext(), null);
+             addFirstCardPref.setTitle(R.string.autofill_create_first_credit_card_title);
+-            addFirstCardPref.setSummary(R.string.autofill_create_first_credit_card_summary);
++            // Aegis (patch 132): the stock summary points at the
++            // Google Account; Aegis stores cards locally.
++            addFirstCardPref.setSummary(R.string.aegis_payment_card_summary);
+             addFirstCardPref.setButtonText(
+                     getResources()
+                             .getString(R.string.autofill_create_first_credit_card_button_text));
+@@ -456,19 +457,8 @@
+         getPreferenceScreen().addPreference(paymentAppsPref);
+         refreshPaymentAppsPrefForAndroidPaymentApps(paymentAppsPref);
+ 
+-        // Add the link to manage loyalty cards.
+-        Preference loyaltyCardsPref = new ChromeBasePreference(getStyledContext());
+-        loyaltyCardsPref.setTitle(R.string.payment_methods_settings_loyalty_cards_title);
+-        loyaltyCardsPref.setSummary(R.string.payment_methods_settings_loyalty_cards_description);
+-        loyaltyCardsPref.setKey(PREF_LOYALTY_CARDS);
+-        loyaltyCardsPref.setEnabled(!disabledSettings);
+-        getPreferenceScreen().addPreference(loyaltyCardsPref);
+-        loyaltyCardsPref.setOnPreferenceClickListener(
+-                (preference) -> {
+-                    GoogleWalletLauncher.openGoogleWallet(
+-                            getActivity(), getActivity().getPackageManager());
+-                    return true;
+-                });
++        // Aegis (patch 132, de-Googled): the loyalty-cards row existed to
++        // launch Google Wallet; it has no place in Aegis and is removed.
+ 
+         if (ChromeFeatureList.isEnabled(ChromeFeatureList.AUTOFILL_ENABLE_WALLET_REMINDER_NOTICE)) {
+             createWalletReminderNoticePreference();
+diff --git a/chrome/browser/safety_check/android/java/src/org/chromium/chrome/browser/safety_check/SafetyCheckSettingsFragment.java b/chrome/browser/safety_check/android/java/src/org/chromium/chrome/browser/safety_check/SafetyCheckSettingsFragment.java
+--- a/chrome/browser/safety_check/android/java/src/org/chromium/chrome/browser/safety_check/SafetyCheckSettingsFragment.java
++++ b/chrome/browser/safety_check/android/java/src/org/chromium/chrome/browser/safety_check/SafetyCheckSettingsFragment.java
+@@ -79,8 +79,11 @@
+     }
+ 
+     private void setPasswordChecks() {
++        // Aegis (patch 132, de-Googled): there is no Google-account password
++        // storage, so the "Can't check passwords in your Google Account" row
++        // - and the Google sign-in sheet it opens - never shows.
+         findPreference(SafetyCheckViewBinder.PASSWORDS_KEY_ACCOUNT)
+-                .setVisible(mComponentDelegate.isAccountPasswordStorageUsed());
++                .setVisible(false);
+     }
+ 
+     /**
