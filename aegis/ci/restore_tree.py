@@ -319,6 +319,20 @@ def main():
             elif os.path.exists(p):
                 os.remove(p)
                 print(f"force-invalidated gen file: {rel}")
+    # DURABLE android res-value invalidation (2026-11-15, APK #87 lesson):
+    # patching a res/values xml only feeds ACTION edges (process_resources
+    # -> R srcjar), which ninja -t deps cannot map (see the gen: comment
+    # above) - a hot bank then keeps a STALE R.java without the new symbols
+    # and chrome_java javac fails on the new R.string references (#87: five
+    # 'cannot find symbol' for patch 131's strings). Delete the generated R
+    # srcjars directly so the res action reruns from the patched values.
+    if any(("/res/" in t and t.endswith(".xml")) for t in targets):
+        for rel in ("gen/chrome/android/chrome_java.generated.srcjar",
+                    "gen/chrome/android/chrome_java__assetres.srcjar"):
+            p = os.path.join(out, rel)
+            if os.path.exists(p):
+                os.remove(p)
+                print(f"res values touched - force-invalidated: {rel}")
     # DURABLE webui/locale/theme invalidation (r68 lesson, 2026-11-14):
     # grit/repack/rollup products (grd/grdp -> pak, webui TS bundles, locale
     # paks, theme paks, copied raw resources) are ACTION edges - ninja -t
