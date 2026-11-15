@@ -1,0 +1,302 @@
+diff --git a/chrome/android/java/res/values/aegis_tokens.xml b/chrome/android/java/res/values/aegis_tokens.xml
+--- a/chrome/android/java/res/values/aegis_tokens.xml
++++ b/chrome/android/java/res/values/aegis_tokens.xml
+@@ -89,4 +89,10 @@
+     <string name="aegis_home_status">Hardened · %1$s hosts blocked</string>
+     <string name="aegis_home_quick">Quick shields</string>
+     <string name="aegis_hosts_blocked">92,957</string>
++    <!-- APK review wave 2026-11-15 (patch 131). -->
++    <string name="aegis_menu_manage_tabs">Manage tabs</string>
++    <string name="aegis_menu_translate">Translate</string>
++    <string name="aegis_menu_download_page">Download page</string>
++    <string name="aegis_menu_open_new_tab">Open in new tab</string>
++    <string name="aegis_menu_open_private_tab">Open in private tab</string>
+ </resources>
+diff --git a/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java b/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java
+@@ -405,6 +405,40 @@
+                 });
+         b.setNegativeButton(android.R.string.cancel, null);
+         b.show();
++    }
++
++    /** APK review 2026-11-15: the full shortcut tile menu. */
++    private void showTileMenu(String label, String target) {
++        String[] items =
++                new String[] {
++                    getContext().getString(R.string.aegis_menu_open_new_tab),
++                    getContext().getString(R.string.aegis_menu_open_private_tab),
++                    getContext().getString(R.string.aegis_home_remove_shortcut)
++                };
++        new AlertDialog.Builder(getContext())
++                .setTitle(label)
++                .setItems(
++                        items,
++                        (d, which) -> {
++                            if (which == 0) {
++                                openTileInTab(target, false);
++                            } else if (which == 1) {
++                                openTileInTab(target, true);
++                            } else {
++                                showRemoveTileDialog(label, target);
++                            }
++                        })
++                .show();
++    }
++
++    private void openTileInTab(String target, boolean incognito) {
++        org.chromium.chrome.browser.tabmodel.TabCreator creator =
++                mActivity.getTabCreator(incognito);
++        if (creator == null) return;
++        creator.createNewTab(
++                new org.chromium.content_public.browser.LoadUrlParams(target),
++                org.chromium.chrome.browser.tab.TabLaunchType.FROM_LINK,
++                /* parent= */ null);
+     }
+ 
+     /** Wallpaper picker: preset surfaces plus the system image chooser. */
+@@ -562,7 +596,11 @@
+         // Favicon slot: letter fallback first, replaced by the site icon.
+         ImageView icon = new ImageView(getContext());
+         int iconSize = (int) (26 * getResources().getDisplayMetrics().density);
+-        icon.setLayoutParams(new LinearLayout.LayoutParams(iconSize, iconSize));
++        // Centered favicon slot (APK review 2026-11-15).
++        LinearLayout.LayoutParams iconLp =
++                new LinearLayout.LayoutParams(iconSize, iconSize);
++        iconLp.gravity = Gravity.CENTER_HORIZONTAL;
++        icon.setLayoutParams(iconLp);
+         icon.setImageBitmap(letterTile(label));
+         tile.addView(icon);
+         TextView text = new TextView(getContext());
+@@ -571,7 +609,15 @@
+         text.setTextColor(getContext().getColor(R.color.aegis_text_primary));
+         int top = (int) (5 * getResources().getDisplayMetrics().density);
+         text.setPadding(0, top, 0, 0);
+-        tile.addView(text);
++        // Centered tile labels (APK review 2026-11-15): the site label needs
++        // an explicit full-width row with center gravity - the tile's
++        // LinearLayout gravity alone left labels start-aligned.
++        text.setGravity(Gravity.CENTER_HORIZONTAL);
++        LinearLayout.LayoutParams textLp =
++                new LinearLayout.LayoutParams(
++                        ViewGroup.LayoutParams.MATCH_PARENT,
++                        ViewGroup.LayoutParams.WRAP_CONTENT);
++        tile.addView(text, textLp);
+         tile.setOnClickListener(
+                 v -> {
+                     Tab tab = mActivity.getActivityTab();
+@@ -580,9 +626,11 @@
+                                 new org.chromium.content_public.browser.LoadUrlParams(target));
+                     }
+                 });
++        // APK review 2026-11-15: long-press opens the full tile menu
++        // (open in new tab / private tab / remove) instead of remove-only.
+         tile.setOnLongClickListener(
+                 v -> {
+-                    showRemoveTileDialog(label, target);
++                    showTileMenu(label, target);
+                     return true;
+                 });
+         fetchFavicon(icon, target, label);
+diff --git a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
+@@ -217,6 +217,13 @@
+         // Hide affordance (patch 113): the user decides when the dock goes.
+         mPill.addView(makeButton(R.drawable.aegis_ic_collapse, R.string.aegis_dock_hide,
+                 this::collapse));
++        // APK review 2026-11-15: long-pressing the dock opens the tab
++        // manager sheet.
++        mPill.setOnLongClickListener(
++                v -> {
++                    openTabGrid();
++                    return true;
++                });
+ 
+         // Fling down dismisses the capsule; horizontal flings switch tabs
+         // (patch 113: the dock doubles as Chrome Android's address-bar
+@@ -480,7 +487,13 @@
+         String next;
+         // The URL pill is the address line (patch 113 user feedback): it
+         // always shows the current page URL, not the page title.
+-        if (tab == null || tab.getUrl() == null) {
++        // APK review 2026-11-15: a new-tab page is a clear tab - the pill
++        // shows the search hint instead of the chrome-native://newtab URL
++        // (or a stale URL left over from the previous page).
++        if (tab == null
++                || tab.getUrl() == null
++                || org.chromium.components.embedder_support.util.UrlUtilities
++                        .isNtpUrl(tab.getUrl())) {
+             next = getContext().getString(R.string.aegis_dock_search_hint);
+         } else {
+             next = stripScheme(tab.getUrl().getSpec());
+@@ -492,6 +505,12 @@
+             mLastBound = next;
+             mUrlPill.setText(next);
+         }
++        // APK review 2026-11-15: the 1 Hz fallback poll never re-armed
++        // itself (it fired exactly once after attach), so tab switches left
++        // the URL pill showing the previous page. Re-arm after every run;
++        // detached windows remove the callback in onDetachedFromWindow.
++        removeCallbacks(mRefresh);
++        postDelayed(mRefresh, REFRESH_MS);
+     }
+ 
+     private static String stripScheme(@Nullable String spec) {
+@@ -513,6 +532,9 @@
+                 .onMenuOrKeyboardAction(
+                         R.id.new_tab_menu_id, /* fromMenu= */ false,
+                         /* menuItemData= */ null, /* triggeringMotion= */ null);
++        // APK review 2026-11-15: a fresh (clear) tab opens straight into the
++        // search sheet so typing starts immediately.
++        post(this::openSearchOverlay);
+     }
+ 
+     /** Opens the Aegis glass tab grid (patch 100). */
+@@ -542,11 +564,54 @@
+         }
+     }
+ 
++    // APK review 2026-11-15: horizontal swipes are decided once per touch
++    // stream and then consumed wholesale. Before this, a swipe starting on
++    // the URL pill still ended in the pill's click listener - the dock
++    // "mostly opened search" on swipe. Search now opens only on a real tap
++    // (and automatically on a fresh/clear tab); horizontal drags switch tabs.
++    private float mTouchDownX;
++    private float mTouchDownY;
++    private boolean mSwipeDecided;
++    private boolean mHorizontalSwipe;
++
+     @Override
+     public boolean dispatchTouchEvent(MotionEvent event) {
++        switch (event.getActionMasked()) {
++            case MotionEvent.ACTION_DOWN:
++                mTouchDownX = event.getX();
++                mTouchDownY = event.getY();
++                mSwipeDecided = false;
++                mHorizontalSwipe = false;
++                break;
++            case MotionEvent.ACTION_MOVE:
++                if (!mSwipeDecided) {
++                    float dx = event.getX() - mTouchDownX;
++                    float dy = event.getY() - mTouchDownY;
++                    int slop =
++                            android.view.ViewConfiguration.get(getContext())
++                                    .getScaledTouchSlop();
++                    if (Math.abs(dx) > slop && Math.abs(dx) > Math.abs(dy)) {
++                        mSwipeDecided = true;
++                        mHorizontalSwipe = true;
++                        mPill.setPressed(false);
++                    } else if (Math.abs(dy) > slop) {
++                        mSwipeDecided = true;
++                    }
++                }
++                if (mHorizontalSwipe) return true;
++                break;
++            case MotionEvent.ACTION_UP:
++                if (mHorizontalSwipe) {
++                    float dx = event.getX() - mTouchDownX;
++                    if (Math.abs(dx) > 40) switchTab(dx > 0 ? -1 : 1);
++                    return true;
++                }
++                break;
++            default:
++                break;
++        }
+         mDockGestures.onTouchEvent(event);
+-        boolean result = super.dispatchTouchEvent(event);
+-        return result;
++        return super.dispatchTouchEvent(event);
+     }
+ 
+     @Override
+diff --git a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisSearchSheet.java b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisSearchSheet.java
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisSearchSheet.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisSearchSheet.java
+@@ -7,10 +7,13 @@
+ import android.app.Activity;
+ import android.content.Context;
+ import android.graphics.drawable.GradientDrawable;
++import android.os.Build;
+ import android.text.TextUtils;
+ import android.view.Gravity;
+ import android.view.KeyEvent;
+ import android.view.ViewGroup;
++import android.view.WindowInsets;
++import android.view.WindowInsetsAnimation;
+ import android.view.inputmethod.EditorInfo;
+ import android.view.inputmethod.InputMethodManager;
+ import android.widget.EditText;
+@@ -126,6 +129,34 @@
+                         ViewGroup.LayoutParams.MATCH_PARENT,
+                         ViewGroup.LayoutParams.WRAP_CONTENT,
+                         Gravity.BOTTOM));
++
++        // APK review 2026-11-15: ride the IME insets so the query field
++        // sits directly above the keyboard with a frame-smooth transition.
++        // The static listener covers instant show/hide; the animation
++        // callback (API 30+) follows every IME frame, so the user always
++        // sees what they type.
++        sheet.setOnApplyWindowInsetsListener(
++                (v, insets) -> {
++                    panel.setTranslationY(
++                            -insets.getInsets(WindowInsets.Type.ime()).bottom);
++                    return insets;
++                });
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
++            sheet.setWindowInsetsAnimationCallback(
++                    new WindowInsetsAnimation.Callback(
++                            WindowInsetsAnimation.Callback.DISPATCH_MODE_STOP) {
++                        @Override
++                        public WindowInsets onProgress(
++                                WindowInsets insets,
++                                List<WindowInsetsAnimation> animations) {
++                            panel.setTranslationY(
++                                    -insets.getInsets(
++                                            WindowInsets.Type.ime())
++                                            .bottom);
++                            return insets;
++                        }
++                    });
++        }
+ 
+         // Engine chips + live engine name land once the service is loaded.
+         TemplateUrlService service =
+diff --git a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisMenuSheet.java b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisMenuSheet.java
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisMenuSheet.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisMenuSheet.java
+@@ -73,6 +73,18 @@
+                 () -> fire(R.id.all_bookmarks_menu_id));
+         addTile(grid, R.string.aegis_menu_reading_list, R.drawable.aegis_ic_reading,
+                 () -> fire(R.id.show_reading_list_menu_id));
++        // APK review 2026-11-15: the useful actions the review asked for.
++        // Manage tabs opens the Aegis tab grid; translate and download-page
++        // reuse the browser's own routed menu ids (ChromeActivity).
++        addTile(grid, R.string.aegis_menu_manage_tabs, R.drawable.aegis_ic_tabs,
++                () -> {
++                    dismiss();
++                    dock().openTabGrid();
++                });
++        addTile(grid, R.string.aegis_menu_translate, R.drawable.aegis_ic_search,
++                () -> fire(R.id.translate_id));
++        addTile(grid, R.string.aegis_menu_download_page, R.drawable.aegis_ic_download,
++                () -> fire(R.id.download_page_id));
+         addTile(grid, R.string.aegis_menu_desktop_site, R.drawable.aegis_ic_desktop,
+                 () -> fire(R.id.request_desktop_site_id));
+         addTile(grid, R.string.aegis_menu_settings, R.drawable.aegis_ic_settings,
+diff --git a/chrome/browser/bookmarks/android/java/src/org/chromium/chrome/browser/bookmarks/BookmarkManagerCoordinator.java b/chrome/browser/bookmarks/android/java/src/org/chromium/chrome/browser/bookmarks/BookmarkManagerCoordinator.java
+--- a/chrome/browser/bookmarks/android/java/src/org/chromium/chrome/browser/bookmarks/BookmarkManagerCoordinator.java
++++ b/chrome/browser/bookmarks/android/java/src/org/chromium/chrome/browser/bookmarks/BookmarkManagerCoordinator.java
+@@ -615,7 +615,10 @@
+     }
+ 
+     boolean canShowSigninPromo() {
+-        return mSigninPromoCoordinator.canShowPromo();
++        // Aegis (APK review 2026-11-15, de-Googled): the Google sign-in promo
++        // has no place in the bookmarks or reading list surface; the plain
++        // empty state shows instead.
++        return false;
+     }
+ 
+     private static View inflate(ViewGroup parent, @LayoutRes int layoutId) {
