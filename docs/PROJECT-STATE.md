@@ -649,6 +649,19 @@ script any time the list gets cluttered (never deletes live runs, never touches 
      user-approved timeout raise. **APK #84 (id 43669513669) + Windows #43 (id
      43669530974) dispatched 02:49Z @ 493fe25; #84 heals #83's bank and compiles only
      the fixed chrome_java target.**
+   - **ROUND 7 (2026-11-15 04:1xZ, code audit per user request): APK #84 RED 03:37Z
+     `AegisPasswordsSettings.java:86: reached end of file while parsing` — NOT a code
+     bug: the round-6 header edit declared +1,86 while the body has 89 lines, and
+     `git apply` writes EXACTLY the declared count then SILENTLY DROPS the rest with
+     exit 0 (reproduced locally: applied file = 86 lines ending mid-method; that is
+     why every exit-code-based validator passed). FIX (commit 8fb5e82): header 86->89;
+     NEW AUDIT scripts/audit_newfile_hunks.py — for ALL new-file hunks in the chain:
+     declared count vs body lines, ISOLATED git apply with output line-count check,
+     brace balance, class-brace tail; **all 50 new-file hunks chain-wide = CLEAN**
+     (the one truncation was the only one). chain_preflight 56/58 + clean. **APK #85
+     (id 43675613693) dispatched 04:10Z @ 8fb5e82** (restores #84's bank at 213,962
+     edges, compiles the complete AegisPasswordsSettings + rest of chrome_java);
+     Windows #43 still in flight (no Java on that lane).
 1. **DONE 2026-11-13 17:45Z:** verdicts verified against GitHub API:
    Linux **#63 GREEN ARTIFACT** (`.deb` 115,649,064 B, artifact 14059749067 — wave 121-126
    delivered); Windows #37 = cap-bank (gen 43392811502), **#38 in flight** (cap ≈ 20:10Z);
