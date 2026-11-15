@@ -634,6 +634,21 @@ script any time the list gets cluttered (never deletes live runs, never touches 
      `@@ -396,5 +399,6` adds `Context context,` as first param; guard header shifted
      to +408,32. chain_preflight clean; reflection cast PROVEN fine (no error on those
      lines in #82). **APK #83 dispatch @ 90d07de after the 17:59Z cooldown.**
+   - **ROUND 6 (2026-11-15 02:4xZ): APK #83 RED 18:50Z — password_manager target now
+     PASSES (207,808 edges banked); error moved to chrome_java:**
+     `AegisPasswordsSettings is not abstract and does not override abstract method
+     getAnimationType() in SettingsFragment`. FIX (commit 493fe25): add the override
+     mirroring patch 054's green AegisEcosystemSettings
+     (`public @SettingsFragment.AnimationType int getAnimationType() { return
+     SettingsFragment.AnimationType.PROPERTY; }` + components browser_ui
+     SettingsFragment import; new-file hunk count 81->86). chain_preflight 56/58.
+     NOTE: sandbox recycle reverted the aegis-repo checkout to 4cafe3b mid-turn;
+     recovered with `git fetch + reset --hard origin/main` (all work had been pushed;
+     no losses). Windows #42 = ANOTHER cap-bank (23:16Z, +47,619 edges; cumulative
+     ~118k of ~210k) -> the 350-min lane cap will need one more successor cycle or a
+     user-approved timeout raise. **APK #84 (id 43669513669) + Windows #43 (id
+     43669530974) dispatched 02:49Z @ 493fe25; #84 heals #83's bank and compiles only
+     the fixed chrome_java target.**
 1. **DONE 2026-11-13 17:45Z:** verdicts verified against GitHub API:
    Linux **#63 GREEN ARTIFACT** (`.deb` 115,649,064 B, artifact 14059749067 — wave 121-126
    delivered); Windows #37 = cap-bank (gen 43392811502), **#38 in flight** (cap ≈ 20:10Z);
