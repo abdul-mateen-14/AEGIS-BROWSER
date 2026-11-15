@@ -802,3 +802,16 @@ Fix wave dispatched for the r66 findings (cosmetic layer; no data/search change)
      131 java code itself compiled CLEAN (dock swipe/insets/TabCreator all
      green). #88 (43699042696) @ 5993d2b 09:23Z = 131 + 132 + CI fix; bank
      #87 = post-131 sources so javac rebuilds against fresh R.
+1. **DONE 2026-11-15 12:0xZ (ROUND 11): #88 RED -> res rule switched to
+     drop-the-bank; #89 dispatched.** #88 deleted the R srcjars (the #87 fix)
+     but javac STILL failed (6 'cannot find symbol', incl 132's
+     aegis_payment_card_summary): the res->R chain has intermediates
+     (aapt2 compiled zips, generated_java R extraction, arsc) that ninja
+     -t deps cannot map and that have no safe enumeration. Followed the
+     existing branding-hooks policy: res-xml patch targets now drop_tree +
+     return when a banked R srcjar exists. #89 (43711621782) @ 6bd088e
+     12:00Z = FULL REBUILD (~2-3h; bank dropped) - expected GREEN class
+     (#82 precedent). NOTE: local aegis-repo got recycled back to 4cafe3b
+     mid-session; origin/main always authoritative - reset --hard before
+     editing. Awaiting user: download popup screenshot, original image 2
+     (settings page to remove); share tile routing still deferred.
