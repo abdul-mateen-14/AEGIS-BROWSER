@@ -843,3 +843,17 @@ Fix wave dispatched for the r66 findings (cosmetic layer; no data/search change)
      full-rebuild ETA ~17:15Z. NOTE for future banks: banking drafts are
      banking-android/-windows/-linux; artifact drafts are linux-*/build-*/
      windows-*/rNN.
+1. **DONE 2026-11-16 04:5xZ (ROUND 15): windows destroy/rebuild LOOP root-
+     caused + fixed (1fb2c64); #92/#46 dispatched on clean sha-equal resumes.**
+     Numbers: android #91 banked 128k->174313/~232576 edges (75%); windows #45
+     netted only +77 edges in 4h35m. #45's log shows ninja STARTED ~17.7k
+     steps (15.4k CXX) - the restore step's own prints reveal why:
+     'force-invalidation: +34 paths' fired every run and its PLAIN paths were
+     merged into `targets` (restore_tree.py line ~339), so even docs-only
+     diffs matched WEBUI_PREFIXES and the webui/locale/theme block deleted
+     ~17.7k gen outputs (incl locales paks) EVERY round - ninja spent the
+     whole budget rebuilding exactly what the previous round had rebuilt.
+     Fix: extras are output-path recoveries, deleted directly (idempotent);
+     they can never re-arm diff-based rules again. #92 (android, 75% bank,
+     sha-equal resume = zero invalidation) may finish + sign + attach THIS
+     run; #46 (windows) finally converges at full speed.
