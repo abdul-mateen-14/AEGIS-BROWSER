@@ -1,5 +1,5 @@
---- a/chrome/android/java/src/org/chromium/chrome/browser/download/DangerousDownloadDialogBridge.java
-+++ b/chrome/android/java/src/org/chromium/chrome/browser/download/DangerousDownloadDialogBridge.java
+--- a/chrome/browser/download/android/java/src/org/chromium/chrome/browser/download/DangerousDownloadDialogBridge.java
++++ b/chrome/browser/download/android/java/src/org/chromium/chrome/browser/download/DangerousDownloadDialogBridge.java
 @@ -87,8 +87,7 @@
       * @param iconId The icon resource for the warning dialog.
       * @param isDangerous The danger status of the download file.
