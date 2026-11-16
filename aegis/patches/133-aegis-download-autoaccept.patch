@@ -1,0 +1,42 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/download/DangerousDownloadDialogBridge.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/download/DangerousDownloadDialogBridge.java
+@@ -87,8 +87,7 @@
+      * @param iconId The icon resource for the warning dialog.
+      * @param isDangerous The danger status of the download file.
+      */
+-    @CalledByNative
+-    public void showDialog(
++    private void showDialogWithConfirmation(
+             @Nullable WindowAndroid windowAndroid,
+             @JniType("std::string") String guid,
+             @JniType("std::u16string") String fileName,
+@@ -152,6 +151,29 @@
+         } else {
+             ensureActivityStateListener();
+         }
++    }
++
++    /**
++     * AEGIS (patch 133): auto-accept the dangerous-download confirmation.
++     * This fork ships without Safe Browsing, and the modal can fail to
++     * render here: an invisible backdrop dims the activity while the
++     * download waits for a confirmation nobody can give, so the progress
++     * notification parks at 100% forever (user recording 2026-11-16: APK
++     * download stuck at 338 MB / 338 MB after the dim). Accept immediately
++     * instead - the dialog's own CONFIRM path ends in this same callback,
++     * so bytes already on disk finalize normally and the notification
++     * completes. dismissDialog()/destroy() stay no-op-safe with empty maps.
++     */
++    @CalledByNative
++    public void showDialog(
++            @Nullable WindowAndroid windowAndroid,
++            @JniType("std::string") String guid,
++            @JniType("std::u16string") String fileName,
++            long totalBytes,
++            @JniType("std::u16string") String downloadDomain,
++            int iconId,
++            boolean isDangerous) {
++        onAccepted(guid);
+     }
+ 
+     private @Nullable Activity getValidResumedActivity(@Nullable WindowAndroid windowAndroid) {

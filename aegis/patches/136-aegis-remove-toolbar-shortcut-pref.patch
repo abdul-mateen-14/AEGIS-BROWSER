@@ -1,0 +1,15 @@
+--- a/chrome/android/java/res/xml/appearance_preferences.xml
++++ b/chrome/android/java/res/xml/appearance_preferences.xml
+@@ -12,12 +12,6 @@
+         android:key="ui_theme"
+         android:order="0"
+         android:title="@string/theme_settings" />
+-
+-    <org.chromium.components.browser_ui.settings.ChromeBasePreference
+-        android:fragment="org.chromium.chrome.browser.toolbar.adaptive.settings.AdaptiveToolbarSettingsFragment"
+-        android:key="toolbar_shortcut"
+-        android:order="1"
+-        android:title="@string/toolbar_shortcut" />
+ 
+ <!--The following bookmarks bar settings preferences repeat
+ the same order, title and summary because they are mutually

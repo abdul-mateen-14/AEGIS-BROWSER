@@ -1,0 +1,20 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/contextmenu/ChromeContextMenuPopulator.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/contextmenu/ChromeContextMenuPopulator.java
+@@ -461,8 +461,15 @@
+     }
+ 
+     private boolean areMandatoryFlowsCompleted(Profile profile) {
+-        return FirstRunStatus.getFirstRunFlowComplete()
+-                && !ForcedSigninStatusProvider.getForProfile(profile).isForcedSigninShowing();
++        // AEGIS (patch 134): this build ships without sign-in and first-run
++        // gates - FirstRunStatus never flips to complete here, which stripped
++        // every open-in item (new tab / new tab in group / new private tab /
++        // new window) from the link, image and video long-press menus; user
++        // report 2026-11-16 shows a link menu with only "Copy link address"
++        // and "Copy link text". The menu items themselves keep their own
++        // per-feature guards (incognito support, window support, schemes),
++        // so treat the mandatory flows as always completed.
++        return true;
+     }
+ 
+     @VisibleForTesting

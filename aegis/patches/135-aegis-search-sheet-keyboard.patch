@@ -1,0 +1,65 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisSearchSheet.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisSearchSheet.java
+@@ -6,11 +6,13 @@
+ 
+ import android.app.Activity;
+ import android.content.Context;
++import android.graphics.Rect;
+ import android.graphics.drawable.GradientDrawable;
+ import android.os.Build;
+ import android.text.TextUtils;
+ import android.view.Gravity;
+ import android.view.KeyEvent;
++import android.view.View;
+ import android.view.ViewGroup;
+ import android.view.WindowInsets;
+ import android.view.WindowInsetsAnimation;
+@@ -158,6 +160,13 @@
+                     });
+         }
+ 
++        // Patch 135: the inset listeners above only work if the IME insets
++        // survive dispatch to this view; Chrome's activity can consume them
++        // at the decor, which left the query field glued behind the keyboard
++        // (user report 2026-11-16, "still not fixed"). Belt-and-suspenders:
++        // track the visible window frame as well.
++        startKeyboardTracker(sheet, panel);
++
+         // Engine chips + live engine name land once the service is loaded.
+         TemplateUrlService service =
+                 TemplateUrlServiceFactory.getForProfile(
+@@ -172,6 +181,34 @@
+                                     context.getSystemService(Context.INPUT_METHOD_SERVICE);
+                     if (imm != null) imm.showSoftInput(input, 0);
+                 });
++    }
++
++    /**
++     * Patch 135 (APK review 2026-11-16): poll the visible window frame while
++     * the sheet is open. Under adjustResize the decor's visible frame bottom
++     * shrinks by exactly the keyboard height no matter who consumes insets;
++     * the baseline is the tallest frame seen (keyboard closed) and it
++     * re-baselines itself, so a flaky listener can never leave the field
++     * behind the keyboard. Values agree with the inset listeners when those
++     * do fire; self-stops once the sheet is detached.
++     */
++    private static void startKeyboardTracker(AegisSearchSheet sheet, View panel) {
++        View root = sheet.getRootView();
++        Rect frame = new Rect();
++        int[] baseline = {Integer.MIN_VALUE};
++        Runnable[] track = new Runnable[1];
++        track[0] =
++                () -> {
++                    if (sheet.getParent() == null || root.getHeight() <= 0) return;
++                    root.getWindowVisibleDisplayFrame(frame);
++                    if (baseline[0] == Integer.MIN_VALUE || frame.bottom > baseline[0]) {
++                        baseline[0] = frame.bottom; // keyboard closed (or a taller frame)
++                    }
++                    int kb = Math.max(0, baseline[0] - frame.bottom);
++                    panel.setTranslationY(-kb);
++                    sheet.postDelayed(track[0], 100);
++                };
++        sheet.post(track[0]);
+     }
+ 
+     /** Renders the active-engine chip plus the prepopulated alternates. */
