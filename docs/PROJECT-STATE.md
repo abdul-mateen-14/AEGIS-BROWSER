@@ -857,3 +857,12 @@ Fix wave dispatched for the r66 findings (cosmetic layer; no data/search change)
      they can never re-arm diff-based rules again. #92 (android, 75% bank,
      sha-equal resume = zero invalidation) may finish + sign + attach THIS
      run; #46 (windows) finally converges at full speed.
+1. **DONE 2026-11-16 11:2xZ (ROUND 16): APK SHIPPED - #92 GREEN WITH ARTIFACT.**
+     #92: bank step SKIPPED (no cap), Sign/Upload/Attach all SUCCESS ->
+     build-156.0.8078.79-r92 draft = AegisBrowser_156.0.8078.79_arm64_r92.apk
+     (338.1 MB, chromium 156.0.8078.79 + patches through 132). The whole
+     130/131/132 review wave is shipped on android. Windows: #46 banked
+     47548->73697 (+26149 REAL edges, vs +77 pre-fix - loop fix verified in
+     production); #47 (43856737085) 11:19Z @ e2de76d continues; est ~4-6
+     more cap-runs (~1-1.5 days) until the mini_installer fits a budget.
+     Linux r70 stays current (130/131/132 are android-only).
