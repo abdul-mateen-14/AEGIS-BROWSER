@@ -880,3 +880,12 @@ Fix wave dispatched for the r66 findings (cosmetic layer; no data/search change)
      081->087->100->101->131. Strict git apply --check PASS x4
      (scripts/build_review2_patches.py). 9ffaa4b, APK #93 (43863162412)
      12:03Z on the hot r92 bank - fast resume, javac decides.
+1. **DONE 2026-11-16 17:2xZ (ROUND 18): windows convergence accelerating, #93
+     postmortem.** #93 failed at PATCH-APPLY (133 path: android download
+     java lives under chrome/browser/download/android/java/src - generator
+     had copied the contextmenu path pattern; compile never started).
+     Corrected, pushed 7d29b5b, #94 (43870194917) 12:50Z: patches applied
+     CLEAN, in ninja on the hot bank. Windows: #47 73697->111664
+     (+37967 edges, vs +26149 in #46, +77 in #45 - superlinear as banked
+     deps compound); #48 (43916432464) 17:15Z @ 7d29b5b. Est 2-3 more
+     cap-runs until the mini_installer fits the 6h budget.
