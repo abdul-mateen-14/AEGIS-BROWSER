@@ -866,3 +866,17 @@ Fix wave dispatched for the r66 findings (cosmetic layer; no data/search change)
      production); #47 (43856737085) 11:19Z @ e2de76d continues; est ~4-6
      more cap-runs (~1-1.5 days) until the mini_installer fits a budget.
      Linux r70 stays current (130/131/132 are android-only).
+1. **DONE 2026-11-16 12:1xZ (ROUND 17): review wave 2 - patches 133-136, #93
+     dispatched.** User delivered video + 4 screenshots; every issue root-
+     caused against exact tag bases (fetched 156.0.8078.79 files via
+     googlesource ?format=TEXT; verified untouched by 001-132):
+     133 downloads stuck at 100% (dim = dangerous-download modal backdrop
+     that never renders; auto-accept in the bridge), 134 link long-press
+     menu stripped to 2 items (areMandatoryFlowsCompleted gate on
+     FirstRunStatus/forced-signin never passes in this build; items keep
+     own guards), 135 search sheet input glued behind keyboard (IME insets
+     consumed at decor; visible-frame tracker added), 136 Toolbar shortcut
+     entry removed from Appearance. 135 base = chain reconstruction
+     081->087->100->101->131. Strict git apply --check PASS x4
+     (scripts/build_review2_patches.py). 9ffaa4b, APK #93 (43863162412)
+     12:03Z on the hot r92 bank - fast resume, javac decides.
