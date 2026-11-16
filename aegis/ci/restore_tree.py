@@ -335,9 +335,13 @@ def main():
                  if l.strip() and not l.strip().startswith("#")]
         if extra:
             print(f"force-invalidation: +{len(extra)} paths from invalidation_extra.txt")
-        gen_extra = [p[len("gen:"):] for p in extra if p.startswith("gen:")]
-        targets |= {p for p in extra if not p.startswith("gen:")}
-        for rel in gen_extra:
+        # ALL extras are OUTPUT-path recoveries (obj/gen artifacts) - delete
+        # them directly, NEVER feed them into `targets`. Feeding them re-armed
+        # the res/webui destruction rules on EVERY commit round: windows
+        # #44/#45 destroyed and rebuilt ~17.7k gen outputs per run (the whole
+        # 6h budget) because docs-only diffs still matched WEBUI_PREFIXES.
+        for rel in extra:
+            rel = rel[len("gen:"):] if rel.startswith("gen:") else rel
             p = os.path.join(out, rel)
             if os.path.isdir(p):
                 shutil.rmtree(p, ignore_errors=True)
