@@ -930,3 +930,16 @@ Fix wave dispatched for the r66 findings (cosmetic layer; no data/search change)
      PASS; 7d69326; APK #96 (44054782081) 09:21Z, WIN #50 (44054919348)
      09:22Z resuming #49's bank. WIN #49 = cap-stop success (banked 2 vols,
      no installer yet - needs more successor runs).
+1. **DONE 2026-11-17 10:5xZ (ROUND 22): #96 RED fixed (same strings), #97
+     dispatched.** #96 (44054782081): the gen: srcjar deletions DID run and
+     the srcjars regenerated - but from banked-stale UPSTREAM res outputs
+     (aapt2 resourcezip / R.txt never invalidated; the
+     chrome_java__process_resources dir guess didn't exist -> silently
+     skipped). Fix layers: (1) invalidation_extra.txt gains the correctly
+     named chrome_app_java_resources__process_resources.{resourcezip,R.txt,
+     srcjar} gen: entries (android_process_resources template @156, target
+     consuming chrome_java_resources.gni); (2) 138 v3 makes javac
+     independent of res staleness - moveButton content descriptions are
+     literals (Move up/Move down; invisible a11y text), tokens hunk kept.
+     Full chain PASS; bd26d5b; APK #97 (44068738528) 10:51Z. WIN #50
+     in_progress (due ~15:22Z).
