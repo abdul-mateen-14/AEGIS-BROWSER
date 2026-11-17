@@ -1,0 +1,29 @@
+--- a/chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/adaptive/AdaptiveToolbarButtonController.java
++++ b/chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/adaptive/AdaptiveToolbarButtonController.java
+@@ -299,8 +299,18 @@
+         mObservers.removeObserver(obs);
+     }
+ 
++    /** AEGIS (patch 141): the optional toolbar button is disabled wholesale
++     *  in this build - reports 2026-11-16/17: the shortcut page and the
++     *  sparkle button kept resurfacing. The Appearance entry is already gone
++     *  (patch 136); reporting no button data keeps the toolbar on its static
++     *  default set with no optional button surface for any variant. */
++    private static boolean aegisNoButton() {
++        return true;
++    }
++
+     @Override
+     public @Nullable ButtonData get(@Nullable Tab tab) {
++        if (aegisNoButton()) return null;
+         final ButtonData receivedButtonData =
+                 mSingleProvider == null ? null : mSingleProvider.get(tab);
+         if (receivedButtonData == null) {
+@@ -439,6 +449,7 @@
+ 
+     /** Called to notify the controller that a dynamic action is available and should be shown. */
+     public void showDynamicAction(@AdaptiveToolbarButtonVariant int action) {
++        if (aegisNoButton()) return;
+         if (mSingleProvider != null && mTabSupplier != null) {
+             Tab currentTab = mTabSupplier.get();
+             if (currentTab != null) {

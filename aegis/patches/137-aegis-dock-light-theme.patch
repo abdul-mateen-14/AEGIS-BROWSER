@@ -1,0 +1,18 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
+@@ -195,7 +195,14 @@
+ 
+         mUrlPill = new TextView(getContext());
+         mUrlPill.setTextSize(11.5f);
+-        mUrlPill.setTextColor(Color.WHITE);
++        // AEGIS (patch 137): Color.WHITE is invisible on the light-theme
++        // glass pill (user screenshot dock.png: URL present but blank).
++        // Resolve per system night mode: white on dark, ink on light.
++        int nightMode = getContext().getResources().getConfiguration().uiMode
++                & android.content.res.Configuration.UI_MODE_NIGHT_MASK;
++        mUrlPill.setTextColor(nightMode == android.content.res.Configuration.UI_MODE_NIGHT_YES
++                        ? Color.WHITE
++                        : 0xFF202124);
+         mUrlPill.setSingleLine(true);
+         mUrlPill.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
+         mUrlPill.setContentDescription(getContext().getString(R.string.aegis_dock_search));

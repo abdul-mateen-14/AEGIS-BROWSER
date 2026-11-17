@@ -1,0 +1,72 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisTabGridSheet.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisTabGridSheet.java
+@@ -202,6 +202,48 @@
+         return empty;
+     }
+ 
++    /** Patch 138 (user tabsm.png): reorder affordance - moves the tab one
++     *  slot up/down inside its model (TabModel.moveTab, 156). */
++    private TextView moveButton(Tab tab, boolean private_, boolean up) {
++        TextView move = new TextView(getContext());
++        move.setText(up ? "\u2191" : "\u2193");
++        move.setTextSize(14);
++        move.setTextColor(getContext().getColor(
++                private_ ? R.color.aegis_text_secondary_inverted
++                         : R.color.aegis_text_secondary));
++        move.setClickable(true);
++        move.setFocusable(true);
++        move.setPadding(6, 0, 6, 0);
++        move.setContentDescription(getContext().getString(
++                up ? R.string.aegis_sheet_move_up : R.string.aegis_sheet_move_down));
++        move.setOnClickListener(
++                v -> {
++                    TabModel model =
++                            ((ChromeTabbedActivity) dock().getContext())
++                                    .getTabModelSelector()
++                                    .getModel(private_);
++                    if (model == null) return;
++                    int idx = -1;
++                    for (int i = 0; i < model.getCount(); i++) {
++                        if (model.getTabAt(i) == tab) {
++                            idx = i;
++                            break;
++                        }
++                    }
++                    int target = up ? idx - 1 : idx + 1;
++                    if (idx < 0 || target < 0 || target >= model.getCount()) return;
++                    model.moveTab(tab.getId(), target);
++                    rebuild();
++                });
++        return move;
++    }
++
++    /** Patch 138: re-render the panel after a model mutation. */
++    private void rebuild() {
++        mPanel.removeAllViews();
++        buildPanel();
++    }
++
+     /** Tab card: title + host, tap switches, the chip closes the tab. */
+     private View tabCard(Tab tab, boolean private_) {
+         LinearLayout card = new LinearLayout(getContext());
+@@ -242,6 +284,9 @@
+                 private_ ? R.color.aegis_text_secondary_inverted : R.color.aegis_text_secondary));
+         textCol.addView(host);
+ 
++        card.addView(moveButton(tab, private_, true));
++        card.addView(moveButton(tab, private_, false));
++
+         ImageView close = new ImageView(getContext());
+         close.setImageResource(R.drawable.aegis_ic_close);
+         close.setContentDescription(getContext().getString(R.string.aegis_sheet_close_tab));
+--- a/chrome/android/java/res/values/aegis_tokens.xml
++++ b/chrome/android/java/res/values/aegis_tokens.xml
+@@ -78,6 +78,8 @@
+          groups and private tabs. -->
+     <string name="aegis_sheet_close_tab">Close tab</string>
+     <string name="aegis_sheet_close_all">Close all</string>
++    <string name="aegis_sheet_move_up">Move up</string>
++    <string name="aegis_sheet_move_down">Move down</string>
+     <string name="aegis_sheet_private">Private</string>
+     <string name="aegis_sheet_groups">Groups</string>
+     <string name="aegis_sheet_group_count">%1$d tabs</string>

@@ -1,0 +1,18 @@
+--- a/chrome/browser/autofill/android/java/res/xml/autofill_and_passwords_preferences.xml
++++ b/chrome/browser/autofill/android/java/res/xml/autofill_and_passwords_preferences.xml
+@@ -78,11 +78,8 @@
+         app:iconTint="@macro/default_icon_color"
+         app:isPreferenceVisible="false" />
+ 
+-    <org.chromium.components.browser_ui.settings.ChromeBasePreference
+-        android:key="autofill_and_passwords_settings"
+-        android:order="8"
+-        android:title="@string/autofill_settings_title"
+-        android:icon="@drawable/ic_settings_24dp"
+-        android:summary="@string/autofill_and_passwords_settings_summary"/>
+-
++    <!-- AEGIS (patch 140): the autofill-provider page ("Autofill with
++         Google") is removed - user report 2026-11-17. The provider surface
++         is Google-centric; this de-Googled build autofills locally and the
++         third-party picker has no honest use here. -->
+ </PreferenceScreen>

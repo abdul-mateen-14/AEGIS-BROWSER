@@ -1,0 +1,89 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java
+@@ -38,7 +38,11 @@
+ import org.chromium.chrome.browser.ChromeTabbedActivity;
+ import org.chromium.chrome.browser.profiles.Profile;
+ import org.chromium.chrome.browser.tab.Tab;
++import org.chromium.chrome.browser.tab.TabLaunchType;
+ import org.chromium.chrome.browser.tab.TabObserver;
++import org.chromium.chrome.browser.tabmodel.TabModel;
++import org.chromium.chrome.browser.tabmodel.TabModelObserver;
++import org.chromium.content_public.browser.LoadUrlParams;
+ import org.chromium.components.embedder_support.util.UrlUtilities;
+ import org.chromium.components.favicon.LargeIconBridge;
+ import org.chromium.url.GURL;
+@@ -816,6 +820,33 @@
+         if (tab != null) tab.addObserver(mTabObserver);
+     }
+ 
++    // AEGIS (patch 139): closing the last tab must never land on Google's
++    // default surfaces (the empty tab grid, the provider NTP) - "our own
++    // style ones as default, not as layer on them". Whenever a model empties
++    // out, open a fresh native NTP immediately: the Aegis home covers it,
++    // the dock stays, and no Google content is ever visible.
++    private final TabModelObserver mEmptyGuard =
++            new TabModelObserver() {
++                @Override
++                public void didRemoveTabForClosure(Tab tab) {
++                    mHandler.post(AegisHomeView.this::openNtpIfEmpty);
++                }
++            };
++
++    private void openNtpIfEmpty() {
++        if (mActivity.getTabModelSelector() == null) return;
++        for (boolean incognito : new boolean[] {false, true}) {
++            TabModel model = mActivity.getTabModelSelector().getModel(incognito);
++            if (model != null && model.getCount() == 0) {
++                mActivity.getTabCreator(incognito)
++                        .createNewTab(
++                                new LoadUrlParams("chrome-native://newtab/"),
++                                TabLaunchType.FROM_MENU_OR_OVERFLOW,
++                                /* parent= */ null);
++            }
++        }
++    }
++
+     private void tick() {
+         ensureTabObserver();
+         Tab tab = mActivity.getActivityTab();
+@@ -846,6 +877,12 @@
+     protected void onAttachedToWindow() {
+         super.onAttachedToWindow();
+         tick();
++        if (mActivity.getTabModelSelector() != null) {
++            TabModel normal = mActivity.getTabModelSelector().getModel(false);
++            TabModel incognito = mActivity.getTabModelSelector().getModel(true);
++            if (normal != null) normal.addObserver(mEmptyGuard);
++            if (incognito != null) incognito.addObserver(mEmptyGuard);
++        }
+         mHandler.postDelayed(mTickLoop, CHECK_MS);
+         mHandler.postDelayed(mClockTick, CLOCK_MS);
+     }
+@@ -853,6 +890,12 @@
+     @Override
+     protected void onDetachedFromWindow() {
+         super.onDetachedFromWindow();
++        if (mActivity.getTabModelSelector() != null) {
++            TabModel normal = mActivity.getTabModelSelector().getModel(false);
++            TabModel incognito = mActivity.getTabModelSelector().getModel(true);
++            if (normal != null) normal.removeObserver(mEmptyGuard);
++            if (incognito != null) incognito.removeObserver(mEmptyGuard);
++        }
+         mHandler.removeCallbacks(mTick);
+         mHandler.removeCallbacks(mTickLoop);
+         mHandler.removeCallbacks(mClockTick);
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisTopToolbar.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisTopToolbar.java
+@@ -22,7 +22,11 @@
+  * full screen below the status bar with no reserved strip.
+  */
+ public final class AegisTopToolbar {
+-    private static final long REASSERT_MS = 1000;
++    // AEGIS (patch 139): the 1s reassert left a visible peek window when
++    // surfaces like the tab switcher re-showed the toolbar ("the header the
++    // toolbar of google sometimes also becomes a little bit visible").
++    // Re-assert every 150ms instead.
++    private static final long REASSERT_MS = 150;
+     private static final Handler sHandler = new Handler(Looper.getMainLooper());
+     private static View sControlContainer;
+ 
