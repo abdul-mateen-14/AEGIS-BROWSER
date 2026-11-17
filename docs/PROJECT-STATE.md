@@ -916,3 +916,17 @@ Fix wave dispatched for the r66 findings (cosmetic layer; no data/search change)
      showDynamicAction no-op). Bases: chain reconstructions + tag files
      (untouched by 001-136 verified). Strict apply --check PASS x5.
      c697c6a, APK #95 (44016357530) 04:19Z on the hot r94 bank.
+1. **DONE 2026-11-17 09:2xZ (ROUND 21): #95 RED fixed, #96 + WIN #50
+     dispatched.** #95 (44016357530) died at javac: 138 added a second
+     rebuild() (130 already has one), R.string.aegis_sheet_move_* unresolved,
+     139 used FROM_MENU_OR_OVERFLOW (dropped at 156). Root of the string
+     errors = value resources are ACTION-edge inputs ninja -t deps can never
+     map + restamped mtimes keep banked res outputs fresh -> R.java/arsc
+     stale. Durable fix: gen: entries (chrome_java.generated.srcjar,
+     chrome_java__assetres.srcjar, chrome_java__process_resources) in
+     invalidation_extra.txt - same pattern as RED 42388197815. 138 v2: calls
+     the existing rebuild() + tab/group card X restyled to a 26dp circular
+     glass badge (user UI ask). 139 v2: FROM_LINK. Full chain preflight
+     PASS; 7d69326; APK #96 (44054782081) 09:21Z, WIN #50 (44054919348)
+     09:22Z resuming #49's bank. WIN #49 = cap-stop success (banked 2 vols,
+     no installer yet - needs more successor runs).
