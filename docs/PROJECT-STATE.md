@@ -889,3 +889,16 @@ Fix wave dispatched for the r66 findings (cosmetic layer; no data/search change)
      (+37967 edges, vs +26149 in #46, +77 in #45 - superlinear as banked
      deps compound); #48 (43916432464) 17:15Z @ 7d29b5b. Est 2-3 more
      cap-runs until the mini_installer fits the 6h budget.
+1. **DONE 2026-11-17 02:5xZ (ROUND 19): APK r94 SHIPPED with review wave 2.**
+     #94 (43870194917) GREEN WITH ARTIFACT - build-156.0.8078.79-r94 =
+     AegisBrowser_156.0.8078.79_arm64_r94.apk (338.1 MB) with patches
+     133-136: dangerous-download auto-accept (stuck-at-100% fix), link/
+     image/video menu open-items restored (mandatory-flows gate), search
+     sheet visible-frame keyboard tracker, Toolbar shortcut removed from
+     Appearance. User should TEST: download the r94 APK via the browser
+     (verifies 133 end-to-end), long-press a link (134), search sheet +
+     keyboard (135), Appearance page (136). Windows #48: restored 111825
+     edges clean, ran 58568 dirty (cumulative ~170k of ~200k+), banked
+     1.45GB/2 vols; #49 (44004257890) 02:36Z @ f3e0dbf. NOTE: bank edges
+     marker at #48 = 67236 = this-run completed count (marker semantics
+     under review; restore chain + obj accumulation unaffected).
