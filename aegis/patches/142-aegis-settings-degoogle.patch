@@ -1,14 +1,14 @@
 --- a/chrome/android/java/src/org/chromium/chrome/browser/settings/MainSettings.java
 +++ b/chrome/android/java/src/org/chromium/chrome/browser/settings/MainSettings.java
-@@ -54,7 +54,6 @@
- import org.chromium.chrome.browser.preferences.ChromePreferenceKeys;
+@@ -55,7 +55,6 @@
+ import org.chromium.chrome.browser.aegis.AegisIdManager;
  import org.chromium.chrome.browser.preferences.Pref;
  import org.chromium.chrome.browser.profiles.Profile;
 -import org.chromium.chrome.browser.safety_hub.SafetyHubMetricUtils;
  import org.chromium.chrome.browser.search_engines.TemplateUrlServiceFactory;
  import org.chromium.chrome.browser.settings.search.ChromeBaseSearchIndexProvider;
  import org.chromium.chrome.browser.signin.SigninAndHistorySyncActivityLauncherImpl;
-@@ -447,18 +446,12 @@
+@@ -457,18 +456,12 @@
              templateUrlService.load();
          }
  
@@ -33,7 +33,7 @@
      }
  
      private static boolean shouldShowSafetyHubPref() {
-@@ -670,12 +663,26 @@
+@@ -718,12 +711,26 @@
      }
  
      private void updateAutofillPreferences() {
@@ -60,7 +60,7 @@
  
          maybeStartPasswordsExportFlow();
      }
-@@ -1025,37 +1032,16 @@
+@@ -1066,37 +1073,16 @@
                          indexData.removeEntry(getUniqueId(PREF_HOMEPAGE));
                      }
  
