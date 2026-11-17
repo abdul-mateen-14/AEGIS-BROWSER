@@ -12,7 +12,7 @@
  import org.chromium.components.embedder_support.util.UrlUtilities;
  import org.chromium.components.favicon.LargeIconBridge;
  import org.chromium.url.GURL;
-@@ -816,6 +820,33 @@
+@@ -816,6 +820,37 @@
          if (tab != null) tab.addObserver(mTabObserver);
      }
  
@@ -37,7 +37,11 @@
 +                mActivity.getTabCreator(incognito)
 +                        .createNewTab(
 +                                new LoadUrlParams("chrome-native://newtab/"),
-+                                TabLaunchType.FROM_MENU_OR_OVERFLOW,
++                                // FROM_LINK: the only launch type proven at
++                                // this tag (patch 139 v1 used
++                                // FROM_MENU_OR_OVERFLOW, which 156 dropped -
++                                // APK RED 44016357530).
++                                TabLaunchType.FROM_LINK,
 +                                /* parent= */ null);
 +            }
 +        }
@@ -46,7 +50,7 @@
      private void tick() {
          ensureTabObserver();
          Tab tab = mActivity.getActivityTab();
-@@ -846,6 +877,12 @@
+@@ -846,6 +881,12 @@
      protected void onAttachedToWindow() {
          super.onAttachedToWindow();
          tick();
@@ -59,7 +63,7 @@
          mHandler.postDelayed(mTickLoop, CHECK_MS);
          mHandler.postDelayed(mClockTick, CLOCK_MS);
      }
-@@ -853,6 +890,12 @@
+@@ -853,6 +894,12 @@
      @Override
      protected void onDetachedFromWindow() {
          super.onDetachedFromWindow();

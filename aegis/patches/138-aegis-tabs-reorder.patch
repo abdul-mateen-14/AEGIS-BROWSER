@@ -1,11 +1,12 @@
 --- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisTabGridSheet.java
 +++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisTabGridSheet.java
-@@ -202,6 +202,48 @@
+@@ -202,6 +202,43 @@
          return empty;
      }
  
 +    /** Patch 138 (user tabsm.png): reorder affordance - moves the tab one
-+     *  slot up/down inside its model (TabModel.moveTab, 156). */
++     *  slot up/down inside its model (TabModel.moveTab, 156); the panel
++     *  re-renders via the existing rebuild(). */
 +    private TextView moveButton(Tab tab, boolean private_, boolean up) {
 +        TextView move = new TextView(getContext());
 +        move.setText(up ? "\u2191" : "\u2193");
@@ -40,16 +41,10 @@
 +        return move;
 +    }
 +
-+    /** Patch 138: re-render the panel after a model mutation. */
-+    private void rebuild() {
-+        mPanel.removeAllViews();
-+        buildPanel();
-+    }
-+
      /** Tab card: title + host, tap switches, the chip closes the tab. */
      private View tabCard(Tab tab, boolean private_) {
          LinearLayout card = new LinearLayout(getContext());
-@@ -242,6 +284,9 @@
+@@ -242,13 +279,26 @@
                  private_ ? R.color.aegis_text_secondary_inverted : R.color.aegis_text_secondary));
          textCol.addView(host);
  
@@ -59,6 +54,46 @@
          ImageView close = new ImageView(getContext());
          close.setImageResource(R.drawable.aegis_ic_close);
          close.setContentDescription(getContext().getString(R.string.aegis_sheet_close_tab));
+-        int btn = (int) (34 * getResources().getDisplayMetrics().density);
++        // AEGIS (patch 138 v2): small circular close badge (user UI review
++        // 2026-11-17: the 34dp square X looked heavy) - 26dp glass circle,
++        // hairline ring, centered glyph.
++        int btn = (int) (26 * getResources().getDisplayMetrics().density);
+         LinearLayout.LayoutParams closeLp = new LinearLayout.LayoutParams(btn, btn);
+         closeLp.leftMargin = (int) (8 * getResources().getDisplayMetrics().density);
+         close.setLayoutParams(closeLp);
++        GradientDrawable circle = new GradientDrawable();
++        circle.setShape(GradientDrawable.OVAL);
++        circle.setColor(getContext().getColor(R.color.aegis_glass_pill));
++        circle.setStroke(1, getContext().getColor(R.color.aegis_hairline));
++        close.setBackground(circle);
++        close.setPadding(btn / 4, btn / 4, btn / 4, btn / 4);
++        close.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+         close.setClickable(true);
+         close.setFocusable(true);
+         close.setOnClickListener(
+@@ -327,10 +377,20 @@
+         ImageView close = new ImageView(getContext());
+         close.setImageResource(R.drawable.aegis_ic_close);
+         close.setContentDescription(getContext().getString(R.string.aegis_sheet_close_all));
+-        int btn = (int) (34 * getResources().getDisplayMetrics().density);
++        // AEGIS (patch 138 v2): small circular close badge (user UI review
++        // 2026-11-17: the 34dp square X looked heavy) - 26dp glass circle,
++        // hairline ring, centered glyph.
++        int btn = (int) (26 * getResources().getDisplayMetrics().density);
+         LinearLayout.LayoutParams closeLp = new LinearLayout.LayoutParams(btn, btn);
+         closeLp.leftMargin = (int) (8 * getResources().getDisplayMetrics().density);
+         close.setLayoutParams(closeLp);
++        GradientDrawable circle = new GradientDrawable();
++        circle.setShape(GradientDrawable.OVAL);
++        circle.setColor(getContext().getColor(R.color.aegis_glass_pill));
++        circle.setStroke(1, getContext().getColor(R.color.aegis_hairline));
++        close.setBackground(circle);
++        close.setPadding(btn / 4, btn / 4, btn / 4, btn / 4);
++        close.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+         close.setClickable(true);
+         close.setFocusable(true);
+         close.setOnClickListener(
 --- a/chrome/android/java/res/values/aegis_tokens.xml
 +++ b/chrome/android/java/res/values/aegis_tokens.xml
 @@ -78,6 +78,8 @@

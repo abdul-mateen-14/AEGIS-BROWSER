@@ -65,3 +65,14 @@ gen:chrome/browser/resources
 gen:ui/webui/resources
 gen:components/components_strings.h
 gen:chrome/generated_resources.pak
+
+# APK RED 44016357530 (#95): value-resource edits (aegis_tokens.xml strings,
+# res/xml preference files) are ACTION-edge inputs - ninja -t deps can never
+# map them, and restamped mtimes keep the banked res outputs "up to date", so
+# the compiled R.java srcjars and the arsc ship stale (javac: cannot find
+# symbol R.string.aegis_sheet_move_up). Force the chrome_java resource
+# pipeline outputs (srcjars carry the generated R.java; the process_resources
+# dir carries the compiled resources incl. the arsc):
+gen:gen/chrome/android/chrome_java.generated.srcjar
+gen:gen/chrome/android/chrome_java__assetres.srcjar
+gen:gen/chrome/android/chrome_java__process_resources
