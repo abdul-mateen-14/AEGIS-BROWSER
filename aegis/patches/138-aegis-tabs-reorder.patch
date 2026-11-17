@@ -1,104 +1,128 @@
 --- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisTabGridSheet.java
 +++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisTabGridSheet.java
-@@ -202,6 +202,48 @@
+@@ -4,7 +4,9 @@
+ 
+ package org.chromium.chrome.browser.aegis.dock;
+ 
++import android.content.ClipData;
+ import android.graphics.drawable.GradientDrawable;
++import android.view.DragEvent;
+ import android.view.Gravity;
+ import android.view.View;
+ import android.view.ViewGroup;
+@@ -102,6 +104,30 @@
+         scroll.setVerticalScrollBarEnabled(false);
+         LinearLayout list = new LinearLayout(getContext());
+         list.setOrientation(LinearLayout.VERTICAL);
++        // AEGIS (patch 138 v4): hold a card and drag it to reorder (user
++        // review of r97: the arrow buttons were clumsy). The listener
++        // hit-tests the card under the drag point and moves the dragged
++        // tab within its OWN model; the panel re-renders on each index
++        // change and settles on drop/drag-end.
++        list.setOnDragListener(
++                (v, event) -> {
++                    Object state = event.getLocalState();
++                    if (!(state instanceof Tab)) return false;
++                    Tab dragged = (Tab) state;
++                    switch (event.getAction()) {
++                        case DragEvent.ACTION_DRAG_STARTED:
++                            return true;
++                        case DragEvent.ACTION_DRAG_LOCATION:
++                            handleDragLocation(dragged, event.getY());
++                            return true;
++                        case DragEvent.ACTION_DROP:
++                        case DragEvent.ACTION_DRAG_ENDED:
++                            rebuild();
++                            return true;
++                        default:
++                            return true;
++                    }
++                });
+         if (normal != null && normalCount > 0) {
+             for (int i = 0; i < normalCount; i++) {
+                 Tab tab = normal.getTabAt(i);
+@@ -202,6 +228,62 @@
          return empty;
      }
  
-+    /** Patch 138 (user tabsm.png): reorder affordance - moves the tab one
-+     *  slot up/down inside its model (TabModel.moveTab, 156); the panel
-+     *  re-renders via the existing rebuild(). */
-+    private TextView moveButton(Tab tab, boolean private_, boolean up) {
-+        TextView move = new TextView(getContext());
-+        move.setText(up ? "\u2191" : "\u2193");
-+        move.setTextSize(14);
-+        move.setTextColor(getContext().getColor(
-+                private_ ? R.color.aegis_text_secondary_inverted
-+                         : R.color.aegis_text_secondary));
-+        move.setClickable(true);
-+        move.setFocusable(true);
-+        move.setPadding(6, 0, 6, 0);
-+        // Patch 138 v3 (APK RED 44054782081): literal labels - the strings
-+        // this patch adds to aegis_tokens.xml are not reliably visible to
-+        // javac while the banked res pipeline ships stale (value resources
-+        // are ACTION-edge inputs ninja cannot invalidate); these content
-+        // descriptions are invisible UI text, so literals keep the compile
-+        // independent of res staleness.
-+        move.setContentDescription(up ? "Move up" : "Move down");
-+        move.setOnClickListener(
-+                v -> {
-+                    TabModel model =
-+                            ((ChromeTabbedActivity) dock().getContext())
-+                                    .getTabModelSelector()
-+                                    .getModel(private_);
-+                    if (model == null) return;
-+                    int idx = -1;
-+                    for (int i = 0; i < model.getCount(); i++) {
-+                        if (model.getTabAt(i) == tab) {
-+                            idx = i;
-+                            break;
-+                        }
++    /** Patch 138 v4: moves the dragged tab to the position of the card
++     *  under the drag point (same model only); re-renders on change. */
++    private void handleDragLocation(Tab dragged, float y) {
++        if (mPanel == null) return;
++        LinearLayout list = findDragList();
++        if (list == null) return;
++        TabModel model =
++                ((ChromeTabbedActivity) dock().getContext())
++                        .getTabModelSelector()
++                        .getModel(dragged.isIncognito());
++        if (model == null) return;
++        int draggedIdx = -1;
++        for (int i = 0; i < model.getCount(); i++) {
++            if (model.getTabAt(i) == dragged) {
++                draggedIdx = i;
++                break;
++            }
++        }
++        if (draggedIdx < 0) return;
++        for (int i = 0; i < list.getChildCount(); i++) {
++            View child = list.getChildAt(i);
++            if (child.getTop() <= y && y <= child.getBottom()
++                    && child.getTag() instanceof Tab) {
++                Tab under = (Tab) child.getTag();
++                if (under == dragged || under.isIncognito() != dragged.isIncognito()) {
++                    return;
++                }
++                int target = -1;
++                for (int j = 0; j < model.getCount(); j++) {
++                    if (model.getTabAt(j) == under) {
++                        target = j;
++                        break;
 +                    }
-+                    int target = up ? idx - 1 : idx + 1;
-+                    if (idx < 0 || target < 0 || target >= model.getCount()) return;
-+                    model.moveTab(tab.getId(), target);
++                }
++                if (target >= 0 && target != draggedIdx) {
++                    model.moveTab(dragged.getId(), target);
 +                    rebuild();
-+                });
-+        return move;
++                }
++                return;
++            }
++        }
++    }
++
++    /** Patch 138 v4: the card list is rebuilt on every reorder - re-find
++     *  the current instance for drag hit-testing. */
++    private LinearLayout findDragList() {
++        for (int i = 0; i < mPanel.getChildCount(); i++) {
++            View child = mPanel.getChildAt(i);
++            if (child instanceof ScrollView) {
++                ViewGroup inner = (ViewGroup) ((ScrollView) child).getChildAt(0);
++                if (inner instanceof LinearLayout) return (LinearLayout) inner;
++            }
++        }
++        return null;
 +    }
 +
      /** Tab card: title + host, tap switches, the chip closes the tab. */
      private View tabCard(Tab tab, boolean private_) {
          LinearLayout card = new LinearLayout(getContext());
-@@ -242,13 +284,26 @@
-                 private_ ? R.color.aegis_text_secondary_inverted : R.color.aegis_text_secondary));
-         textCol.addView(host);
- 
-+        card.addView(moveButton(tab, private_, true));
-+        card.addView(moveButton(tab, private_, false));
-+
-         ImageView close = new ImageView(getContext());
-         close.setImageResource(R.drawable.aegis_ic_close);
-         close.setContentDescription(getContext().getString(R.string.aegis_sheet_close_tab));
--        int btn = (int) (34 * getResources().getDisplayMetrics().density);
-+        // AEGIS (patch 138 v2): small circular close badge (user UI review
-+        // 2026-11-17: the 34dp square X looked heavy) - 26dp glass circle,
-+        // hairline ring, centered glyph.
-+        int btn = (int) (26 * getResources().getDisplayMetrics().density);
-         LinearLayout.LayoutParams closeLp = new LinearLayout.LayoutParams(btn, btn);
-         closeLp.leftMargin = (int) (8 * getResources().getDisplayMetrics().density);
-         close.setLayoutParams(closeLp);
-+        GradientDrawable circle = new GradientDrawable();
-+        circle.setShape(GradientDrawable.OVAL);
-+        circle.setColor(getContext().getColor(R.color.aegis_glass_pill));
-+        circle.setStroke(1, getContext().getColor(R.color.aegis_hairline));
-+        close.setBackground(circle);
-+        close.setPadding(btn / 4, btn / 4, btn / 4, btn / 4);
-+        close.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-         close.setClickable(true);
-         close.setFocusable(true);
-         close.setOnClickListener(
-@@ -327,10 +382,20 @@
-         ImageView close = new ImageView(getContext());
-         close.setImageResource(R.drawable.aegis_ic_close);
-         close.setContentDescription(getContext().getString(R.string.aegis_sheet_close_all));
--        int btn = (int) (34 * getResources().getDisplayMetrics().density);
-+        // AEGIS (patch 138 v2): small circular close badge (user UI review
-+        // 2026-11-17: the 34dp square X looked heavy) - 26dp glass circle,
-+        // hairline ring, centered glyph.
-+        int btn = (int) (26 * getResources().getDisplayMetrics().density);
-         LinearLayout.LayoutParams closeLp = new LinearLayout.LayoutParams(btn, btn);
-         closeLp.leftMargin = (int) (8 * getResources().getDisplayMetrics().density);
-         close.setLayoutParams(closeLp);
-+        GradientDrawable circle = new GradientDrawable();
-+        circle.setShape(GradientDrawable.OVAL);
-+        circle.setColor(getContext().getColor(R.color.aegis_glass_pill));
-+        circle.setStroke(1, getContext().getColor(R.color.aegis_hairline));
-+        close.setBackground(circle);
-+        close.setPadding(btn / 4, btn / 4, btn / 4, btn / 4);
-+        close.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-         close.setClickable(true);
-         close.setFocusable(true);
-         close.setOnClickListener(
+@@ -210,6 +292,18 @@
+         card.setPadding(12, 12, 8, 12);
+         card.setClickable(true);
+         card.setFocusable(true);
++        // Patch 138 v4: long-press starts a drag session (see the list
++        // drag listener in buildPanel); a simple tap still switches.
++        card.setTag(tab);
++        card.setOnLongClickListener(
++                v -> {
++                    ClipData data =
++                            ClipData.newPlainText(
++                                    "aegis_tab", String.valueOf(tab.getId()));
++                    v.startDragAndDrop(
++                            data, new View.DragShadowBuilder(v), tab, 0);
++                    return true;
++                });
+         GradientDrawable bg = new GradientDrawable();
+         bg.setColor(getContext().getColor(
+                 private_ ? R.color.aegis_surface_inverted : R.color.aegis_surface));
 --- a/chrome/android/java/res/values/aegis_tokens.xml
 +++ b/chrome/android/java/res/values/aegis_tokens.xml
 @@ -78,6 +78,8 @@

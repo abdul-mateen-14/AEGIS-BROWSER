@@ -12,45 +12,46 @@
  import org.chromium.components.embedder_support.util.UrlUtilities;
  import org.chromium.components.favicon.LargeIconBridge;
  import org.chromium.url.GURL;
-@@ -816,6 +820,37 @@
+@@ -816,6 +820,38 @@
          if (tab != null) tab.addObserver(mTabObserver);
      }
  
-+    // AEGIS (patch 139): closing the last tab must never land on Google's
-+    // default surfaces (the empty tab grid, the provider NTP) - "our own
-+    // style ones as default, not as layer on them". Whenever a model empties
-+    // out, open a fresh native NTP immediately: the Aegis home covers it,
-+    // the dock stays, and no Google content is ever visible.
++    // AEGIS (patch 139 v2, r97 user review): v1 looped BOTH models and
++    // opened a private NTP whenever the incognito model was empty - which
++    // is ALWAYS the case - so every tab closure spawned a private tab, and
++    // Chromium's incognito FLAG_SECURE then blocked screenshots. The guard
++    // covers the NORMAL model only now: an emptied private model simply
++    // returns to the normal model, which this guard keeps non-empty and
++    // covered by the opaque Aegis home. No Google surface, no surprise
++    // private tabs, screenshots work.
 +    private final TabModelObserver mEmptyGuard =
 +            new TabModelObserver() {
 +                @Override
 +                public void didRemoveTabForClosure(Tab tab) {
++                    if (tab.isIncognito()) return;
 +                    mHandler.post(AegisHomeView.this::openNtpIfEmpty);
 +                }
 +            };
 +
 +    private void openNtpIfEmpty() {
 +        if (mActivity.getTabModelSelector() == null) return;
-+        for (boolean incognito : new boolean[] {false, true}) {
-+            TabModel model = mActivity.getTabModelSelector().getModel(incognito);
-+            if (model != null && model.getCount() == 0) {
-+                mActivity.getTabCreator(incognito)
-+                        .createNewTab(
-+                                new LoadUrlParams("chrome-native://newtab/"),
-+                                // FROM_LINK: the only launch type proven at
-+                                // this tag (patch 139 v1 used
-+                                // FROM_MENU_OR_OVERFLOW, which 156 dropped -
-+                                // APK RED 44016357530).
-+                                TabLaunchType.FROM_LINK,
-+                                /* parent= */ null);
-+            }
++        TabModel normal = mActivity.getTabModelSelector().getModel(false);
++        if (normal != null && normal.getCount() == 0) {
++            mActivity.getTabCreator(false)
++                    .createNewTab(
++                            new LoadUrlParams("chrome-native://newtab/"),
++                            // FROM_LINK: the only launch type proven at this
++                            // tag (FROM_MENU_OR_OVERFLOW was dropped in 156 -
++                            // APK RED 44016357530).
++                            TabLaunchType.FROM_LINK,
++                            /* parent= */ null);
 +        }
 +    }
 +
      private void tick() {
          ensureTabObserver();
          Tab tab = mActivity.getActivityTab();
-@@ -846,6 +881,12 @@
+@@ -846,6 +882,12 @@
      protected void onAttachedToWindow() {
          super.onAttachedToWindow();
          tick();
@@ -63,7 +64,7 @@
          mHandler.postDelayed(mTickLoop, CHECK_MS);
          mHandler.postDelayed(mClockTick, CLOCK_MS);
      }
-@@ -853,6 +894,12 @@
+@@ -853,6 +895,12 @@
      @Override
      protected void onDetachedFromWindow() {
          super.onDetachedFromWindow();

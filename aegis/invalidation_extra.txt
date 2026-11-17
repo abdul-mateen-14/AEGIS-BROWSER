@@ -75,7 +75,3 @@ gen:chrome/generated_resources.pak
 # dir carries the compiled resources incl. the arsc):
 gen:gen/chrome/android/chrome_java.generated.srcjar
 gen:gen/chrome/android/chrome_java__assetres.srcjar
-gen:gen/chrome/android/chrome_java__process_resources
-gen:gen/chrome/android/chrome_app_java_resources__process_resources.resourcezip
-gen:gen/chrome/android/chrome_app_java_resources__process_resources.R.txt
-gen:gen/chrome/android/chrome_app_java_resources__process_resources.srcjar

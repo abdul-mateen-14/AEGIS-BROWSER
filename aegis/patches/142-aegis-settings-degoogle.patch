@@ -1,0 +1,110 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/settings/MainSettings.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/settings/MainSettings.java
+@@ -54,7 +54,6 @@
+ import org.chromium.chrome.browser.preferences.ChromePreferenceKeys;
+ import org.chromium.chrome.browser.preferences.Pref;
+ import org.chromium.chrome.browser.profiles.Profile;
+-import org.chromium.chrome.browser.safety_hub.SafetyHubMetricUtils;
+ import org.chromium.chrome.browser.search_engines.TemplateUrlServiceFactory;
+ import org.chromium.chrome.browser.settings.search.ChromeBaseSearchIndexProvider;
+ import org.chromium.chrome.browser.signin.SigninAndHistorySyncActivityLauncherImpl;
+@@ -447,18 +446,12 @@
+             templateUrlService.load();
+         }
+ 
+-        if (!shouldShowSafetyHubPref()) {
+-            getPreferenceScreen().removePreference(findPreference(PREF_SAFETY_HUB));
+-        } else {
+-            findPreference(PREF_SAFETY_HUB)
+-                    .setOnPreferenceClickListener(
+-                            preference -> {
+-                                SafetyHubMetricUtils.recordExternalInteractions(
+-                                        SafetyHubMetricUtils.ExternalInteractions
+-                                                .OPEN_FROM_SETTINGS_PAGE);
+-                                return false;
+-                            });
+-        }
++        // AEGIS (patch 142, r97 user review: "in settings there's still
++        // safety check with google id"): the Safety check page presents the
++        // signed-in Google identity; this de-Googled build removes the
++        // surface at runtime (XML-only removal is unsafe here -
++        // findPreference(PREF_SAFETY_HUB) would NPE the non-shown branch).
++        removePreferenceIfPresent(PREF_SAFETY_HUB);
+     }
+ 
+     private static boolean shouldShowSafetyHubPref() {
+@@ -670,12 +663,26 @@
+     }
+ 
+     private void updateAutofillPreferences() {
++        // AEGIS (patch 142, r97 user review: "there's still ... autofill
++        // settings"): the rows are re-added PROGRAMMATICALLY from the cached
++        // hierarchy (addPreferenceIfAbsent), so removing them from XML alone
++        // is nullified - and findPreference(...).setOn... would NPE if the
++        // rows were gone first. Keep both feature-flag branches running
++        // against the intact XML, then strip every Google autofill surface
++        // (Google Password Manager, Google Pay, synced addresses) afterwards.
+         if (ChromeFeatureList.isEnabled(ChromeFeatureList.YOUR_SAVED_INFO_SETTINGS_PAGE_ANDROID)) {
+             updateAutofillAndPasswords();
+         } else {
+             removePreferenceIfPresent(PREF_AUTOFILL_AND_PASSWORDS);
+             updateAutofillPreferencesPreAutofillAndPasswords();
+         }
++
++        removePreferenceIfPresent(PREF_AUTOFILL_AND_PASSWORDS);
++        removePreferenceIfPresent(PREF_AUTOFILL_SECTION);
++        removePreferenceIfPresent(PREF_PASSWORDS);
++        removePreferenceIfPresent(PREF_AUTOFILL_PAYMENTS);
++        removePreferenceIfPresent(PREF_AUTOFILL_ADDRESSES);
++        removePreferenceIfPresent(PREF_AUTOFILL_OPTIONS);
+ 
+         maybeStartPasswordsExportFlow();
+     }
+@@ -1025,37 +1032,16 @@
+                         indexData.removeEntry(getUniqueId(PREF_HOMEPAGE));
+                     }
+ 
+-                    if (ChromeFeatureList.isEnabled(
+-                            ChromeFeatureList.YOUR_SAVED_INFO_SETTINGS_PAGE_ANDROID)) {
+-                        indexData.removeEntry(getUniqueId(PREF_AUTOFILL_SECTION));
+-                        indexData.removeEntry(getUniqueId(PREF_PASSWORDS));
+-                        indexData.removeEntry(getUniqueId(PREF_AUTOFILL_PAYMENTS));
+-                        indexData.removeEntry(getUniqueId(PREF_AUTOFILL_ADDRESSES));
+-                        indexData.removeEntry(getUniqueId(PREF_AUTOFILL_OPTIONS));
+-                    } else {
+-                        indexData.removeEntry(getUniqueId(PREF_AUTOFILL_AND_PASSWORDS));
+-
+-                        String autofillOptionsEntryId = getUniqueId(PREF_AUTOFILL_OPTIONS);
+-                        SettingsIndexData.Entry autofillOptionsEntry =
+-                                indexData.getEntry(autofillOptionsEntryId);
+-                        if (autofillOptionsEntry != null) {
+-                            indexData.updateEntry(
+-                                    autofillOptionsEntryId,
+-                                    new SettingsIndexData.Entry.Builder(autofillOptionsEntry)
+-                                            // TODO(crbug.com/440022435): Remove the
+-                                            // PREF_AUTOFILL_OPTIONS title index update
+-                                            // once Autofill AI is launched.
+-                                            .setTitle(
+-                                                    AutofillOptionsMediator.getFragmentTitle(
+-                                                            context))
+-                                            .setFragment(AutofillOptionsFragment.class.getName())
+-                                            .setArguments(
+-                                                    AutofillOptionsFragment.createRequiredArgs(
+-                                                            AutofillOptionsReferrer
+-                                                                    .SETTINGS_SEARCH))
+-                                            .build());
+-                        }
+-                    }
++                    // AEGIS (patch 142): the removed Google surfaces must
++                    // not resurface through settings search either (they
++                    // navigate to their fragments directly).
++                    indexData.removeEntry(getUniqueId(PREF_SAFETY_HUB));
++                    indexData.removeEntry(getUniqueId(PREF_AUTOFILL_AND_PASSWORDS));
++                    indexData.removeEntry(getUniqueId(PREF_AUTOFILL_SECTION));
++                    indexData.removeEntry(getUniqueId(PREF_PASSWORDS));
++                    indexData.removeEntry(getUniqueId(PREF_AUTOFILL_PAYMENTS));
++                    indexData.removeEntry(getUniqueId(PREF_AUTOFILL_ADDRESSES));
++                    indexData.removeEntry(getUniqueId(PREF_AUTOFILL_OPTIONS));
+                 }
+             };
+ }
