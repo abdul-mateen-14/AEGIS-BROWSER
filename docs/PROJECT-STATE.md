@@ -943,3 +943,24 @@ Fix wave dispatched for the r66 findings (cosmetic layer; no data/search change)
      literals (Move up/Move down; invisible a11y text), tokens hunk kept.
      Full chain PASS; bd26d5b; APK #97 (44068738528) 10:51Z. WIN #50
      in_progress (due ~15:22Z).
+1. **DONE 2026-11-17 13:5xZ (ROUND 23): wave 4 from r97 user review, #98
+     dispatched.** User findings + fixes: (a) 'every new tab opens as
+     private' = 139 v1's empty-guard looped both models; the incognito
+     model is ALWAYS empty -> private NTP spawned on every closure; guard
+     now normal-model-only (139 v2). (b) 'can't take screenshots' =
+     downstream of (a): Chromium sets FLAG_SECURE for incognito; no
+     FLAG_SECURE in any patch (verified) - fixing (a) fixes this.
+     (c) 'still safety check with google id, autofill settings, toolbar
+     shortcuts': settings rows are JAVA-managed (addPreferenceIfAbsent
+     re-adds from the cached hierarchy; XML-only removal nullified 140 and
+     would NPE findPreference) -> 142 removes safety_hub + autofill/
+     passwords + autofill_section at runtime incl. settings-search index;
+     toolbar-shortcut was already removed by 136 but shipped STALE ->
+     (d) ROOT FIX 143: restamp.sh keeps fresh mtimes for patch-written
+     files (patched value-resources stay newer than banked outputs; ninja
+     rebuilds res actions; the #97 log proved the guessed gen: names never
+     matched). Wrong gen: entries dropped. (e) tab reorder = hold-and-drag
+     (138 v4, arrows removed): long-press -> startDragAndDrop, list drag
+     listener hit-tests + TabModel.moveTab in the tab's own model.
+     Full 7-patch chain PASS; 25da812; APK #98 (44097984941) 13:57Z.
+     WIN #50 still building (due ~15:22Z).
