@@ -902,3 +902,17 @@ Fix wave dispatched for the r66 findings (cosmetic layer; no data/search change)
      1.45GB/2 vols; #49 (44004257890) 02:36Z @ f3e0dbf. NOTE: bank edges
      marker at #48 = 67236 = this-run completed count (marker semantics
      under review; restore chain + obj accumulation unaffected).
+1. **DONE 2026-11-17 04:3xZ (ROUND 20): review wave 3 - patches 137-141,
+     #95 dispatched.** User 7 uploads (2 duplicates; toolbar-shortcut shots
+     almost certainly r92 - 136 shipped in r94): 137 dock URL pill
+     white-on-white in light theme -> per-night-mode text; 138 tabs manager
+     reorder (moveTab 156, up/down buttons, rebuild); 139 REPLACE-NOT-LAYER
+     (user philosophy): TabModelObserver empty-guard opens a fresh NTP when
+     the last tab closes (no Google empty-grid/provider page ever shows,
+     incognito incl.) + AegisTopToolbar reassert 1000->150ms (switcher
+     toolbar peek); 140 "Autofill with Google" provider page entry removed
+     (autofill_and_passwords_settings row); 141 adaptive toolbar button
+     killed at the source (AdaptiveToolbarButtonController.get() guard +
+     showDynamicAction no-op). Bases: chain reconstructions + tag files
+     (untouched by 001-136 verified). Strict apply --check PASS x5.
+     c697c6a, APK #95 (44016357530) 04:19Z on the hot r94 bank.
