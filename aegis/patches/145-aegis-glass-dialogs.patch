@@ -1,6 +1,6 @@
 --- a/components/browser_ui/modaldialog/android/java/src/org/chromium/components/browser_ui/modaldialog/AppModalPresenter.java
 +++ b/components/browser_ui/modaldialog/android/java/src/org/chromium/components/browser_ui/modaldialog/AppModalPresenter.java
-@@ -173,6 +173,28 @@
+@@ -173,6 +173,38 @@
              }
          }
  
@@ -18,7 +18,17 @@
 +                                android.graphics.Color.TRANSPARENT));
 +                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
 +                    aegisGlassWindow.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
-+                    aegisGlassWindow.setBlurBehindRadius((int) (28 * aegisDensity));
++                    // Window.setBlurBehindRadius is missing from Chromium's
++                    // compile-time android SDK stubs (APK #103: "cannot find
++                    // symbol") - call it reflectively; no-op on stubs that
++                    // lack it (the translucent scrim still applies).
++                    try {
++                        aegisGlassWindow.getClass()
++                                .getMethod("setBlurBehindRadius", int.class)
++                                .invoke(aegisGlassWindow, (int) (28 * aegisDensity));
++                    } catch (Throwable aegisBlurError) {
++                        // Blur unsupported - glass falls back to scrim only.
++                    }
 +                }
 +                aegisGlassWindow.setDimAmount(0.12f);
 +            } catch (RuntimeException aegisGlassError) {
