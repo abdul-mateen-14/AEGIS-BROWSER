@@ -205,6 +205,12 @@ jobs:
           set -e
           if [ -n "${{ github.event.inputs.chromium_version }}" ]; then
             VERSION="${{ github.event.inputs.chromium_version }}"
+          elif [ -f "$GITHUB_WORKSPACE/aegis/CHROMIUM_VERSION" ]; then
+            # PINNED (2026-11-18, WIN54): the live latest-stable query jumped
+            # to a new Chromium the day it was promoted; the 156 bank was
+            # refused by the .aegis_head tag gate and the lane died before
+            # building. Upgrades are deliberate: edit aegis/CHROMIUM_VERSION.
+            VERSION=$(tail -1 "$GITHUB_WORKSPACE/aegis/CHROMIUM_VERSION" | tr -d '[:space:]')
           else
             VERSION=$(curl -s "https://versionhistory.googleapis.com/v1/chrome/platforms/win/channels/stable/versions?pageSize=1" \
               | python -c "import json,sys; print(json.load(sys.stdin)['versions'][0]['version'])")

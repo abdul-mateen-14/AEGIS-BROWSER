@@ -103,6 +103,11 @@ jobs:
           set -e
           if [ -n "${{ github.event.inputs.chromium_version }}" ]; then
             VERSION="${{ github.event.inputs.chromium_version }}"
+          elif [ -f "$GITHUB_WORKSPACE/aegis/CHROMIUM_VERSION" ]; then
+            # PINNED (2026-11-18, WIN54): see the windows flavor - the live
+            # latest-stable query hijacked the lane mid-iteration; upgrades
+            # are deliberate via aegis/CHROMIUM_VERSION.
+            VERSION=$(tail -1 "$GITHUB_WORKSPACE/aegis/CHROMIUM_VERSION" | tr -d '[:space:]')
           else
             VERSION=$(curl -s "https://versionhistory.googleapis.com/v1/chrome/platforms/linux/channels/stable/versions?pageSize=1" \
               | python3 -c "import json,sys; print(json.load(sys.stdin)['versions'][0]['version'])")

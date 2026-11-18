@@ -33,24 +33,27 @@
      }
  
      private static boolean shouldShowSafetyHubPref() {
-@@ -718,12 +711,26 @@
+@@ -718,12 +711,23 @@
      }
  
      private void updateAutofillPreferences() {
-+        // AEGIS (patch 142, r97 user review: "there's still ... autofill
-+        // settings"): the rows are re-added PROGRAMMATICALLY from the cached
-+        // hierarchy (addPreferenceIfAbsent), so removing them from XML alone
-+        // is nullified - and findPreference(...).setOn... would NPE if the
-+        // rows were gone first. Keep both feature-flag branches running
-+        // against the intact XML, then strip every Google autofill surface
-+        // (Google Password Manager, Google Pay, synced addresses) afterwards.
-         if (ChromeFeatureList.isEnabled(ChromeFeatureList.YOUR_SAVED_INFO_SETTINGS_PAGE_ANDROID)) {
-             updateAutofillAndPasswords();
-         } else {
-             removePreferenceIfPresent(PREF_AUTOFILL_AND_PASSWORDS);
-             updateAutofillPreferencesPreAutofillAndPasswords();
-         }
-+
+-        if (ChromeFeatureList.isEnabled(ChromeFeatureList.YOUR_SAVED_INFO_SETTINGS_PAGE_ANDROID)) {
+-            updateAutofillAndPasswords();
+-        } else {
+-            removePreferenceIfPresent(PREF_AUTOFILL_AND_PASSWORDS);
+-            updateAutofillPreferencesPreAutofillAndPasswords();
+-        }
++        // AEGIS (patch 142 v3, r100 crash trap 2026-11-18: "new app is
++        // crashing" - NPE writing a preference field from the MainSettings
++        // setup chain): v2 kept upstream's two configuration branches
++        // running, but their helpers write listeners/summaries onto
++        // findPreference()/addPreferenceIfAbsent() results with NO null
++        // guard (release builds strip the assumeNonNull assert, so a missing
++        // row returns null silently) - a stripped tree can NPE deep in the
++        // settings setup chain. v3 strips the Google autofill surface FIRST
++        // and skips the upstream configuration wholesale: nothing Google
++        // autofill remains to configure. The passwords-export continuation
++        // is argument-scoped (not pref-bound) and stays.
 +        removePreferenceIfPresent(PREF_AUTOFILL_AND_PASSWORDS);
 +        removePreferenceIfPresent(PREF_AUTOFILL_SECTION);
 +        removePreferenceIfPresent(PREF_PASSWORDS);
@@ -60,7 +63,7 @@
  
          maybeStartPasswordsExportFlow();
      }
-@@ -1066,37 +1073,16 @@
+@@ -1066,37 +1070,16 @@
                          indexData.removeEntry(getUniqueId(PREF_HOMEPAGE));
                      }
  

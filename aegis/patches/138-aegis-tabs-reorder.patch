@@ -10,15 +10,20 @@
  import android.view.Gravity;
  import android.view.View;
  import android.view.ViewGroup;
-@@ -102,6 +104,30 @@
+@@ -102,6 +104,43 @@
          scroll.setVerticalScrollBarEnabled(false);
          LinearLayout list = new LinearLayout(getContext());
          list.setOrientation(LinearLayout.VERTICAL);
-+        // AEGIS (patch 138 v4): hold a card and drag it to reorder (user
-+        // review of r97: the arrow buttons were clumsy). The listener
-+        // hit-tests the card under the drag point and moves the dragged
-+        // tab within its OWN model; the panel re-renders on each index
-+        // change and settles on drop/drag-end.
++        // AEGIS (patch 138 v5): hold a card and drag it to reorder (user
++        // review of r97: the arrow buttons were clumsy). v4 bug (r100 crash
++        // trap, 2026-11-18, ConcurrentModificationException in
++        // ViewGroup.dispatchDragEvent): rebuild() ran synchronously inside
++        // ACTION_DRAG_LOCATION dispatch - Android 15's ViewGroup iterates a
++        // children HashMap for drag dispatch, and our removeView/addView
++        // mutated it mid-iteration. v5 coalesces to ONE posted reorder per
++        // frame against the latest drag point and posts the drop/drag-end
++        // rebuild too: the card hierarchy is never mutated inside
++        // dispatchDragEvent.
 +        list.setOnDragListener(
 +                (v, event) -> {
 +                    Object state = event.getLocalState();
@@ -28,11 +33,19 @@
 +                        case DragEvent.ACTION_DRAG_STARTED:
 +                            return true;
 +                        case DragEvent.ACTION_DRAG_LOCATION:
-+                            handleDragLocation(dragged, event.getY());
++                            mPendingDragY = event.getY();
++                            if (!mReorderPending) {
++                                mReorderPending = true;
++                                v.post(
++                                        () -> {
++                                            mReorderPending = false;
++                                            handleDragLocation(dragged, mPendingDragY);
++                                        });
++                            }
 +                            return true;
 +                        case DragEvent.ACTION_DROP:
 +                        case DragEvent.ACTION_DRAG_ENDED:
-+                            rebuild();
++                            v.post(this::rebuild);
 +                            return true;
 +                        default:
 +                            return true;
@@ -41,10 +54,16 @@
          if (normal != null && normalCount > 0) {
              for (int i = 0; i < normalCount; i++) {
                  Tab tab = normal.getTabAt(i);
-@@ -202,6 +228,62 @@
+@@ -202,6 +241,68 @@
          return empty;
      }
  
++    /** Patch 138 v5: coalescing state for the posted reorder (v4 ran
++     *  the reorder synchronously inside the framework drag dispatch and
++     *  mutated the child list the dispatcher was iterating - CME). */
++    private boolean mReorderPending;
++    private float mPendingDragY;
++
 +    /** Patch 138 v4: moves the dragged tab to the position of the card
 +     *  under the drag point (same model only); re-renders on change. */
 +    private void handleDragLocation(Tab dragged, float y) {
@@ -104,7 +123,7 @@
      /** Tab card: title + host, tap switches, the chip closes the tab. */
      private View tabCard(Tab tab, boolean private_) {
          LinearLayout card = new LinearLayout(getContext());
-@@ -210,6 +292,18 @@
+@@ -210,6 +311,18 @@
          card.setPadding(12, 12, 8, 12);
          card.setClickable(true);
          card.setFocusable(true);
@@ -123,6 +142,43 @@
          GradientDrawable bg = new GradientDrawable();
          bg.setColor(getContext().getColor(
                  private_ ? R.color.aegis_surface_inverted : R.color.aegis_surface));
+@@ -245,10 +358,17 @@
+         ImageView close = new ImageView(getContext());
+         close.setImageResource(R.drawable.aegis_ic_close);
+         close.setContentDescription(getContext().getString(R.string.aegis_sheet_close_tab));
+-        int btn = (int) (34 * getResources().getDisplayMetrics().density);
++        // Patch 138 v5: subtle close - 20dp, secondary tint, 60% alpha
++        // (the 34dp button read as "the old big X is back").
++        int btn = (int) (20 * getResources().getDisplayMetrics().density);
+         LinearLayout.LayoutParams closeLp = new LinearLayout.LayoutParams(btn, btn);
+-        closeLp.leftMargin = (int) (8 * getResources().getDisplayMetrics().density);
++        closeLp.leftMargin = (int) (10 * getResources().getDisplayMetrics().density);
+         close.setLayoutParams(closeLp);
++        close.setImageTintList(android.content.res.ColorStateList.valueOf(
++                getContext().getColor(
++                        private_ ? R.color.aegis_text_secondary_inverted
++                                 : R.color.aegis_text_secondary)));
++        close.setAlpha(0.6f);
+         close.setClickable(true);
+         close.setFocusable(true);
+         close.setOnClickListener(
+@@ -327,10 +447,14 @@
+         ImageView close = new ImageView(getContext());
+         close.setImageResource(R.drawable.aegis_ic_close);
+         close.setContentDescription(getContext().getString(R.string.aegis_sheet_close_all));
+-        int btn = (int) (34 * getResources().getDisplayMetrics().density);
++        // Patch 138 v5: subtle close (see the tab-card note above).
++        int btn = (int) (20 * getResources().getDisplayMetrics().density);
+         LinearLayout.LayoutParams closeLp = new LinearLayout.LayoutParams(btn, btn);
+-        closeLp.leftMargin = (int) (8 * getResources().getDisplayMetrics().density);
++        closeLp.leftMargin = (int) (10 * getResources().getDisplayMetrics().density);
+         close.setLayoutParams(closeLp);
++        close.setImageTintList(android.content.res.ColorStateList.valueOf(
++                getContext().getColor(R.color.aegis_text_secondary)));
++        close.setAlpha(0.6f);
+         close.setClickable(true);
+         close.setFocusable(true);
+         close.setOnClickListener(
 --- a/chrome/android/java/res/values/aegis_tokens.xml
 +++ b/chrome/android/java/res/values/aegis_tokens.xml
 @@ -78,6 +78,8 @@
