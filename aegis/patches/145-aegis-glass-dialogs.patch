@@ -1,0 +1,54 @@
+--- a/components/browser_ui/modaldialog/android/java/src/org/chromium/components/browser_ui/modaldialog/AppModalPresenter.java
++++ b/components/browser_ui/modaldialog/android/java/src/org/chromium/components/browser_ui/modaldialog/AppModalPresenter.java
+@@ -173,6 +173,28 @@
+             }
+         }
+ 
++        // AEGIS (patch 145, r101 user review: "give the ui the dialogs
++        // transparent glass vibe"): the window backdrop becomes transparent
++        // with blur-behind (API 31+) and a light scrim, so the app reads
++        // through as frosted glass behind the themed card. Glass is cosmetic
++        // and must never break a dialog - guarded, no-ops below API 31.
++        Window aegisGlassWindow = mDialog.getWindow();
++        if (aegisGlassWindow != null) {
++            try {
++                float aegisDensity = mContext.getResources().getDisplayMetrics().density;
++                aegisGlassWindow.setBackgroundDrawable(
++                        new android.graphics.drawable.ColorDrawable(
++                                android.graphics.Color.TRANSPARENT));
++                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
++                    aegisGlassWindow.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
++                    aegisGlassWindow.setBlurBehindRadius((int) (28 * aegisDensity));
++                }
++                aegisGlassWindow.setDimAmount(0.12f);
++            } catch (RuntimeException aegisGlassError) {
++                // Keep the stock dialog window.
++            }
++        }
++
+         // Cancel on touch outside should be disabled by default. The ModelChangeProcessor wouldn't
+         // notify change if the property is not set during initialization.
+         mDialog.setCanceledOnTouchOutside(false);
+--- a/components/browser_ui/modaldialog/android/java/src/org/chromium/components/browser_ui/modaldialog/ModalDialogView.java
++++ b/components/browser_ui/modaldialog/android/java/src/org/chromium/components/browser_ui/modaldialog/ModalDialogView.java
+@@ -264,6 +264,20 @@
+     @Override
+     protected void onAttachedToWindow() {
+         super.onAttachedToWindow();
++        // AEGIS (patch 145): frost the card - the themed background is
++        // cloned and drawn at 85% alpha, keeping its rounding and colors
++        // while the blurred app reads through (glass vibe). Cosmetic only.
++        try {
++            android.graphics.drawable.Drawable aegisBg = getBackground();
++            if (aegisBg != null && aegisBg.getConstantState() != null) {
++                android.graphics.drawable.Drawable aegisFrost =
++                        aegisBg.getConstantState().newDrawable(getResources()).mutate();
++                aegisFrost.setAlpha(216);
++                setBackground(aegisFrost);
++            }
++        } catch (RuntimeException aegisFrostError) {
++            // Keep the stock solid card.
++        }
+         // If the dialog is shown without animation, onEnterAnimationStarted will not be called.
+         // We start the tap protection period here when the view is attached to ensure buttons
+         // are not permanently blocked. If there is an animation, onEnterAnimationStarted will

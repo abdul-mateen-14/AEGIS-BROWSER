@@ -1,0 +1,33 @@
+--- a/chrome/browser/tab_ui/android/java/src/org/chromium/chrome/browser/tab_ui/TabSwitcherUtils.java
++++ b/chrome/browser/tab_ui/android/java/src/org/chromium/chrome/browser/tab_ui/TabSwitcherUtils.java
+@@ -37,19 +37,17 @@
+      * TODO(crbug.com/545634112): This may also be considered for tablets behind a different flag.
+      */
+     public static boolean isGridTabSwitcherDisabled() {
+-        if (!DeviceInfo.isDesktop()) {
+-            return false;
+-        }
+-        if (BuildConfig.IS_FOR_TEST) {
+-            Boolean testValue =
+-                    FeatureOverrides.getTestValueForFeature(
+-                            ChromeFeatureList.DISABLE_GRID_TAB_SWITCHER);
+-            if (testValue == null) {
+-                return false;
+-            }
+-            return testValue;
+-        }
+-        return ChromeFeatureList.sDisableGridTabSwitcher.isEnabled();
++        // AEGIS (patch 144, r101 user review: "entirely delete the google tab
++        // system and use our own because there's a bug sometimes the google
++        // toolbar/header shows up"): the native Google tab switcher (grid +
++        // hub panes, each with its own header/toolbar) is retired at the
++        // root. Every switcher entry in ChromeTabbedActivity, the
++        // navigateToTabSwitcher helper and the back handlers gate on this
++        // method - returning true unconditionally makes the whole Google
++        // surface unreachable while Aegis's dock remains the only tab
++        // management UI. Chromium is kept purely as the engine (networking,
++        // rendering), per the project's architecture.
++        return true;
+     }
+ 
+     /**
