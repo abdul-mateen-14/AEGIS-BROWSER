@@ -373,10 +373,17 @@ jobs:
           echo "AEGIS-DIRTY out=$OUT edges=${DIRTY:-unknown}"
           head -40 "$EXPL" 2>/dev/null | sed 's/^/[why-dirty] /' || true
           rm -f "$EXPL"
-          # ninja.exe directly (not autoninja): timeout's INT must reach ninja
-          # itself, not be swallowed by a .bat layer. Ninja lets running edges
-          # finish after INT = graceful stop, safe to bank.
-          timeout --preserve-status -s INT -k 120 "${BUDGET}s" \
+          # ninja.exe directly, supervised by python (win_cap_run.py): msys
+          # `timeout -s INT` on a native ninja.exe is a HARD kill
+          # (TerminateProcess) - ninja only flushes .ninja_log/.ninja_deps at
+          # graceful exit, so every cap-stop banked a tree with a dead build
+          # log and the next run rebuilt [1/58567] from scratch (the #52 spin:
+          # "command line not found in log" -> whole-graph dirty -> same cap ->
+          # forever). CTRL_BREAK_EVENT to a new process group is the real
+          # Windows interrupt: ninja stops scheduling, lets running edges
+          # finish, FLUSHES both logs, and the bank stays trustworthy.
+          PYBIN=$(command -v python || command -v python3)
+          "$PYBIN" "$GITHUB_WORKSPACE/aegis/ci/win_cap_run.py" "$BUDGET" \
             ninja -C "out/$OUT" -j 4 chrome chrome/installer/mini_installer
           RC=$?
           DUR=$(( $(date +%s) - NOW ))

@@ -148,8 +148,25 @@ DLEOF
       set -e
       for n in $(grep -E "^$G-vol-[0-9]+\.${EXT}$" "$TMP/names" | sort); do
         bash "$TMP/dl_one.sh" "$n"
-        grep -F " $n" "$TMP/parts/$G-sha256.txt" \
-          | ( cd "$TMP/parts" && sha256sum -c --quiet ) >/dev/null
+        # Verify by REBUILDING a canonical 'hash  name' line from the manifest
+        # (2026-11-18, the #52 restore defect): gens written by git-bash carry
+        # binary-mode full paths ('hash  */d/.../name') - the old
+        # `grep -F " $n" | sha256sum -c` never matched the full-path field and
+        # sha256sum -c got empty stdin on every windows restore ('no properly
+        # formatted SHA256 checksum lines found'), yet extraction continued
+        # unverified. Take the hash field from the line mentioning this
+        # volume and check the downloaded file against it explicitly; all
+        # messages go to stderr - this subshell's stdout IS the tar stream.
+        h=$(grep -F "$n" "$TMP/parts/$G-sha256.txt" | head -1 | cut -d' ' -f1)
+        if [ -z "$h" ]; then
+          echo "[bank] verify: no hash for $n in gen $G manifest - gen unusable" >&2
+          exit 1
+        fi
+        actual=$(sha256sum "$TMP/parts/$n" | cut -d' ' -f1)
+        if [ "$actual" != "$h" ]; then
+          echo "[bank] sha256 MISMATCH for $n (manifest $h, actual $actual) - gen unusable" >&2
+          exit 1
+        fi
         cat "$TMP/parts/$n"
         rm -f "$TMP/parts/$n"
       done
@@ -392,7 +409,13 @@ name=$(printf '%s-vol-%03d.%s' "$GEN" "$n" "$EXT")
 mv "$cur" "$TMP/$name"
 # NOTE: filter CWD is split's CWD, not $TMP (hit on Windows: relative
 # sha256sum failed -> empty manifest -> 422 on upload). Use absolute paths.
-sha256sum "$TMP/$name" | awk '{print $1 "  " $2}' >> "$TMP/$GEN-sha256.txt"
+# Write a CANONICAL 'hash  name' line (bare name, two spaces): git-bash
+# sha256sum defaults to binary mode and prints 'hash */d/.../name' for an
+# absolute arg - awk-re-spacing that produced 'hash  */d/.../name', a line
+# GNU sha256sum -c cannot parse and restore's grep never matches, so every
+# windows bank shipped a manifest that could not verify itself (2026-11-18).
+h=$(sha256sum "$TMP/$name" | cut -d' ' -f1)
+echo "$h  $name" >> "$TMP/$GEN-sha256.txt"
 sz=$(stat -c %s "$TMP/$name")
 echo $(( $(cat "$TMP/.bytes" 2>/dev/null || echo 0) + sz )) > "$TMP/.bytes"
 for t in 1 2 3 4 5; do
