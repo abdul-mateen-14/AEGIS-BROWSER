@@ -1,0 +1,55 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/ChromeTabbedActivity.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/ChromeTabbedActivity.java
+@@ -3515,19 +3515,18 @@
+             mControlContainer.setXrSpaceModeObservableSupplierMaybe(
+                     getXrSpaceModeObservableSupplier());
+         }
+-        // AEGIS (patch 149, r104 user review: "the google header remove it
+-        // from the root"): hide + re-assert (patches 080/124/139) kept
+-        // losing races - browser-controls re-show paths could still flash
+-        // the Google toolbar. The container is detached from the hierarchy
+-        // here, at the root: the object stays alive for the managers that
+-        // hold it, but nothing can draw it again. The native tab counter,
+-        // omnibox bar and tab-strip/grid views die with it - patch 144
+-        // already gated the grid/hub switcher and diverts tab-group
+-        // dialogs, so the dock is the only tab UI and chrome left.
+-        if (mControlContainer != null
+-                && mControlContainer.getParent() != null) {
+-            ((android.view.ViewGroup) mControlContainer.getParent())
+-                    .removeView(mControlContainer);
++        // AEGIS (patch 150, r105 device crash: patch 149 detached this
++        // container, so later activity-level findViewById calls for it and
++        // its children returned null - a startup NPE in
++        // addOnLayoutChangeListener). The container stays ATTACHED so every
++        // lookup keeps working, but it is pinned invisible at the root:
++        // GONE from this first moment, before any frame can draw, and
++        // ToolbarControlContainer.setVisibility now always pins GONE so no
++        // browser-controls re-show path can flash the Google header. Patch
++        // 144 keeps the grid/hub switcher gated and diverts tab-group
++        // dialogs; the dock is the only tab UI and chrome left.
++        if (mControlContainer != null) {
++            mControlContainer.setVisibility(android.view.View.GONE);
+         }
+ 
+         Supplier<Boolean> dialogVisibilitySupplier =
+--- a/chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/top/ToolbarControlContainer.java
++++ b/chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/top/ToolbarControlContainer.java
+@@ -154,6 +154,18 @@
+         super(context, attrs);
+     }
+ 
++    // AEGIS (patch 150, r105 device crash fix): patch 149 briefly detached
++    // this container, which broke activity-level findViewById for it and
++    // its children (startup NPE in addOnLayoutChangeListener). The
++    // container is attached again; this override pins it to GONE so no
++    // caller - browser-controls re-show, omnibox focus, the patch 139
++    // re-assert loop - can ever draw the Google header. All views inside
++    // stay findable because the container remains in the hierarchy.
++    @Override
++    public void setVisibility(int visibility) {
++        super.setVisibility(View.GONE);
++    }
++
+     @SuppressLint("RtlHardcoded")
+     @Override
+     protected void onFinishInflate() {
