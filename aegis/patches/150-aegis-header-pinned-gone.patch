@@ -34,22 +34,20 @@
          Supplier<Boolean> dialogVisibilitySupplier =
 --- a/chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/top/ToolbarControlContainer.java
 +++ b/chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/top/ToolbarControlContainer.java
-@@ -154,6 +154,18 @@
-         super(context, attrs);
+@@ -393,7 +393,15 @@
+     @Override
+     public void setVisibility(int visibility) {
+         mMidVisibilityToggle = true;
+-        super.setVisibility(visibility);
++        // AEGIS (patch 150 r2, r105 device crash fix): patch 149 briefly
++        // detached this container, which broke activity-level findViewById
++        // for it and its children (startup NPE in
++        // addOnLayoutChangeListener). The container is attached again;
++        // this pins it to GONE so no caller - browser-controls re-show,
++        // omnibox focus, the patch 139 re-assert loop - can ever draw the
++        // Google header, while every view inside stays findable because
++        // the container remains in the hierarchy.
++        super.setVisibility(View.GONE);
+         mMidVisibilityToggle = false;
      }
  
-+    // AEGIS (patch 150, r105 device crash fix): patch 149 briefly detached
-+    // this container, which broke activity-level findViewById for it and
-+    // its children (startup NPE in addOnLayoutChangeListener). The
-+    // container is attached again; this override pins it to GONE so no
-+    // caller - browser-controls re-show, omnibox focus, the patch 139
-+    // re-assert loop - can ever draw the Google header. All views inside
-+    // stay findable because the container remains in the hierarchy.
-+    @Override
-+    public void setVisibility(int visibility) {
-+        super.setVisibility(View.GONE);
-+    }
-+
-     @SuppressLint("RtlHardcoded")
-     @Override
-     protected void onFinishInflate() {
