@@ -1,0 +1,10 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java
+@@ -12,6 +12,7 @@
+ import android.graphics.Canvas;
+ import android.graphics.Color;
+ import android.graphics.Paint;
++import android.graphics.Path;
+ import android.graphics.Typeface;
+ import android.graphics.drawable.BitmapDrawable;
+ import android.graphics.drawable.Drawable;

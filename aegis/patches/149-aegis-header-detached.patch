@@ -1,0 +1,23 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/ChromeTabbedActivity.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/ChromeTabbedActivity.java
+@@ -3515,6 +3515,20 @@
+             mControlContainer.setXrSpaceModeObservableSupplierMaybe(
+                     getXrSpaceModeObservableSupplier());
+         }
++        // AEGIS (patch 149, r104 user review: "the google header remove it
++        // from the root"): hide + re-assert (patches 080/124/139) kept
++        // losing races - browser-controls re-show paths could still flash
++        // the Google toolbar. The container is detached from the hierarchy
++        // here, at the root: the object stays alive for the managers that
++        // hold it, but nothing can draw it again. The native tab counter,
++        // omnibox bar and tab-strip/grid views die with it - patch 144
++        // already gated the grid/hub switcher and diverts tab-group
++        // dialogs, so the dock is the only tab UI and chrome left.
++        if (mControlContainer != null
++                && mControlContainer.getParent() != null) {
++            ((android.view.ViewGroup) mControlContainer.getParent())
++                    .removeView(mControlContainer);
++        }
+ 
+         Supplier<Boolean> dialogVisibilitySupplier =
+                 () -> {
