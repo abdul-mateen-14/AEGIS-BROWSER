@@ -1,0 +1,231 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java
+@@ -388,6 +388,47 @@
+     }
+ 
+     /** Add-shortcut dialog: label + URL, saved to preferences. */
++
++    /** AEGIS (patch 146): the glass treatment for Aegis's own dialogs -
++     *  the stock AlertDialogs here bypass the ModalDialogManager entirely
++     *  (patch 145 only covers that system). Frosted card (cloned window
++     *  background at 85% alpha), blur-behind on API 31+ (reflective: the
++     *  Window.setBlurBehindRadius symbol is absent from Chromium's compile
++     *  SDK stubs), and a light scrim. Cosmetic only - never fails a dialog. */
++    private void glassify(android.app.Dialog dialog) {
++        try {
++            android.view.Window w = dialog.getWindow();
++            if (w == null) return;
++            android.graphics.drawable.Drawable bg =
++                    w.getDecorView().getBackground();
++            if (bg != null && bg.getConstantState() != null) {
++                android.graphics.drawable.Drawable frost =
++                        bg.getConstantState().newDrawable().mutate();
++                frost.setAlpha(216);
++                w.setBackgroundDrawable(frost);
++            }
++            if (android.os.Build.VERSION.SDK_INT
++                    >= android.os.Build.VERSION_CODES.S) {
++                w.addFlags(android.view.WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
++                try {
++                    w.getClass()
++                            .getMethod("setBlurBehindRadius", int.class)
++                            .invoke(
++                                    w,
++                                    (int) (28
++                                            * getResources()
++                                                    .getDisplayMetrics()
++                                                    .density));
++                } catch (Throwable blurError) {
++                    // Blur unsupported - scrim-only glass.
++                }
++            }
++            w.setDimAmount(0.12f);
++        } catch (RuntimeException glassError) {
++            // Keep the stock dialog.
++        }
++    }
++
+     private void showAddTileDialog() {
+         AlertDialog.Builder b = new AlertDialog.Builder(getContext());
+         b.setTitle(getContext().getString(R.string.aegis_home_add_shortcut));
+@@ -417,7 +458,7 @@
+                     rebuildTiles();
+                 });
+         b.setNegativeButton(android.R.string.cancel, null);
+-        b.show();
++        glassify(b.show());
+     }
+ 
+     /** Remove-shortcut dialog for a URL tile. */
+@@ -437,7 +478,7 @@
+                     rebuildTiles();
+                 });
+         b.setNegativeButton(android.R.string.cancel, null);
+-        b.show();
++        glassify(b.show());
+     }
+ 
+     /** APK review 2026-11-15: the full shortcut tile menu. */
+@@ -448,7 +489,8 @@
+                     getContext().getString(R.string.aegis_menu_open_private_tab),
+                     getContext().getString(R.string.aegis_home_remove_shortcut)
+                 };
+-        new AlertDialog.Builder(getContext())
++        android.app.Dialog menu =
++                new AlertDialog.Builder(getContext())
+                 .setTitle(label)
+                 .setItems(
+                         items,
+@@ -462,6 +504,7 @@
+                             }
+                         })
+                 .show();
++        glassify(menu);
+     }
+ 
+     private void openTileInTab(String target, boolean incognito) {
+@@ -528,6 +571,7 @@
+         b.setView(box);
+         b.setNegativeButton(android.R.string.cancel, null);
+         mWallpaperDialog = b.show();
++        glassify(mWallpaperDialog);
+     }
+ 
+     private void dismissWallpaper() {
+@@ -710,10 +754,11 @@
+     }
+ 
+     private void addSystemTile(GridLayout grid, String label, @Nullable String target, int gap) {
+-        TextView tile = new TextView(getContext());
+-        tile.setText(label);
+-        tile.setTextSize(12);
+-        tile.setTextColor(getContext().getColor(R.color.aegis_text_primary));
++        // AEGIS (patch 146, r104 user review: the Settings and Private tab
++        // tiles were text-only while URL tiles carry icon circles): match
++        // the addUrlTile layout - icon circle on top, label below.
++        LinearLayout tile = new LinearLayout(getContext());
++        tile.setOrientation(LinearLayout.VERTICAL);
+         tile.setGravity(Gravity.CENTER);
+         tile.setClickable(true);
+         tile.setFocusable(true);
+@@ -728,6 +773,19 @@
+                 GridLayout.spec(GridLayout.UNDEFINED, 1f));
+         glp.setMargins(gap, gap, gap, gap);
+         tile.setLayoutParams(glp);
++
++        ImageView icon = new ImageView(getContext());
++        int iconSize = (int) (26 * getResources().getDisplayMetrics().density);
++        icon.setLayoutParams(new LinearLayout.LayoutParams(iconSize, iconSize));
++        icon.setImageBitmap(
++                systemGlyph(label, (int) (26 * getResources().getDisplayMetrics().density)));
++        tile.addView(icon);
++        TextView text = new TextView(getContext());
++        text.setText(label);
++        text.setTextSize(12);
++        text.setTextColor(getContext().getColor(R.color.aegis_text_primary));
++        text.setPadding(0, (int) (5 * getResources().getDisplayMetrics().density), 0, 0);
++        tile.addView(text);
+         tile.setOnClickListener(
+                 v -> {
+                     if (target == null) {
+@@ -743,6 +801,53 @@
+                     }
+                 });
+         grid.addView(tile);
++    }
++
++    /** Draws the glyph for a system tile: a gear for Settings, the Aegis
++     *  shield for the private tab - same circle style as letterTile. */
++    private Bitmap systemGlyph(String label, int size) {
++        Bitmap bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
++        Canvas canvas = new Canvas(bmp);
++        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
++        paint.setColor(0xFF2A2A2E);
++        canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint);
++        paint.setColor(0xFFF2F2F7);
++        float cx = size / 2f;
++        float cy = size / 2f;
++        if (label.contains("ettings")) {
++            // Gear: ring, eight spokes, hub.
++            paint.setStyle(Paint.Style.STROKE);
++            paint.setStrokeWidth(size * 0.09f);
++            canvas.drawCircle(cx, cy, size * 0.26f, paint);
++            for (int i = 0; i < 8; i++) {
++                double ang = Math.PI / 4 * i;
++                canvas.drawLine(
++                        cx + (float) Math.cos(ang) * size * 0.26f,
++                        cy + (float) Math.sin(ang) * size * 0.26f,
++                        cx + (float) Math.cos(ang) * size * 0.38f,
++                        cy + (float) Math.sin(ang) * size * 0.38f,
++                        paint);
++            }
++            paint.setStyle(Paint.Style.FILL);
++            canvas.drawCircle(cx, cy, size * 0.08f, paint);
++        } else {
++            // Shield: outline with a check mark.
++            paint.setStyle(Paint.Style.STROKE);
++            paint.setStrokeWidth(size * 0.09f);
++            Path shield = new Path();
++            shield.moveTo(cx, size * 0.20f);
++            shield.lineTo(size * 0.76f, size * 0.32f);
++            shield.lineTo(size * 0.76f, size * 0.55f);
++            shield.quadTo(size * 0.76f, size * 0.74f, cx, size * 0.84f);
++            shield.quadTo(size * 0.24f, size * 0.74f, size * 0.24f, size * 0.55f);
++            shield.lineTo(size * 0.24f, size * 0.32f);
++            shield.close();
++            canvas.drawPath(shield, paint);
++            canvas.drawLine(
++                    size * 0.36f, size * 0.52f, cx, size * 0.66f, paint);
++            canvas.drawLine(cx, size * 0.66f, size * 0.66f, size * 0.42f, paint);
++        }
++        return bmp;
+     }
+ 
+     /** Draws the letter fallback tile shown before the favicon arrives. */
+@@ -838,7 +943,11 @@
+             };
+ 
+     private void openNtpIfEmpty() {
+-        if (mActivity.getTabModelSelector() == null) return;
++        // AEGIS (patch 146): getTabModelSelector() THROWS - it never returns
++        // null - so the old null check could not guard anything
++        // (aegis-crash-1795062990895.txt: IllegalStateException during an
++        // early relaunch). areTabModelsInitialized() is the real gate.
++        if (!mActivity.areTabModelsInitialized()) return;
+         TabModel normal = mActivity.getTabModelSelector().getModel(false);
+         if (normal != null && normal.getCount() == 0) {
+             mActivity.getTabCreator(false)
+@@ -872,7 +981,11 @@
+             mStatus.setText(privateModel
+                             ? getContext().getString(R.string.aegis_home_private_status)
+                             : mStatusNormal);
+-            if (getVisibility() != VISIBLE) setVisibility(VISIBLE);
++            if (getVisibility() != VISIBLE) {
++                // AEGIS (patch 146): re-win the z-order when re-showing.
++                setVisibility(VISIBLE);
++                bringToFront();
++            }
+         } else if (getVisibility() != GONE) {
+             setVisibility(GONE);
+         }
+@@ -882,7 +995,8 @@
+     protected void onAttachedToWindow() {
+         super.onAttachedToWindow();
+         tick();
+-        if (mActivity.getTabModelSelector() != null) {
++        // AEGIS (patch 146): teardown-safe guard (see openNtpIfEmpty).
++        if (mActivity.areTabModelsInitialized()) {
+             TabModel normal = mActivity.getTabModelSelector().getModel(false);
+             TabModel incognito = mActivity.getTabModelSelector().getModel(true);
+             if (normal != null) normal.addObserver(mEmptyGuard);
+@@ -895,7 +1009,9 @@
+     @Override
+     protected void onDetachedFromWindow() {
+         super.onDetachedFromWindow();
+-        if (mActivity.getTabModelSelector() != null) {
++        // AEGIS (patch 146): teardown-safe guard (see openNtpIfEmpty) -
++        // the relaunch crash happened right here, on detach.
++        if (mActivity.areTabModelsInitialized()) {
+             TabModel normal = mActivity.getTabModelSelector().getModel(false);
+             TabModel incognito = mActivity.getTabModelSelector().getModel(true);
+             if (normal != null) normal.removeObserver(mEmptyGuard);
