@@ -1,0 +1,26 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java
+@@ -781,12 +781,22 @@
+         icon.setImageBitmap(
+                 systemGlyph(label, (int) (26 * getResources().getDisplayMetrics().density)));
+         tile.addView(icon);
++        // AEGIS (patch 154, r106 screenshot: at larger system font sizes
++        // the wrap-content label overflowed its tile and centered-shifted
++        // left of it - "Settings" and "Private tab" sat outside the tile
++        // edge). Pin the label to the tile width, center it and ellipsize
++        // instead of letting it overflow.
+         TextView text = new TextView(getContext());
+         text.setText(label);
+         text.setTextSize(12);
+         text.setTextColor(getContext().getColor(R.color.aegis_text_primary));
++        text.setGravity(Gravity.CENTER);
++        text.setMaxLines(1);
++        text.setEllipsize(android.text.TextUtils.TruncateAt.END);
+         text.setPadding(0, (int) (5 * getResources().getDisplayMetrics().density), 0, 0);
+-        tile.addView(text);
++        tile.addView(text, new LinearLayout.LayoutParams(
++                LinearLayout.LayoutParams.MATCH_PARENT,
++                LinearLayout.LayoutParams.WRAP_CONTENT));
+         tile.setOnClickListener(
+                 v -> {
+                     if (target == null) {

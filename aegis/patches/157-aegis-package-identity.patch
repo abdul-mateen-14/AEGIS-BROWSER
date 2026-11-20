@@ -1,0 +1,16 @@
+--- a/aegis/ci/arm64.gn
++++ b/aegis/ci/arm64.gn
+@@ -72,3 +72,13 @@
+ # aegis_tokens from r57 - the dock rendered without its spec'd glass
+ # surfaces. Cost: a larger APK (unshrunk res table); no runtime impact.
+ optimize_android_resources = false
++
++# AEGIS (patch 157, r106 user review: "you didn't change the package name
++# from chrome to aegis"): the APK identity, launcher entry and per-app
++# data directory (/storage/emulated/0/Android/data/<id>) all read the
++# manifest package - the user's Downloads screenshot showed
++# org.chromium.chrome. chrome_public_manifest_package is Chromium's
++# supported GN arg for exactly this; org.aegis.browser replaces it.
++# NOTE: a new applicationId is a NEW app on the device - the old build
++# must be uninstalled first; local profile data does not migrate.
++chrome_public_manifest_package = "org.aegis.browser"

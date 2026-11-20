@@ -1,0 +1,16 @@
+--- a/chrome/android/java/res/xml/privacy_preferences.xml
++++ b/chrome/android/java/res/xml/privacy_preferences.xml
+@@ -79,8 +79,9 @@
+         android:key="can_make_payment"
+         android:title="@string/can_make_payment_title"
+         android:summary="@string/settings_can_make_payment_toggle_label" />
+-    <org.chromium.components.browser_ui.settings.TextMessagePreference
+-        android:key="sync_and_services_link"
+-        android:summary="@string/privacy_sync_and_services_link_legacy"
+-        app:allowDividerBelow="false" />
++    <!-- AEGIS (patch 155, r106 user review: "in the privacy picture
++         remove the last line"): the "For more settings that use data to
++         improve your Aegis experience, go to Google Services." footer is
++         gone. PrivacySettings' search-index glue only touches entries
++         that exist, so removing the row is safe. -->
+ </PreferenceScreen>

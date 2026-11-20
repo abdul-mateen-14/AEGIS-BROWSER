@@ -1,0 +1,25 @@
+--- a/chrome/android/java/res/values-night/styles.xml
++++ b/chrome/android/java/res/values-night/styles.xml
+@@ -0,0 +1,22 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++Copyright 2026 The Aegis Browser Authors
++Use of this source code is governed by a BSD-style license that can be
++found in the LICENSE file.
++-->
++
++<resources>
++    <!-- AEGIS (patch 156, r106 user review: "why isn't the settings pure
++         black like home page"): in dark mode the settings page background
++         followed Chromium's dark-gray default_bg_color while the Aegis
++         home is pure black. Items here merge into the values/ definition
++         of the settings theme for the night configuration only; light
++         mode is untouched. -->
++    <style name="Base.Theme.Chromium.Settings">
++        <item name="android:colorBackground">@android:color/black</item>
++        <item name="android:statusBarColor">@android:color/black</item>
++        <item name="android:navigationBarColor">@android:color/black</item>
++        <item name="android:windowLightStatusBar">false</item>
++        <item name="android:windowLightNavigationBar">false</item>
++    </style>
++</resources>

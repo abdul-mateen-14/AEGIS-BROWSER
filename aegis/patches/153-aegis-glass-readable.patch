@@ -1,0 +1,57 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisGlassUi.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisGlassUi.java
+@@ -43,6 +43,23 @@
+         return mask == Configuration.UI_MODE_NIGHT_YES;
+     }
+ 
++    /**
++     * Whether the platform can blur behind windows. Many OEM/low-RAM
++     * devices ship with window blur disabled - a translucent glass over a
++     * non-blurred page lets the page text collide with the dialog text
++     * (r106 device screenshots on Infinix X6728B / HiOS).
++     */
++    public static boolean blurEnabled(Context context) {
++        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return false;
++        try {
++            android.view.WindowManager wm =
++                    context.getSystemService(android.view.WindowManager.class);
++            return wm != null && wm.isCrossWindowBlurEnabled();
++        } catch (RuntimeException blurCheckError) {
++            return false;
++        }
++    }
++
+     private static float density(Context context) {
+         return context.getResources().getDisplayMetrics().density;
+     }
+@@ -69,8 +86,17 @@
+         }
+         sheen.setCornerRadius(radius);
+         GradientDrawable fill = new GradientDrawable();
+-        fill.setColor(danger ? (dark ? 0x26FF5A5A : 0x2EFF5A5A)
+-                             : (dark ? 0x12FFFFFF : 0x4DFFFFFF));
++        // AEGIS (patch 153, r106 screenshots): this device ships window
++        // blur disabled, so a 7% white card let the page text show through
++        // and collide with the dialog. Pick the fill from actual blur
++        // support: keep the translucent liquid glass when blur works, fall
++        // back to a near-opaque card (still sheened and dark-aware) when
++        // it does not.
++        boolean blur = blurEnabled(context);
++        fill.setColor(danger ? (blur ? (dark ? 0x40FF5A5A : 0x66FF5A5A)
++                                     : (dark ? 0x80FF5A5A : 0x99FF5A5A))
++                             : (blur ? (dark ? 0x59FFFFFF : 0x73FFFFFF)
++                                     : (dark ? 0xF01C1E22 : 0xF7FFFFFF)));
+         fill.setCornerRadius(radius);
+         LayerDrawable layers = new LayerDrawable(new Drawable[] {sheen, fill});
+         int inset = Math.max(1, (int) (1.2f * d));
+@@ -106,7 +132,9 @@
+                     // Blur radius unsupported - the sheen still reads as glass.
+                 }
+             }
+-            window.setDimAmount(0.18f);
++            // AEGIS (patch 153): a deeper dim keeps the page behind the
++            // dialog subdued even when blur is unavailable.
++            window.setDimAmount(0.35f);
+         } catch (RuntimeException glassError) {
+             // Keep the stock dialog window; glass must never break a dialog.
+         }
