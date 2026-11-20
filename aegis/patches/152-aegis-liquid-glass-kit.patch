@@ -1,0 +1,311 @@
+--- a/chrome/android/chrome_java_sources.gni
++++ b/chrome/android/chrome_java_sources.gni
+@@ -60,6 +60,7 @@
+   "java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java",
+   "java/src/org/chromium/chrome/browser/aegis/dock/AegisSearchSheet.java",
+   "java/src/org/chromium/chrome/browser/aegis/dock/AegisGlassSheet.java",
++  "java/src/org/chromium/chrome/browser/aegis/AegisGlassUi.java",
+   "java/src/org/chromium/chrome/browser/aegis/dock/AegisMenuSheet.java",
+   "java/src/org/chromium/chrome/browser/aegis/dock/AegisTabGridSheet.java",
+   "java/src/org/chromium/chrome/browser/aegis/dock/AegisTopToolbar.java",
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisEcosystemSettings.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisEcosystemSettings.java
+@@ -173,15 +173,16 @@
+         int pad = dialogPadding(context);
+         layout.setPadding(pad, pad / 2, pad, 0);
+ 
+-        EditText emailField = new EditText(context);
+-        emailField.setHint("Email");
++        // AEGIS (patch 152): liquid-glass inputs - rounded translucent
++        // pills with a bright rim, dark-mode aware.
++        EditText emailField = AegisGlassUi.glassInput(context, "Email");
+         emailField.setInputType(
+                 InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+         emailField.setSingleLine(true);
+         layout.addView(emailField);
+ 
+-        EditText passphraseField = new EditText(context);
+-        passphraseField.setHint("Passphrase - derives your sync keys and cannot be reset");
++        EditText passphraseField = AegisGlassUi.glassInput(
++                context, "Passphrase - derives your sync keys and cannot be reset");
+         passphraseField.setInputType(
+                 InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+         layout.addView(passphraseField);
+@@ -192,6 +193,7 @@
+                         + "new Aegis ID. Your passphrase never leaves the device.")
+                 .setView(layout)
+                 .create();
++        AegisGlassUi.apply(dialog, context);
+         // Two action buttons on one dialog (via setButton): the positive
+         // button signs in, the neutral button creates the account. Their
+         // View-level click listeners are bound in onShow so a click does NOT
+@@ -217,6 +219,9 @@
+         Button create = dialog.getButton(AlertDialog.BUTTON_NEUTRAL);
+         assumeNonNull(signIn);
+         assumeNonNull(create);
++        // AEGIS (patch 152): glass pills for the dialog actions.
++        AegisGlassUi.styleAction(signIn, dialog.getContext(), false);
++        AegisGlassUi.styleAction(create, dialog.getContext(), false);
+         signIn.setOnClickListener(new View.OnClickListener() {
+             @Override
+             public void onClick(View v) {
+@@ -285,7 +290,7 @@
+         int pad = dialogPadding(context);
+         list.setPadding(pad, pad, pad, pad);
+ 
+-        TextView loading = new TextView(context);
++        TextView loading = AegisGlassUi.text(context, true);
+         loading.setText("Loading\u2026");
+         list.addView(loading);
+ 
+@@ -297,7 +302,10 @@
+                 .setView(scroll)
+                 .setNegativeButton("Close", null)
+                 .create();
++        AegisGlassUi.apply(dialog, context);
+         dialog.show();
++        AegisGlassUi.styleAction(
++                dialog.getButton(AlertDialog.BUTTON_NEGATIVE), context, false);
+         loadDevicesInto(dialog, list);
+     }
+ 
+@@ -312,7 +320,7 @@
+                     populateDeviceRows(dialog, list, errorOrSummary);
+                 } else {
+                     list.removeAllViews();
+-                    TextView error = new TextView(dialog.getContext());
++                    TextView error = AegisGlassUi.text(dialog.getContext(), false);
+                     error.setText(errorOrSummary);
+                     list.addView(error);
+                 }
+@@ -328,7 +336,7 @@
+                 list.addView(buildDeviceRow(dialog, list, devices.getJSONObject(i)));
+             }
+         } catch (JSONException e) {
+-            TextView error = new TextView(dialog.getContext());
++            TextView error = AegisGlassUi.text(dialog.getContext(), false);
+             error.setText("Unexpected devices response.");
+             list.addView(error);
+         }
+@@ -338,19 +346,23 @@
+             final AlertDialog dialog, final LinearLayout list, JSONObject device) {
+         Context context = dialog.getContext();
+         final String id = device.optString("id", "");
++        // AEGIS (patch 152): each device renders as a frosted chip with
++        // a glass "Revoke" pill (r106 user review: the old flat row and
++        // stock button looked bad).
+         LinearLayout row = new LinearLayout(context);
+         row.setOrientation(LinearLayout.HORIZONTAL);
++        row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+         int pad = dialogPadding(context) / 2;
+-        row.setPadding(0, pad, 0, pad);
+-
+-        TextView label = new TextView(context);
++        row.setPadding(pad, pad, pad, pad);
++        row.setBackground(AegisGlassUi.chip(context));
++
++        TextView label = AegisGlassUi.text(context, false);
+         label.setText(device.optString("name", "Unknown device") + " \u2014 "
+                 + device.optString("platform", ""));
+         row.addView(label, new LinearLayout.LayoutParams(
+                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+ 
+-        Button revoke = new Button(context);
+-        revoke.setText("Revoke");
++        Button revoke = AegisGlassUi.pill(context, "Revoke", true);
+         revoke.setOnClickListener(new View.OnClickListener() {
+             @Override
+             public void onClick(View v) {
+@@ -374,7 +386,7 @@
+ 
+     private void confirmSignOut() {
+         Context context = requireContext();
+-        new AlertDialog.Builder(context)
++        AlertDialog signOutDialog = new AlertDialog.Builder(context)
+                 .setTitle("Sign out")
+                 .setMessage("Sign out of Aegis ID on this device? Your synced data stays "
+                         + "on the server and can be restored by signing in again.")
+@@ -390,7 +402,15 @@
+                     }
+                 })
+                 .setNegativeButton("Cancel", null)
+-                .show();
++                .create();
++        AegisGlassUi.apply(signOutDialog, context);
++        signOutDialog.show();
++        AegisGlassUi.styleAction(
++                signOutDialog.getButton(AlertDialog.BUTTON_POSITIVE), context,
++                true);
++        AegisGlassUi.styleAction(
++                signOutDialog.getButton(AlertDialog.BUTTON_NEGATIVE), context,
++                false);
+     }
+ 
+     private static int dialogPadding(Context context) {
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisGlassUi.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisGlassUi.java
+@@ -0,0 +1,164 @@
++// Copyright 2026 The Aegis Browser Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++package org.chromium.chrome.browser.aegis;
++
++import android.app.Dialog;
++import android.content.Context;
++import android.content.res.Configuration;
++import android.graphics.drawable.Drawable;
++import android.graphics.drawable.GradientDrawable;
++import android.graphics.drawable.InsetDrawable;
++import android.graphics.drawable.LayerDrawable;
++import android.os.Build;
++import android.view.Window;
++import android.view.WindowManager;
++import android.widget.Button;
++import android.widget.EditText;
++import android.widget.TextView;
++
++/**
++ * Liquid-glass kit for Aegis dialogs (patch 152, r106 user review: "i want
++ * truly transparent liquid glass vibe in every section and every where").
++ *
++ * A glass card is two stacked layers: a bright diagonal white sheen (which
++ * also forms the rim highlight) and a translucent fill over it, so the
++ * blurred app behind reads through the card. Everything is dark-mode aware
++ * and built from pure public android.graphics.drawable API - glass is
++ * cosmetic and must never break a dialog.
++ */
++public final class AegisGlassUi {
++    private static final int TEXT_PRIMARY_DARK = 0xF2FFFFFF;
++    private static final int TEXT_PRIMARY_LIGHT = 0xE6161616;
++    private static final int TEXT_SECONDARY_DARK = 0x99FFFFFF;
++    private static final int TEXT_SECONDARY_LIGHT = 0x8A161616;
++
++    private AegisGlassUi() {}
++
++    /** True when the system is in dark mode - the glass adapts. */
++    public static boolean isDark(Context context) {
++        int mask = context.getResources().getConfiguration().uiMode
++                & Configuration.UI_MODE_NIGHT_MASK;
++        return mask == Configuration.UI_MODE_NIGHT_YES;
++    }
++
++    private static float density(Context context) {
++        return context.getResources().getDisplayMetrics().density;
++    }
++
++    /**
++     * The glass card: layer 0 = the diagonal sheen (it also forms the
++     * bright rim around the edge), layer 1 = the translucent fill inset a
++     * hair, leaving the sheen visible as a rim ring.
++     */
++    public static LayerDrawable glass(Context context, float radiusDp, boolean danger) {
++        float d = density(context);
++        int radius = (int) (radiusDp * d);
++        boolean dark = isDark(context);
++        GradientDrawable sheen = new GradientDrawable();
++        sheen.setOrientation(GradientDrawable.Orientation.TL_BR);
++        if (danger) {
++            sheen.setColors(dark
++                    ? new int[] {0x40FF8A8A, 0x0AFF8A8A}
++                    : new int[] {0x59FF8A8A, 0x14FF8A8A});
++        } else {
++            sheen.setColors(dark
++                    ? new int[] {0x59FFFFFF, 0x0DFFFFFF}
++                    : new int[] {0x8CFFFFFF, 0x26FFFFFF});
++        }
++        sheen.setCornerRadius(radius);
++        GradientDrawable fill = new GradientDrawable();
++        fill.setColor(danger ? (dark ? 0x26FF5A5A : 0x2EFF5A5A)
++                             : (dark ? 0x12FFFFFF : 0x4DFFFFFF));
++        fill.setCornerRadius(radius);
++        LayerDrawable layers = new LayerDrawable(new Drawable[] {sheen, fill});
++        int inset = Math.max(1, (int) (1.2f * d));
++        layers.setLayerInset(1, inset, inset, inset, inset);
++        return layers;
++    }
++
++    /** Frosted chip used for rows inside a glass dialog. */
++    public static LayerDrawable chip(Context context) {
++        return glass(context, 20f, false);
++    }
++
++    /**
++     * The dialog window itself: a card-shaped translucent background over a
++     * blur-behind backdrop (API 31+; scrim-only fallback below, and a
++     * reflective setBlurBehindRadius because Chromium's compile-time SDK
++     * stubs lack the method - the APK #103 lesson).
++     */
++    public static void apply(Dialog dialog, Context context) {
++        Window window = dialog.getWindow();
++        if (window == null) return;
++        try {
++            float d = density(context);
++            window.setBackgroundDrawable(
++                    new InsetDrawable(glass(context, 26f, false), (int) (4 * d)));
++            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
++                window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
++                try {
++                    window.getClass()
++                            .getMethod("setBlurBehindRadius", int.class)
++                            .invoke(window, (int) (26 * d));
++                } catch (Throwable reflectiveError) {
++                    // Blur radius unsupported - the sheen still reads as glass.
++                }
++            }
++            window.setDimAmount(0.18f);
++        } catch (RuntimeException glassError) {
++            // Keep the stock dialog window; glass must never break a dialog.
++        }
++    }
++
++    /** Restyles an existing AlertDialog action button as a glass pill. */
++    public static void styleAction(Button button, Context context, boolean danger) {
++        if (button == null) return;
++        float d = density(context);
++        button.setAllCaps(false);
++        button.setTextSize(14f);
++        button.setTextColor(danger
++                ? 0xFFFF8A8A
++                : (isDark(context) ? TEXT_PRIMARY_DARK : TEXT_PRIMARY_LIGHT));
++        button.setBackground(glass(context, 22f, danger));
++        int padX = (int) (18 * d);
++        int padY = (int) (8 * d);
++        button.setPadding(padX, padY, padX, padY);
++        button.setMinimumWidth(0);
++        button.setMinimumHeight(0);
++        button.setStateListAnimator(null);
++    }
++
++    /** A standalone glass pill button, e.g. the device "Revoke" action. */
++    public static Button pill(Context context, String label, boolean danger) {
++        Button button = new Button(context);
++        button.setText(label);
++        styleAction(button, context, danger);
++        return button;
++    }
++
++    /** A rounded translucent text input. */
++    public static EditText glassInput(Context context, String hint) {
++        boolean dark = isDark(context);
++        EditText field = new EditText(context);
++        field.setHint(hint);
++        field.setTextColor(dark ? TEXT_PRIMARY_DARK : TEXT_PRIMARY_LIGHT);
++        field.setHintTextColor(dark ? TEXT_SECONDARY_DARK : TEXT_SECONDARY_LIGHT);
++        field.setBackground(glass(context, 18f, false));
++        int pad = (int) (12 * density(context));
++        field.setPadding(pad, pad, pad, pad);
++        return field;
++    }
++
++    /** A themed body/label text that matches the glass card. */
++    public static TextView text(Context context, boolean secondary) {
++        boolean dark = isDark(context);
++        TextView view = new TextView(context);
++        view.setTextColor(secondary
++                ? (dark ? TEXT_SECONDARY_DARK : TEXT_SECONDARY_LIGHT)
++                : (dark ? TEXT_PRIMARY_DARK : TEXT_PRIMARY_LIGHT));
++        view.setTextSize(15f);
++        return view;
++    }
++}

@@ -1,0 +1,60 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/privacy/settings/PrivacySettings.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/privacy/settings/PrivacySettings.java
+@@ -42,8 +42,6 @@
+ import org.chromium.chrome.browser.preferences.Pref;
+ import org.chromium.chrome.browser.prefetch.settings.PreloadPagesSettingsFragment;
+ import org.chromium.chrome.browser.privacy.secure_dns.SecureDnsSettings;
+-import org.chromium.chrome.browser.privacy_guide.PrivacyGuideFragment;
+-import org.chromium.chrome.browser.privacy_guide.PrivacyGuideInteractions;
+ import org.chromium.chrome.browser.profiles.Profile;
+ import org.chromium.chrome.browser.safe_browsing.AdvancedProtectionStatusManagerAndroidBridge;
+ import org.chromium.chrome.browser.safe_browsing.metrics.SettingsAccessPoint;
+@@ -96,7 +94,6 @@
+     private static final String PREF_SAFE_BROWSING = "safe_browsing";
+     private static final String PREF_PASSWORD_LEAK_DETECTION = "password_leak_detection";
+     private static final String PREF_SYNC_AND_SERVICES_LINK = "sync_and_services_link";
+-    private static final String PREF_PRIVACY_GUIDE = "privacy_guide";
+     private static final String PREF_INCOGNITO_LOCK = "incognito_lock";
+     private static final String PREF_JAVASCRIPT_OPTIMIZER = "javascript_optimizer";
+     @VisibleForTesting static final String PREF_DO_NOT_TRACK = "do_not_track";
+@@ -143,34 +140,12 @@
+ 
+         SettingsUtils.addPreferencesFromResource(this, R.xml.privacy_preferences);
+ 
+-        Preference privacyGuidePreference = findPreference(PREF_PRIVACY_GUIDE);
+-        // Record the launch of PG from the S&P link-row entry point
+-        privacyGuidePreference.setOnPreferenceClickListener(
+-                preference -> {
+-                    RecordUserAction.record("Settings.PrivacyGuide.StartPrivacySettings");
+-                    RecordHistogram.recordEnumeratedHistogram(
+-                            "Settings.PrivacyGuide.EntryExit",
+-                            PrivacyGuideInteractions.SETTINGS_LINK_ROW_ENTRY,
+-                            PrivacyGuideInteractions.MAX_VALUE + 1);
+-                    UserPrefs.get(getProfile()).setBoolean(Pref.PRIVACY_GUIDE_VIEWED, true);
+-
+-                    // Explicitly launch PrivacyGuideFragment from here so that the click is
+-                    // recorded above before navigating. The fragment implements
+-                    // EmbeddableSettingsPage, so it is shown as a regular settings page rather
+-                    // than in standalone mode.
+-                    SettingsNavigationFactory.createSettingsNavigation(requireContext())
+-                            .startSettings(
+-                                    getActivity(),
+-                                    PrivacyGuideFragment.class,
+-                                    /* fragmentArgs= */ null,
+-                                    /* addToBackStack= */ true);
+-                    return true;
+-                });
+-        if (getProfile().isChild()
+-                || ManagedBrowserUtils.isBrowserManaged(getProfile())
+-                || ManagedBrowserUtils.isProfileManaged(getProfile())) {
+-            getPreferenceScreen().removePreference(privacyGuidePreference);
+-        }
++        // AEGIS (patch 151, r106 user review: "remove the privacy guid
++        // from settings"): patch 147 removed the privacy_guide row from
++        // privacy_preferences.xml; this removes the Java wiring - the
++        // click listener, the fragment launch path and the child/managed
++        // removal branch. Without this, findPreference() returned null
++        // after 147 and opening Privacy & security crashed (latent NPE).
+ 
+         IncognitoReauthSettingSwitchPreference incognitoReauthPreference =
+                 (IncognitoReauthSettingSwitchPreference) findPreference(PREF_INCOGNITO_LOCK);
