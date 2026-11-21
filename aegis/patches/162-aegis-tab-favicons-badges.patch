@@ -1,0 +1,201 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisTabGridSheet.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisTabGridSheet.java
+@@ -5,7 +5,14 @@
+ package org.chromium.chrome.browser.aegis.dock;
+ 
+ import android.content.ClipData;
++import android.graphics.Bitmap;
++import android.graphics.Canvas;
++import android.graphics.Color;
++import android.graphics.Paint;
++import android.graphics.Typeface;
+ import android.graphics.drawable.GradientDrawable;
++import android.os.Handler;
++import android.os.Looper;
+ import android.view.DragEvent;
+ import android.view.Gravity;
+ import android.view.View;
+@@ -18,6 +25,8 @@
+ import org.chromium.base.Token;
+ import org.chromium.build.annotations.NullMarked;
+ import org.chromium.chrome.R;
++import org.chromium.components.favicon.LargeIconBridge;
++import org.chromium.components.tab_groups.TabGroupColorPickerUtils;
+ import org.chromium.chrome.browser.ChromeTabbedActivity;
+ import org.chromium.chrome.browser.tab.Tab;
+ import org.chromium.chrome.browser.tab.TabSelectionType;
+@@ -331,6 +340,17 @@
+         card.setBackground(bg);
+         card.setMinimumHeight((int) (72 * getResources().getDisplayMetrics().density));
+ 
++        // AEGIS (patch 162, r116 review: "the tab manager does not show
++        // the favicons"): a favicon slot leads the row like Chrome's
++        // switcher; a letter tile fills it until the icon arrives.
++        ImageView favicon = new ImageView(getContext());
++        int fav = (int) (26 * getResources().getDisplayMetrics().density);
++        favicon.setImageBitmap(plainTile(private_));
++        LinearLayout.LayoutParams favLp = new LinearLayout.LayoutParams(fav, fav);
++        favLp.rightMargin = (int) (12 * getResources().getDisplayMetrics().density);
++        card.addView(favicon, favLp);
++        bindFavicon(tab, favicon, private_);
++
+         LinearLayout textCol = new LinearLayout(getContext());
+         textCol.setOrientation(LinearLayout.VERTICAL);
+         card.addView(
+@@ -353,7 +373,38 @@
+         host.setTextSize(11);
+         host.setTextColor(getContext().getColor(
+                 private_ ? R.color.aegis_text_secondary_inverted : R.color.aegis_text_secondary));
+-        textCol.addView(host);
++
++        // AEGIS (patch 162, r116 review): the row carries badges - a chip
++        // in the group's own color with the native group title for grouped
++        // tabs, and a "Private" chip for off-the-record tabs.
++        LinearLayout hostRow = new LinearLayout(getContext());
++        hostRow.setOrientation(LinearLayout.HORIZONTAL);
++        hostRow.setGravity(Gravity.CENTER_VERTICAL);
++        hostRow.addView(host);
++        TabModel cardModel =
++                ((ChromeTabbedActivity) dock().getContext())
++                        .getTabModelSelector()
++                        .getModel(private_);
++        if (!private_ && cardModel != null && tab.getGroupId() != null
++                && cardModel.tabGroupExists(tab.getGroupId())) {
++            int colorId = cardModel.getTabGroupColorWithFallback(tab.getGroupId());
++            int color =
++                    TabGroupColorPickerUtils.getTabGroupColorPickerItemColor(
++                            getContext(), colorId, /* isIncognito= */ false);
++            String groupTitle = cardModel.getTabGroupTitle(tab.getGroupId());
++            String label = groupTitle == null || groupTitle.isEmpty()
++                    ? getContext().getString(
++                            R.string.aegis_sheet_group_count,
++                            cardModel.getTabCountForGroup(tab.getGroupId()))
++                    : groupTitle;
++            hostRow.addView(badge(label, color, private_));
++        }
++        if (private_) {
++            hostRow.addView(badge(
++                    getContext().getString(R.string.aegis_sheet_private),
++                    0xFF7C5CBF, true));
++        }
++        textCol.addView(hostRow);
+ 
+         ImageView close = new ImageView(getContext());
+         close.setImageResource(R.drawable.aegis_ic_close);
+@@ -521,6 +572,116 @@
+         return row;
+     }
+ 
++    /** Patch 162: favicon loads ride a shared per-profile bridge; the
++     *  sheet is transient, so the bridges live at process scope. */
++    private static final Handler sUi = new Handler(Looper.getMainLooper());
++    private static LargeIconBridge sRegularBridge;
++    private static LargeIconBridge sIncognitoBridge;
++
++    private static LargeIconBridge bridgeFor(Tab tab) {
++        if (tab.isIncognito()) {
++            if (sIncognitoBridge == null) {
++                sIncognitoBridge = new LargeIconBridge(tab.getProfile());
++            }
++            return sIncognitoBridge;
++        }
++        if (sRegularBridge == null) {
++            sRegularBridge = new LargeIconBridge(tab.getProfile());
++        }
++        return sRegularBridge;
++    }
++
++    /** Loads the tab favicon into {@code icon}; a letter tile stays on a
++     *  miss. Mirrors AegisHomeView.fetchFavicon's proven callback shape. */
++    private void bindFavicon(Tab tab, ImageView icon, boolean private_) {
++        if (tab.getUrl() == null) return;
++        try {
++            bridgeFor(tab)
++                    .getLargeIconForUrl(
++                            tab.getUrl(),
++                            (int) (48 * getResources().getDisplayMetrics().density),
++                            (bmp, fallbackColor, isDefaultColor, iconType) -> {
++                                sUi.post(
++                                        () -> {
++                                            if (bmp != null && !bmp.isRecycled()) {
++                                                icon.setImageBitmap(bmp);
++                                            } else if (fallbackColor != 0) {
++                                                icon.setImageBitmap(
++                                                        letterTile(tab,
++                                                                fallbackColor | 0xFF000000,
++                                                                private_));
++                                            }
++                                        });
++                            });
++        } catch (RuntimeException faviconError) {
++            // The plain tile stays; a favicon must never break the sheet.
++        }
++    }
++
++    /** A quiet neutral tile shown before the favicon resolves. */
++    private Bitmap plainTile(boolean private_) {
++        int size = (int) (26 * getResources().getDisplayMetrics().density);
++        Bitmap bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
++        Canvas canvas = new Canvas(bmp);
++        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
++        paint.setColor(getContext().getColor(
++                private_ ? R.color.aegis_surface_inverted : R.color.aegis_glass_chip));
++        canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint);
++        return bmp;
++    }
++
++    /** Letter tile in the favicon's generated color (patch 130 style). */
++    private Bitmap letterTile(Tab tab, int bgColor, boolean private_) {
++        int size = (int) (26 * getResources().getDisplayMetrics().density);
++        Bitmap bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
++        Canvas canvas = new Canvas(bmp);
++        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
++        paint.setColor(bgColor);
++        canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint);
++        String label = tab.getTitle() == null || tab.getTitle().isEmpty()
++                ? "A" : tab.getTitle().trim();
++        double lum = 0.2126 * Color.red(bgColor) + 0.7152 * Color.green(bgColor)
++                + 0.0722 * Color.blue(bgColor);
++        paint.setColor(lum > 140
++                ? getContext().getColor(R.color.aegis_text_primary)
++                : getContext().getColor(
++                        private_ ? R.color.aegis_text_primary_inverted
++                                 : R.color.aegis_text_primary));
++        paint.setTextSize(size * 0.52f);
++        paint.setTextAlign(Paint.Align.CENTER);
++        paint.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
++        Paint.FontMetrics fm = paint.getFontMetrics();
++        float textY = size / 2f - (fm.ascent + fm.descent) / 2f;
++        canvas.drawText(label.substring(0, 1).toUpperCase(java.util.Locale.ROOT),
++                size / 2f, textY, paint);
++        return bmp;
++    }
++
++    /** A compact badge chip (group color / "Private") after the host. */
++    private TextView badge(String label, int bgColor, boolean darkText) {
++        TextView chip = new TextView(getContext());
++        chip.setText(label);
++        chip.setTextSize(10);
++        chip.setMaxLines(1);
++        chip.setEllipsize(android.text.TextUtils.TruncateAt.END);
++        double lum = 0.2126 * Color.red(bgColor) + 0.7152 * Color.green(bgColor)
++                + 0.0722 * Color.blue(bgColor);
++        chip.setTextColor(lum > 140 ? 0xE6101013 : 0xFFF4F4F5);
++        GradientDrawable bg = new GradientDrawable();
++        bg.setColor(bgColor);
++        bg.setCornerRadius(8 * getResources().getDisplayMetrics().density);
++        chip.setBackground(bg);
++        int hpad = (int) (7 * getResources().getDisplayMetrics().density);
++        int vpad = (int) (3 * getResources().getDisplayMetrics().density);
++        chip.setPadding(hpad, vpad, hpad, vpad);
++        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
++                ViewGroup.LayoutParams.WRAP_CONTENT,
++                ViewGroup.LayoutParams.WRAP_CONTENT);
++        lp.leftMargin = (int) (6 * getResources().getDisplayMetrics().density);
++        chip.setLayoutParams(lp);
++        return chip;
++    }
++
+     private TextView pill(String label) {
+         TextView pill = new TextView(getContext());
+         pill.setText(label);

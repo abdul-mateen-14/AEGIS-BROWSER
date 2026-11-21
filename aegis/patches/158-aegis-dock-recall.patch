@@ -1,0 +1,84 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
+@@ -322,6 +322,12 @@
+                         });
+         mSliverTouch.setOnTouchListener(
+                 (v, event) -> {
++                    // AEGIS (patch 158): restore on first contact - the
++                    // single-tap timeout made quick recalls feel dead.
++                    if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
++                        expand();
++                        return true;
++                    }
+                     if (mSliverGestures.onTouchEvent(event)) return true;
+                     // Proximity swell: the bar swells 8 -> 10 dp while touched.
+                     switch (event.getActionMasked()) {
+@@ -406,6 +412,15 @@
+             mSliverTouch.setVisibility(VISIBLE);
+             return;
+         }
++        // AEGIS (patch 158, r116 review: "sometimes the dock hides and
++        // does not become visible after clicking on the left of screen"):
++        // the sliver used to appear only from a withEndAction/postDelayed
++        // pair; an animation cancelled by a quick re-expand never ran the
++        // end action and the dock stayed hidden with no recall surface.
++        // State now flips synchronously - the animations are cosmetic only.
++        mSliverTouch.setVisibility(VISIBLE);
++        mSliverBar.setAlpha(0f);
++        mSliverBar.animate().alpha(1f).setDuration(140).start();
+         mPill.animate()
+                 .translationX(shiftX)
+                 .scaleY(scaleY)
+@@ -415,20 +430,11 @@
+                         new PathInterpolator(0.32f, 0.72f, 0f, 1f))
+                 .withEndAction(
+                         () -> {
++                            if (mExpanded) return;
+                             mPill.setVisibility(GONE);
+                             mPill.setTranslationX(0f);
+                             mPill.setScaleY(1f);
+                             mPill.setAlpha(1f);
+-                            // Staggered: the sliver reads as the capsule
+-                            // flowing into the edge (spec Table 2).
+-                            postDelayed(
+-                                    () -> {
+-                                        if (mExpanded) return;
+-                                        mSliverTouch.setVisibility(VISIBLE);
+-                                        mSliverBar.setAlpha(0f);
+-                                        mSliverBar.animate().alpha(1f).setDuration(140).start();
+-                                    },
+-                                    SLIVER_DELAY_MS);
+                         })
+                 .start();
+     }
+@@ -445,10 +451,10 @@
+             refreshUrl();
+             return;
+         }
++        mSliverTouch.setVisibility(GONE);
+         mSliverBar.animate()
+                 .alpha(0f)
+                 .setDuration(120)
+-                .withEndAction(() -> mSliverTouch.setVisibility(GONE))
+                 .start();
+         mPill.setAlpha(0f);
+         mPill.setScaleY(0.9f);
+@@ -639,6 +645,18 @@
+                 expand();
+             }
+         }
++        // AEGIS (patch 158): self-heal - the pill hidden AND the sliver
++        // hidden is a state no code path intends; recover to the collapsed
++        // bar so a lost race can never strand the user without chrome.
++        if (!mExpanded
++                && mPill.getVisibility() != VISIBLE
++                && mSliverTouch.getVisibility() != VISIBLE) {
++            mSliverTouch.setVisibility(VISIBLE);
++            mSliverBar.setAlpha(1f);
++        } else if (mExpanded && mPill.getVisibility() != VISIBLE) {
++            mPill.setAlpha(1f);
++            mPill.setVisibility(VISIBLE);
++        }
+         if (mPill.getLayoutParams() instanceof FrameLayout.LayoutParams) {
+             FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) mPill.getLayoutParams();
+             int wanted = getResources().getDimensionPixelSize(R.dimen.aegis_dock_bottom_margin)

@@ -1,0 +1,300 @@
+--- a/chrome/android/java/AndroidManifest.xml
++++ b/chrome/android/java/AndroidManifest.xml
+@@ -688,6 +688,31 @@
+                 android:resource="@xml/launchershortcuts" />
+             {{ self.supports_vr() }}
+             {{ self.extra_web_rendering_activity_definitions() }}
++        </activity-alias>
++        <!-- AEGIS (patch 163, r116 review: "allow users to change icon
++             app launcher like with white background and the default black
++             background and also the liquid glass one"): two additional
++             launcher identities, disabled by default; AegisLauncherIcon
++             switches exactly one on at a time. -->
++        <activity-alias android:name="com.aegis.launcher.White"
++            android:targetActivity="org.chromium.chrome.browser.ChromeTabbedActivity"
++            android:icon="@drawable/aegis_launcher_white"
++            android:enabled="false"
++            android:exported="true">
++            <intent-filter>
++                <action android:name="android.intent.action.MAIN" />
++                <category android:name="android.intent.category.LAUNCHER" />
++            </intent-filter>
++        </activity-alias>
++        <activity-alias android:name="com.aegis.launcher.Glass"
++            android:targetActivity="org.chromium.chrome.browser.ChromeTabbedActivity"
++            android:icon="@drawable/aegis_launcher_glass"
++            android:enabled="false"
++            android:exported="true">
++            <intent-filter>
++                <action android:name="android.intent.action.MAIN" />
++                <category android:name="android.intent.category.LAUNCHER" />
++            </intent-filter>
+         </activity-alias>
+         <activity android:name="org.chromium.chrome.browser.ChromeTabbedActivity2"
+             android:theme="@style/Theme.Chromium.TabbedMode"
+--- a/chrome/android/java/res/drawable/aegis_launcher_white.xml
++++ b/chrome/android/java/res/drawable/aegis_launcher_white.xml
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- AEGIS (patch 163): the white-background launcher variant. -->
++<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
++    <background android:drawable="@drawable/aegis_launcher_bg_white"/>
++    <foreground android:drawable="@drawable/aegis_logo_dark"/>
++</adaptive-icon>
+--- a/chrome/android/java/res/drawable/aegis_launcher_glass.xml
++++ b/chrome/android/java/res/drawable/aegis_launcher_glass.xml
+@@ -0,0 +1,7 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- AEGIS (patch 163): the liquid-glass launcher variant - no color,
++     just frosted translucency with the mark formed inside it. -->
++<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
++    <background android:drawable="@drawable/aegis_launcher_glass_bg"/>
++    <foreground android:drawable="@drawable/aegis_logo_glass"/>
++</adaptive-icon>
+--- a/chrome/android/java/res/drawable/aegis_launcher_bg_white.xml
++++ b/chrome/android/java/res/drawable/aegis_launcher_bg_white.xml
+@@ -0,0 +1,11 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- AEGIS (patch 163): solid white background layer. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="108dp"
++    android:height="108dp"
++    android:viewportWidth="108"
++    android:viewportHeight="108">
++    <path
++        android:pathData="M0,0h108v108h-108z"
++        android:fillColor="#FFFFFF"/>
++</vector>
+--- a/chrome/android/java/res/drawable/aegis_launcher_glass_bg.xml
++++ b/chrome/android/java/res/drawable/aegis_launcher_glass_bg.xml
+@@ -0,0 +1,37 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- AEGIS (patch 163): liquid-glass background layer - layered
++     translucent gradients, no brand color, so the wallpaper reads
++     through the frosted disc. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:aapt="http://schemas.android.com/aapt"
++    android:width="108dp"
++    android:height="108dp"
++    android:viewportWidth="108"
++    android:viewportHeight="108">
++    <path
++        android:pathData="M0,0h108v108h-108z">
++        <aapt:attr name="android:fillColor">
++            <gradient
++                android:type="linear"
++                android:startX="0" android:startY="0"
++                android:endX="108" android:endY="108">
++                <item android:offset="0.0" android:color="#66FFFFFF"/>
++                <item android:offset="0.55" android:color="#3DEDEFF4"/>
++                <item android:offset="1.0" android:color="#59C9CDD6"/>
++            </gradient>
++        </aapt:attr>
++    </path>
++    <path
++        android:pathData="M54,16 a38,38 0 1,0 0.01,0 z">
++        <aapt:attr name="android:fillColor">
++            <gradient
++                android:type="radial"
++                android:centerX="42" android:centerY="34"
++                android:gradientRadius="72">
++                <item android:offset="0.0" android:color="#8CFFFFFF"/>
++                <item android:offset="0.7" android:color="#40FFFFFF"/>
++                <item android:offset="1.0" android:color="#14FFFFFF"/>
++            </gradient>
++        </aapt:attr>
++    </path>
++</vector>
+--- a/chrome/android/java/res/drawable/aegis_logo_dark.xml
++++ b/chrome/android/java/res/drawable/aegis_logo_dark.xml
+@@ -0,0 +1,11 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- AEGIS (patch 163): the mark in ink, for the white variant. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="108dp"
++    android:height="108dp"
++    android:viewportWidth="108"
++    android:viewportHeight="108">
++    <path
++        android:pathData="M53.51,38.36 L 38.22,67.38 L 38.00,68.62 L 38.13,69.29 L 38.67,69.64 L 60.22,69.64 L 60.76,69.29 L 61.29,68.27 L 61.11,67.20 L 55.69,55.73 L 55.78,55.02 L 57.82,51.02 L 58.27,50.67 L 58.84,50.62 L 59.47,51.11 L 68.44,69.56 L 69.33,69.64 L 69.91,68.49 L 69.87,67.69 L 60.49,49.51 L 60.00,48.89 L 59.29,48.53 L 58.18,48.67 L 57.33,49.47 L 51.38,61.38 L 50.80,62.04 L 50.27,62.27 L 46.18,62.27 L 45.47,61.73 L 45.38,60.80 L 55.51,40.93 L 55.56,40.09 L 54.80,38.67 L 54.31,38.36 Z M39.56,67.73 L 41.51,63.78 L 41.96,63.42 L 57.56,63.38 L 58.00,63.56 L 58.18,63.73 L 59.78,67.02 L 60.09,67.91 L 59.91,68.36 L 59.42,68.67 L 40.36,68.67 L 39.96,68.53 L 39.64,68.22 Z"
++        android:fillColor="#1A1A1F" android:fillType="evenOdd"/>
++</vector>
+--- a/chrome/android/java/res/drawable/aegis_logo_glass.xml
++++ b/chrome/android/java/res/drawable/aegis_logo_glass.xml
+@@ -0,0 +1,16 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- AEGIS (patch 163): the mark formed from the glass itself -
++     translucent white with a faint brighter rim, no color. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="108dp"
++    android:height="108dp"
++    android:viewportWidth="108"
++    android:viewportHeight="108">
++    <path
++        android:pathData="M53.51,38.36 L 38.22,67.38 L 38.00,68.62 L 38.13,69.29 L 38.67,69.64 L 60.22,69.64 L 60.76,69.29 L 61.29,68.27 L 61.11,67.20 L 55.69,55.73 L 55.78,55.02 L 57.82,51.02 L 58.27,50.67 L 58.84,50.62 L 59.47,51.11 L 68.44,69.56 L 69.33,69.64 L 69.91,68.49 L 69.87,67.69 L 60.49,49.51 L 60.00,48.89 L 59.29,48.53 L 58.18,48.67 L 57.33,49.47 L 51.38,61.38 L 50.80,62.04 L 50.27,62.27 L 46.18,62.27 L 45.47,61.73 L 45.38,60.80 L 55.51,40.93 L 55.56,40.09 L 54.80,38.67 L 54.31,38.36 Z M39.56,67.73 L 41.51,63.78 L 41.96,63.42 L 57.56,63.38 L 58.00,63.56 L 58.18,63.73 L 59.78,67.02 L 60.09,67.91 L 59.91,68.36 L 59.42,68.67 L 40.36,68.67 L 39.96,68.53 L 39.64,68.22 Z"
++        android:fillColor="#CCFFFFFF" android:fillType="evenOdd"/>
++    <path
++        android:pathData="M53.51,38.36 L 38.22,67.38 L 38.00,68.62 L 38.13,69.29 L 38.67,69.64 L 60.22,69.64 L 60.76,69.29 L 61.29,68.27 L 61.11,67.20 L 55.69,55.73 L 55.78,55.02 L 57.82,51.02 L 58.27,50.67 L 58.84,50.62 L 59.47,51.11 L 68.44,69.56 L 69.33,69.64 L 69.91,68.49 L 69.87,67.69 L 60.49,49.51 L 60.00,48.89 L 59.29,48.53 L 58.18,48.67 L 57.33,49.47 L 51.38,61.38 L 50.80,62.04 L 50.27,62.27 L 46.18,62.27 L 45.47,61.73 L 45.38,60.80 L 55.51,40.93 L 55.56,40.09 L 54.80,38.67 L 54.31,38.36 Z M39.56,67.73 L 41.51,63.78 L 41.96,63.42 L 57.56,63.38 L 58.00,63.56 L 58.18,63.73 L 59.78,67.02 L 60.09,67.91 L 59.91,68.36 L 59.42,68.67 L 40.36,68.67 L 39.96,68.53 L 39.64,68.22 Z"
++        android:strokeColor="#66FFFFFF" android:strokeWidth="0.8"
++        android:fillType="evenOdd"/>
++</vector>
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisLauncherIcon.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisLauncherIcon.java
+@@ -0,0 +1,64 @@
++// Copyright 2026 The Aegis Browser Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++package org.chromium.chrome.browser.aegis;
++
++import android.content.ComponentName;
++import android.content.Context;
++import android.content.SharedPreferences;
++import android.content.pm.PackageManager;
++
++import org.chromium.build.annotations.NullMarked;
++
++/**
++ * Launcher icon variants (patch 163, r116 review: black default, white
++ * background, liquid glass). Implemented with activity-aliases: exactly
++ * one launcher identity is enabled at a time, switched with
++ * PackageManager.setComponentEnabledSetting - the mechanism launcher
++ * icon-pack apps use, no restart needed.
++ */
++@NullMarked
++public final class AegisLauncherIcon {
++    private static final String PREF = "aegis_launcher_icon";
++    /** The stock launcher alias from the Chromium manifest. */
++    private static final String MAIN_ALIAS = "com.google.android.apps.chrome.Main";
++    private static final String WHITE_ALIAS = "com.aegis.launcher.White";
++    private static final String GLASS_ALIAS = "com.aegis.launcher.Glass";
++
++    /** Display names for the chooser, indexed with the variant ids. */
++    public static final String[] VARIANTS = {"black", "white", "glass"};
++    public static final String[] LABELS = {"Black (default)", "White", "Liquid glass"};
++
++    private AegisLauncherIcon() {}
++
++    private static SharedPreferences prefs(Context context) {
++        return context.getSharedPreferences("aegis_prefs", Context.MODE_PRIVATE);
++    }
++
++    /** The persisted variant id; "black" until the user changes it. */
++    public static String current(Context context) {
++        return prefs(context).getString(PREF, "black");
++    }
++
++    /** Persists {@code variant} and flips the aliases (DONT_KILL_APP). */
++    public static void apply(Context context, String variant) {
++        prefs(context).edit().putString(PREF, variant).apply();
++        setAlias(context, MAIN_ALIAS, "black".equals(variant));
++        setAlias(context, WHITE_ALIAS, "white".equals(variant));
++        setAlias(context, GLASS_ALIAS, "glass".equals(variant));
++    }
++
++    private static void setAlias(Context context, String alias, boolean enabled) {
++        try {
++            PackageManager pm = context.getPackageManager();
++            pm.setComponentEnabledSetting(
++                    new ComponentName(context, alias),
++                    enabled ? PackageManager.COMPONENT_ENABLED_STATE_ENABLED
++                            : PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
++                    PackageManager.DONT_KILL_APP);
++        } catch (RuntimeException aliasError) {
++            // The launcher keeps the previous icon; never crash settings.
++        }
++    }
++}
+--- a/chrome/android/java/res/xml/main_preferences.xml
++++ b/chrome/android/java/res/xml/main_preferences.xml
+@@ -25,6 +25,12 @@
+         android:title="Sign in or create account"
+         android:summary="Sync your encrypted data across devices"
+         android:fragment="org.chromium.chrome.browser.aegis.AegisEcosystemSettings"/>
++    <!-- AEGIS (patch 163): the launcher-icon chooser. -->
++    <org.chromium.components.browser_ui.settings.ChromeBasePreference
++        android:key="aegis_app_icon"
++        android:order="3"
++        android:title="App icon"
++        android:summary="Black (default) · White · Liquid glass"/>
+     <org.chromium.components.browser_ui.settings.ChromeBasePreferenceCategory
+         android:key="basics_section"
+         android:order="5"
+--- a/chrome/android/java/src/org/chromium/chrome/browser/settings/MainSettings.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/settings/MainSettings.java
+@@ -52,6 +52,7 @@
+ import org.chromium.chrome.browser.password_manager.settings.PasswordsPreference;
+ import org.chromium.chrome.browser.preferences.ChromePreferenceKeys;
+ import org.chromium.chrome.browser.aegis.AegisIdManager;
++import org.chromium.chrome.browser.aegis.AegisLauncherIcon;
+ import org.chromium.chrome.browser.preferences.Pref;
+ import org.chromium.chrome.browser.profiles.Profile;
+ import org.chromium.chrome.browser.search_engines.TemplateUrlServiceFactory;
+@@ -193,7 +194,42 @@
+     @Override
+     public void onCreatePreferences(@Nullable Bundle savedInstanceState, @Nullable String rootKey) {
+         createPreferences();
+-    }
++        // AEGIS (patch 163): the launcher-icon chooser row.
++        setupAegisAppIconPreference();
++    }
++
++    /**
++     * AEGIS (patch 163, r116 review: "allow users to change icon app
++     * launcher like with white background and the default black
++     * background and also the liquid glass one"): a single-choice dialog
++     * over the three variants; AegisLauncherIcon flips the aliases.
++     */
++    private void setupAegisAppIconPreference() {
++        Preference appIcon = findPreference("aegis_app_icon");
++        if (appIcon == null || getContext() == null) return;
++        appIcon.setOnPreferenceClickListener(preference -> {
++            Context context = getContext() != null ? getContext() : getActivity();
++            if (context == null) return true;
++            String current = AegisLauncherIcon.current(context);
++            int checked = "white".equals(current) ? 1 : ("glass".equals(current) ? 2 : 0);
++            new android.app.AlertDialog.Builder(context)
++                    .setTitle("App icon")
++                    .setSingleChoiceItems(
++                            AegisLauncherIcon.LABELS, checked,
++                            (dialog, which) -> {
++                                AegisLauncherIcon.apply(
++                                        context, AegisLauncherIcon.VARIANTS[which]);
++                                preference.setSummary(
++                                        "Black (default) · White · Liquid glass - now: "
++                                        + AegisLauncherIcon.LABELS[which]);
++                                dialog.dismiss();
++                            })
++                    .setNegativeButton("Cancel", null)
++                    .show();
++            return true;
++        });
++    }
++
+ 
+     @Override
+     public void onCreate(@Nullable Bundle savedInstanceState) {
+--- a/chrome/android/chrome_java_sources.gni
++++ b/chrome/android/chrome_java_sources.gni
+@@ -70,6 +70,7 @@
+   "java/src/org/chromium/chrome/browser/aegis/AegisEngineIcons.java",
+   "java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java",
+   "java/src/org/chromium/chrome/browser/aegis/AegisIdManager.java",
++  "java/src/org/chromium/chrome/browser/aegis/AegisLauncherIcon.java",
+   "java/src/org/chromium/chrome/browser/aegis/sync/AegisCrypto.java",
+   "java/src/org/chromium/chrome/browser/aegis/sync/AegisSyncClient.java",
+   "java/src/org/chromium/chrome/browser/about_settings/AboutSettingsBridge.java",
+--- a/chrome/android/chrome_java_resources.gni
++++ b/chrome/android/chrome_java_resources.gni
+@@ -251,6 +251,11 @@
+   "java/res/drawable/aegis_ic_reading.xml",
+   "java/res/drawable/aegis_ic_settings.xml",
+   "java/res/drawable/aegis_ic_shield.xml",
++  "java/res/drawable/aegis_launcher_glass.xml",
++  "java/res/drawable/aegis_launcher_glass_bg.xml",
++  "java/res/drawable/aegis_launcher_white.xml",
++  "java/res/drawable/aegis_logo_dark.xml",
++  "java/res/drawable/aegis_logo_glass.xml",
+   "java/res/drawable/aegis_url_pill.xml",
+   "java/res/drawable/adaptive_toolbar_preference_header.xml",
+   "java/res/drawable/add_link.xml",

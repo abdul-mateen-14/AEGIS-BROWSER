@@ -1,0 +1,32 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisGlassUi.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisGlassUi.java
+@@ -146,8 +146,13 @@
+         float d = density(context);
+         button.setAllCaps(false);
+         button.setTextSize(14f);
++        // AEGIS (patch 164, r116 screenshot 4470): the salmon danger text
++        // was unreadable on the light-mode glass fill (the "Revoke" pill
++        // washed out to near-white). Light mode gets a deep red that
++        // holds on both the translucent and the opaque fill; dark mode
++        // keeps the salmon.
+         button.setTextColor(danger
+-                ? 0xFFFF8A8A
++                ? (isDark(context) ? 0xFFFF8A8A : 0xFFB3261E)
+                 : (isDark(context) ? TEXT_PRIMARY_DARK : TEXT_PRIMARY_LIGHT));
+         button.setBackground(glass(context, 22f, danger));
+         int padX = (int) (18 * d);
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisEcosystemSettings.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisEcosystemSettings.java
+@@ -181,8 +181,10 @@
+         emailField.setSingleLine(true);
+         layout.addView(emailField);
+ 
+-        EditText passphraseField = AegisGlassUi.glassInput(
+-                context, "Passphrase - derives your sync keys and cannot be reset");
++        // AEGIS (patch 164, r116 screenshot 4471): the derivation note
++        // wrapped into a second line inside the pill; the field hint is
++        // just the word itself now.
++        EditText passphraseField = AegisGlassUi.glassInput(context, "Password");
+         passphraseField.setInputType(
+                 InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+         layout.addView(passphraseField);

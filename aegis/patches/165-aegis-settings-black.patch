@@ -1,0 +1,69 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/settings/SettingsActivity.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/settings/SettingsActivity.java
+@@ -57,6 +57,7 @@
+ import org.chromium.chrome.browser.browser_controls.BrowserStateBrowserControlsVisibilityDelegate;
+ import org.chromium.chrome.browser.feedback.HelpAndFeedbackLauncher;
+ import org.chromium.chrome.browser.feedback.HelpAndFeedbackLauncherFactory;
++import org.chromium.chrome.browser.aegis.AegisGlassUi;
+ import org.chromium.chrome.browser.flags.ChromeFeatureList;
+ import org.chromium.chrome.browser.glic.GlicHelper;
+ import org.chromium.chrome.browser.init.ActivityLifecycleDispatcherImpl;
+@@ -338,6 +339,14 @@
+                         /* occlusionTrackingAllowed= */ true));
+ 
+         int backgroundColor = SemanticColorUtils.getSettingsBackgroundColor(this);
++        // AEGIS (patch 165, r116 screenshot 4469: "settings color is still
++        // not black"): these explicit setBackgroundColor calls bypass the
++        // theme, which is why the values-night override (patch 156) never
++        // reached the page. Night mode paints the Aegis pure black like
++        // the home page; light mode is untouched.
++        if (AegisGlassUi.isDark(this)) {
++            backgroundColor = android.graphics.Color.BLACK;
++        }
+         findViewById(R.id.settings_content).setBackgroundColor(backgroundColor);
+         findViewById(R.id.app_bar_layout).setBackgroundColor(backgroundColor);
+         AppBarLayout appBarLayout = findViewById(R.id.app_bar_layout);
+--- a/chrome/android/java/res/values-night/colors.xml
++++ b/chrome/android/java/res/values-night/colors.xml
+@@ -26,19 +26,28 @@
+     <color name="tab_sharing_alert_color">@color/baseline_primary_80</color>
+     <color name="tab_pip_alert_color">@color/baseline_primary_80</color>
+ 
+-    <!-- AEGIS (patch 156, r106 user review: "why isn't the settings pure
+-         black like home page"): in dark mode the settings page background
+-         followed Chromium's dark-gray default_bg_color while the Aegis
+-         home is pure black. This override merges into the values/
+-         definition of the settings theme for the night configuration only;
+-         light mode is untouched. The style lives inside this registered
+-         values-night file because new res files must be added to the
+-         BUILD.gn sources list to compile (APK #112 lesson). -->
+-    <style name="Base.Theme.Chromium.Settings">
++    <!-- AEGIS (patch 165): replaces the patch-156 override - the previous
++         night style had no parent attribute, so Android resolved the
++         implicit parent from the style name and dropped Chromium's own
++         settings items. Explicit parent + the full values/ item set, with
++         the bars and window background pinned to black. -->
++    <style name="Base.Theme.Chromium.Settings" parent="Theme.Chromium">
++        <item name="appBarLayoutStyle">@style/Widget.MaterialComponents.AppBarLayout.Surface</item>
++        <item name="toolbarStyle">@style/SettingsToolbarStyle</item>
++        <item name="preferenceTheme">@style/PreferenceTheme</item>
++        <item name="alertDialogTheme">@style/ThemeOverlay.BrowserUI.AlertDialog</item>
++        <item name="searchViewStyle">@style/Widget.AppCompat.SearchView.ActionBar</item>
++        <item name="android:navigationBarColor">@android:color/black</item>
++        <item name="android:navigationBarDividerColor">@macro/bottom_system_nav_divider_color</item>
++        <item name="android:windowLightNavigationBar">false</item>
++        <item name="android:statusBarColor">@android:color/black</item>
++        <item name="android:windowLightStatusBar">false</item>
+         <item name="android:colorBackground">@android:color/black</item>
+-        <item name="android:statusBarColor">@android:color/black</item>
+-        <item name="android:navigationBarColor">@android:color/black</item>
+-        <item name="android:windowLightStatusBar">false</item>
+-        <item name="android:windowLightNavigationBar">false</item>
++
++        <!-- Text style attributes used by the preference_material.xml layout. -->
++        <item name="android:textAppearanceListItem">@style/TextAppearance.TextLarge.Primary</item>
++        <item name="android:textAppearanceListItemSmall">@style/TextAppearance.TextSmall.Primary</item>
++        <item name="android:textAppearanceListItemSecondary">@style/TextAppearance.TextMedium.Secondary</item>
++        <item name="android:textColorSecondary">@color/default_text_color_secondary_list</item>
+     </style>
+ </resources>

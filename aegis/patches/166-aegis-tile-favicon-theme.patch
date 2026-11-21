@@ -1,0 +1,67 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java
+@@ -889,6 +889,47 @@
+         return bmp;
+     }
+ 
++    /**
++     * AEGIS (patch 166): keeps a fetched favicon readable on the themed
++     * home. Average-luminance check (downsampled, cheap): a very dark
++     * icon on the dark surface (or a near-white one on the light surface)
++     * is composited centered onto a contrasting round chip, everything
++     * else passes through untouched.
++     */
++    private Bitmap themeFit(Bitmap src) {
++        boolean dark =
++                (getContext().getResources().getConfiguration().uiMode
++                        & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
++                == android.content.res.Configuration.UI_MODE_NIGHT_YES;
++        int w = Math.max(1, src.getWidth() / 8);
++        int h = Math.max(1, src.getHeight() / 8);
++        Bitmap small = Bitmap.createScaledBitmap(src, w, h, false);
++        int[] px = new int[w * h];
++        small.getPixels(px, 0, w, 0, 0, w, h);
++        long sum = 0;
++        int n = 0;
++        for (int c : px) {
++            if ((c >>> 24) < 32) continue; // transparent padding
++            sum += (long) (0.2126 * Color.red(c) + 0.7152 * Color.green(c)
++                    + 0.0722 * Color.blue(c));
++            n++;
++        }
++        float lum = n == 0 ? 255f : sum / n;
++        boolean clashes = (dark && lum < 70f) || (!dark && lum > 215f);
++        if (!clashes) return src;
++        int size = Math.max(src.getWidth(), src.getHeight());
++        Bitmap out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
++        Canvas canvas = new Canvas(out);
++        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
++        paint.setColor(dark ? 0xFFECECF1 : 0xFF2A2A2E);
++        canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint);
++        int ds = (int) (size * 0.62f);
++        Bitmap scaled = Bitmap.createScaledBitmap(src, ds, ds, true);
++        Paint draw = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
++        canvas.drawBitmap(scaled, (size - ds) / 2f, (size - ds) / 2f, draw);
++        return out;
++    }
++
+     /** Fetches the site favicon like Chrome (fallback style when missing). */
+     private void fetchFavicon(final ImageView icon, String target, String label) {
+         Profile profile =
+@@ -904,7 +945,15 @@
+                         mHandler.post(
+                                 () -> {
+                                     if (bmp != null && !bmp.isRecycled()) {
+-                                        icon.setImageBitmap(bmp);
++                                        // AEGIS (patch 166, r116 review:
++                                        // "make the favicon of landing
++                                        // page theme aware"): a dark site
++                                        // logo on the dark home (Aegis
++                                        // Search / Aegis Share tiles) was
++                                        // invisible. Icons that clash with
++                                        // the theme surface are composited
++                                        // onto a contrasting chip.
++                                        icon.setImageBitmap(themeFit(bmp));
+                                     } else if (fallbackColor != 0) {
+                                         // Aegis (patch 130): keep the first
+                                         // letter on the fallback color.

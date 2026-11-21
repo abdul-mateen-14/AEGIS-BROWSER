@@ -1,0 +1,19 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/privacy/settings/PrivacySettings.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/privacy/settings/PrivacySettings.java
+@@ -220,8 +220,15 @@
+             httpsFirstModeLegacySwitchPref.setSummary(getContext().getString(summaryId));
+         }
+ 
++        // AEGIS (patch 157, crash trap 2026-11-21): patch 155 removed the
++        // sync_and_services_link row from privacy_preferences.xml, so this
++        // lookup returns null and the unguarded setSummary crashed on the
++        // device (aegis-crash-1795251607884.txt, PrivacySettings.F1 NPE in
++        // the search-index pass). The row is gone; guard the glue.
+         Preference syncAndServicesLink = findPreference(PREF_SYNC_AND_SERVICES_LINK);
+-        syncAndServicesLink.setSummary(buildFooterString());
++        if (syncAndServicesLink != null) {
++            syncAndServicesLink.setSummary(buildFooterString());
++        }
+ 
+         Preference thirdPartyCookies = findPreference(PREF_THIRD_PARTY_COOKIES);
+         if (thirdPartyCookies != null) {

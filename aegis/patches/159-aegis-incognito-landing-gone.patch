@@ -1,0 +1,56 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/ntp/IncognitoNewTabPageView.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/ntp/IncognitoNewTabPageView.java
+@@ -89,21 +89,18 @@
+         inflateConditionalLayouts(contextMenuManager, navigationDelegate);
+     }
+ 
++    // AEGIS (patch 159, r116 review: "remove the chrome default incognito
++    // page from root"): the "You've gone Incognito" description card and
++    // the cookie card are retired - private tabs land on the Aegis home
++    // (with its private status line), and the native page behind renders
++    // as a plain themed surface.
+     private void inflateConditionalLayouts(
+             ContextMenuManager contextMenuManager,
+             NativePageNavigationDelegate navigationDelegate) {
+-        ViewStub viewStub = findViewById(R.id.incognito_description_layout_stub);
+-        viewStub.setLayoutResource(R.layout.incognito_description_layout);
+-        IncognitoDescriptionView descriptionView = (IncognitoDescriptionView) viewStub.inflate();
+-        descriptionView.setLearnMoreOnclickListener(_ -> mManager.loadIncognitoLearnMore());
+-        descriptionView.setContextMenuManager(contextMenuManager, navigationDelegate);
+-
+-        // Inflate the tracking protection card.
+-        ViewStub cardStub = findViewById(R.id.cookie_card_stub);
+-        if (cardStub == null) return;
+-        cardStub.setLayoutResource(R.layout.incognito_tracking_protection_card);
+-        cardStub.inflate();
+-        descriptionView.formatTrackingProtectionText(getContext(), this);
++        // AEGIS (patch 159): the description card AND the tracking
++        // protection card are retired with the rest of the incognito
++        // landing (see the method comment). The page renders its themed
++        // background only; the Aegis home shows on top.
+     }
+ 
+     @Override
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java
+@@ -980,7 +980,19 @@
+         // never matched it, so the home never showed.
+         boolean onNtp = tab != null && tab.getUrl() != null
+                 && UrlUtilities.isNtpUrl(tab.getUrl());
+-        if (onNtp) {
++        // AEGIS (patch 159, r116 review: "remove the chrome default
++        // incognito page from root"): a private tab briefly exposes the
++        // stock incognito landing before its NTP URL resolves. A blank
++        // off-the-record tab is covered at once - the user never sees the
++        // Chrome landing, only the Aegis home with the private line.
++        String tabSpec =
++                tab != null && tab.getUrl() != null
++                        ? tab.getUrl().getValidSpecOrEmpty()
++                        : "";
++        boolean incognitoBlank =
++                tab != null && tab.isIncognito()
++                        && (tabSpec.isEmpty() || tabSpec.equals("about:blank"));
++        if (onNtp || incognitoBlank) {
+             mClock.setText(mClockFormat.format(new Date()));
+             mDate.setText(mDateFormat.format(new Date()).toUpperCase(Locale.getDefault()));
+             // Private state (patch 130): a private tab is visibly

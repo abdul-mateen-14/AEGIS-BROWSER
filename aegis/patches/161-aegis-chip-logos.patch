@@ -1,0 +1,308 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisEngineIcons.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisEngineIcons.java
+@@ -0,0 +1,164 @@
++// Copyright 2026 The Aegis Browser Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++package org.chromium.chrome.browser.aegis;
++
++import android.content.Context;
++import android.graphics.Bitmap;
++import android.graphics.Canvas;
++import android.graphics.Color;
++import android.graphics.Paint;
++import android.graphics.Path;
++import android.graphics.RectF;
++import android.graphics.Typeface;
++
++import org.chromium.build.annotations.NullMarked;
++
++/**
++ * Brand marks for the dock search sheet engine chips (patch 161, r116
++ * review: "show their logo not names"). Everything is drawn with plain
++ * android.graphics primitives - no binary assets, no network favicons, so
++ * the row renders identically offline and per theme.
++ */
++@NullMarked
++public final class AegisEngineIcons {
++    private AegisEngineIcons() {}
++
++    /**
++     * The logo for a prepopulated engine keyword, drawn at {@code sizePx}.
++     * {@code dark} is the sheet's dark mode (the bare Aegis mark switches
++     * ink; the four third-party logos sit on their own brand discs).
++     */
++    public static Bitmap iconFor(String keyword, int sizePx, boolean dark) {
++        String k = keyword == null ? "" : keyword.toLowerCase();
++        if (k.contains("aegis")) return aegis(sizePx, dark);
++        if (k.contains("duckduckgo")) return duckduckgo(sizePx);
++        if (k.contains("google")) return google(sizePx);
++        if (k.contains("bing")) return bing(sizePx);
++        if (k.contains("chatgpt") || k.contains("openai")) return openai(sizePx);
++        return aegis(sizePx, dark);
++    }
++
++    private static Paint fill(int color) {
++        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
++        p.setColor(color);
++        return p;
++    }
++
++    private static Bitmap disc(int sizePx, int color) {
++        Bitmap bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
++        Canvas canvas = new Canvas(bmp);
++        canvas.drawCircle(sizePx / 2f, sizePx / 2f, sizePx / 2f, fill(color));
++        return bmp;
++    }
++
++    /** The Aegis shield mark (accent-on-glass, same geometry as home). */
++    private static Bitmap aegis(int sizePx, boolean dark) {
++        Bitmap bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
++        Canvas canvas = new Canvas(bmp);
++        Paint paint = fill(dark ? 0xFFF6F6F7 : 0xFF0A0A0B);
++        float cx = sizePx / 2f;
++        Path shield = new Path();
++        shield.moveTo(cx, sizePx * 0.14f);
++        shield.lineTo(sizePx * 0.82f, sizePx * 0.28f);
++        shield.lineTo(sizePx * 0.82f, sizePx * 0.55f);
++        shield.quadTo(sizePx * 0.82f, sizePx * 0.78f, cx, sizePx * 0.90f);
++        shield.quadTo(sizePx * 0.18f, sizePx * 0.78f, sizePx * 0.18f, sizePx * 0.55f);
++        shield.lineTo(sizePx * 0.18f, sizePx * 0.28f);
++        shield.close();
++        canvas.drawPath(shield, paint);
++        paint.setStyle(Paint.Style.STROKE);
++        paint.setStrokeWidth(sizePx * 0.07f);
++        paint.setColor(dark ? 0xFF0A0A0B : 0xFFF6F6F7);
++        canvas.drawLine(sizePx * 0.38f, sizePx * 0.52f, cx, sizePx * 0.68f, paint);
++        canvas.drawLine(cx, sizePx * 0.68f, sizePx * 0.66f, sizePx * 0.40f, paint);
++        return bmp;
++    }
++
++    /** DuckDuckGo: red disc with a simple white duck glyph. */
++    private static Bitmap duckduckgo(int sizePx) {
++        Bitmap bmp = disc(sizePx, 0xFFDE5833);
++        Canvas canvas = new Canvas(bmp);
++        Paint white = fill(0xFFFFFFFF);
++        // head
++        canvas.drawCircle(sizePx * 0.52f, sizePx * 0.42f, sizePx * 0.16f, white);
++        // body
++        canvas.drawCircle(sizePx * 0.46f, sizePx * 0.62f, sizePx * 0.19f, white);
++        // beak
++        Paint orange = fill(0xFFF0A030);
++        Path beak = new Path();
++        beak.moveTo(sizePx * 0.64f, sizePx * 0.40f);
++        beak.lineTo(sizePx * 0.82f, sizePx * 0.45f);
++        beak.lineTo(sizePx * 0.64f, sizePx * 0.50f);
++        beak.close();
++        canvas.drawPath(beak, orange);
++        // eye
++        canvas.drawCircle(sizePx * 0.56f, sizePx * 0.38f, sizePx * 0.035f, fill(0xFF2D2D2D));
++        return bmp;
++    }
++
++    /** Google: the four-color G on white. */
++    private static Bitmap google(int sizePx) {
++        Bitmap bmp = disc(sizePx, 0xFFFFFFFF);
++        Canvas canvas = new Canvas(bmp);
++        float r = sizePx * 0.30f;
++        float cx = sizePx / 2f;
++        float cy = sizePx / 2f;
++        float stroke = sizePx * 0.135f;
++        RectF oval = new RectF(cx - r, cy - r, cx + r, cy + r);
++        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
++        p.setStyle(Paint.Style.STROKE);
++        p.setStrokeWidth(stroke);
++        // red top
++        p.setColor(0xFFEA4335);
++        canvas.drawArc(oval, 150f, 95f, false, p);
++        // yellow left-bottom
++        p.setColor(0xFFFBBC05);
++        canvas.drawArc(oval, 245f, 65f, false, p);
++        // green bottom
++        p.setColor(0xFF34A853);
++        canvas.drawArc(oval, 310f, 85f, false, p);
++        // blue right arc + bar
++        p.setColor(0xFF4285F4);
++        canvas.drawArc(oval, 35f, 65f, false, p);
++        canvas.drawRect(cx + r - stroke / 2f, cy - stroke / 2f, cx + r + stroke / 2f,
++                cy + r, p);
++        return bmp;
++    }
++
++    /** Bing: teal disc with the lowercase b. */
++    private static Bitmap bing(int sizePx) {
++        Bitmap bmp = disc(sizePx, 0xFF008373);
++        Canvas canvas = new Canvas(bmp);
++        Paint white = fill(0xFFFFFFFF);
++        white.setTextSize(sizePx * 0.62f);
++        white.setTypeface(Typeface.create("sans-serif", Typeface.BOLD | Typeface.ITALIC));
++        white.setTextAlign(Paint.Align.CENTER);
++        Paint.FontMetrics fm = white.getFontMetrics();
++        float y = sizePx / 2f - (fm.ascent + fm.descent) / 2f;
++        canvas.drawText("b", sizePx / 2f, y, white);
++        return bmp;
++    }
++
++    /** OpenAI: the hexagonal knot, simplified to six rotated strokes. */
++    private static Bitmap openai(int sizePx) {
++        Bitmap bmp = disc(sizePx, 0xFF101013);
++        Canvas canvas = new Canvas(bmp);
++        Paint white = new Paint(Paint.ANTI_ALIAS_FLAG);
++        white.setColor(0xFFFFFFFF);
++        white.setStyle(Paint.Style.STROKE);
++        white.setStrokeWidth(sizePx * 0.10f);
++        white.setStrokeCap(Paint.Cap.ROUND);
++        float r = sizePx * 0.26f;
++        RectF oval = new RectF(-r, -r, r, r);
++        for (int i = 0; i < 6; i++) {
++            canvas.save();
++            canvas.translate(sizePx / 2f, sizePx / 2f);
++            canvas.rotate(60f * i);
++            canvas.drawArc(oval, 15f, 120f, false, white);
++            canvas.restore();
++        }
++        return bmp;
++    }
++}
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisSearchSheet.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisSearchSheet.java
+@@ -8,6 +8,7 @@
+ import android.content.Context;
+ import android.graphics.Rect;
+ import android.graphics.drawable.GradientDrawable;
++import android.widget.ImageView;
+ import android.os.Build;
+ import android.text.TextUtils;
+ import android.view.Gravity;
+@@ -43,15 +44,22 @@
+  * Aegis glass search sheet (patch 101, v2): the dock's URL-pill tap target.
+  * The query field is engine-neutral ("Search or type URL", spec section
+  * 2.2); typed domains load in the current tab, typed words search with the
+- * default engine through the service's own URL resolution. Engine chips
+- * (default + DuckDuckGo / Startpage / Wikipedia when prepopulated) switch
+- * the engine on tap. Suggestions land in a later sheet iteration.
++ * default engine through the service's own URL resolution. The engine
++ * strip is logo-only (patch 161): Aegis, DuckDuckGo, Google, Bing and
++ * OpenAI switch the engine on tap. Suggestions land in a later sheet
++ * iteration.
+  */
+ @NullMarked
+ public class AegisSearchSheet extends FrameLayout {
+-    /** Keywords surfaced as engine chips when present (spec Table 4). */
+-    private static final String[] CHIP_KEYWORDS = {
+-        "duckduckgo.com", "startpage.com", "wikipedia.org"
++    /**
++     * AEGIS (patch 161, r116 review: "add google and bing and openai
++     * option along with aegis and duckduckgo, show their logo not names"):
++     * the engine row is a fixed, logo-only strip. Order = tap order. Each
++     * keyword is matched against the service's prepopulated engines;
++     * engines a region does not carry are simply not shown.
++     */
++    private static final String[] ENGINE_KEYWORDS = {
++        "aegis", "duckduckgo.com", "google.com", "bing.com", "chatgpt.com"
+     };
+ 
+     private AegisSearchSheet(Context context) {
+@@ -217,52 +225,62 @@
+         if (!(context instanceof Activity)) return;
+         Activity activity = (Activity) context;
+         if (activity.isFinishing() || activity.isDestroyed()) return;
++        if (!(context instanceof Activity)) return;
++        Activity activity = (Activity) context;
++        if (activity.isFinishing() || activity.isDestroyed()) return;
+         chipRow.removeAllViews();
++        TemplateUrl dse = service.getDefaultSearchEngineTemplateUrl();
++        String dseKeyword = dse != null ? dse.getKeyword() : null;
++        List<TemplateUrl> all = service.getTemplateUrls();
++        float d = context.getResources().getDisplayMetrics().density;
++        int chipW = (int) (34 * d);
++        int chipH = (int) (28 * d);
++        int logo = (int) (20 * d);
+         int pad = context.getResources().getDimensionPixelSize(R.dimen.aegis_sheet_padding);
+-        TemplateUrl dse = service.getDefaultSearchEngineTemplateUrl();
+-        List<TemplateUrl> chips = new ArrayList<>();
+-        if (dse != null) chips.add(dse);
+-        for (TemplateUrl engine : service.getTemplateUrls()) {
+-            if (engine == null || dse == null) continue;
+-            String keyword = engine.getKeyword();
+-            if (keyword == null || keyword.equals(dse.getKeyword())) continue;
+-            for (String wanted : CHIP_KEYWORDS) {
+-                if (keyword.contains(wanted)) {
+-                    chips.add(engine);
++        int seen = 0;
++        for (String wanted : ENGINE_KEYWORDS) {
++            TemplateUrl engine = null;
++            for (TemplateUrl candidate : all) {
++                if (candidate == null) continue;
++                String keyword = candidate.getKeyword();
++                if (keyword != null && keyword.toLowerCase().contains(wanted)) {
++                    engine = candidate;
+                     break;
+                 }
+             }
+-        }
+-        for (TemplateUrl engine : chips) {
+-            TextView chip = new TextView(context);
++            if (engine == null) continue;
++            String keyword = engine.getKeyword();
++            boolean active =
++                    dseKeyword != null && keyword != null && keyword.equals(dseKeyword);
++            ImageView chip = new ImageView(context);
++            chip.setImageBitmap(AegisEngineIcons.iconFor(
++                    keyword, logo, AegisGlassUi.isDark(context)));
+             String name = engine.getShortName();
+-            boolean active = dse != null
+-                    && engine.getKeyword() != null
+-                    && engine.getKeyword().equals(dse.getKeyword());
+-            chip.setText(name != null ? name : "");
+-            chip.setTextSize(12);
+-            chip.setTextColor(context.getColor(
+-                    active ? R.color.aegis_accent_on : R.color.aegis_glass_chip_text));
++            chip.setContentDescription(name != null ? name : wanted);
+             GradientDrawable chipBg = new GradientDrawable();
+-            chipBg.setColor(context.getColor(
+-                    active ? R.color.aegis_glass_chip_active : R.color.aegis_glass_chip));
+-            float chipCorner = pad / 2f;
+-            chipBg.setCornerRadius(chipCorner);
+-            chip.setPadding(pad / 2, pad / 4, pad / 2, pad / 4);
++            chipBg.setColor(context.getColor(active ? R.color.aegis_glass_chip_active
++                                                    : R.color.aegis_glass_chip));
++            chipBg.setCornerRadius(chipH / 2f);
++            if (active) {
++                chipBg.setStroke((int) (1.5f * d), context.getColor(R.color.aegis_accent_on));
++            } else {
++                chipBg.setStroke(1, context.getColor(R.color.aegis_glass_stroke));
++            }
+             chip.setBackground(chipBg);
++            chip.setClickable(true);
++            chip.setFocusable(true);
+             chip.setOnClickListener(
+                     v -> {
+-                        String keyword = engine.getKeyword();
+                         if (keyword == null) return;
+                         service.setSearchEngine(keyword);
+                     });
+             LinearLayout.LayoutParams chipLp =
+-                    new LinearLayout.LayoutParams(
+-                            ViewGroup.LayoutParams.WRAP_CONTENT,
+-                            ViewGroup.LayoutParams.WRAP_CONTENT);
++                    new LinearLayout.LayoutParams(chipW, chipH);
+             chipLp.rightMargin = pad / 2;
+             chipRow.addView(chip, chipLp);
++            seen++;
+         }
++        if (seen == 0) return;
+     }
+ 
+     private static void dismiss(AegisSearchSheet sheet) {
+--- a/chrome/android/chrome_java_sources.gni
++++ b/chrome/android/chrome_java_sources.gni
+@@ -67,6 +67,7 @@
+   "java/src/org/chromium/chrome/browser/about_settings/AboutChromeSettings.java",
+   "java/src/org/chromium/chrome/browser/aegis/AegisEcosystemSettings.java",
+   "java/src/org/chromium/chrome/browser/aegis/AegisPasswordsSettings.java",
++  "java/src/org/chromium/chrome/browser/aegis/AegisEngineIcons.java",
+   "java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java",
+   "java/src/org/chromium/chrome/browser/aegis/AegisIdManager.java",
+   "java/src/org/chromium/chrome/browser/aegis/sync/AegisCrypto.java",
