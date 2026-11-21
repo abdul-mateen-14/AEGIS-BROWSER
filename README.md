@@ -1,4 +1,4 @@
-# Aegis Browser (v1.3)
+# Aegis Browser (v1.4)
 
 A privacy-hardened Chromium browser for Android (arm64). It is built and
 shipped entirely on GitHub's free infrastructure — no ads, no accounts, no
@@ -8,9 +8,22 @@ telemetry, and every piece of the toolchain that produces it is public.
   hosts, no extensions involved
 - **Private by default** — third-party cookies off, search suggestions off,
   Do Not Track on, metrics opt-in only
-- **End-to-end encrypted sync** — the server only ever sees ciphertext
+- **The Liquid Glass dock** — address, tabs, menu and site security in one
+  glass capsule that hides while you read and returns from the screen edge
+- **Verified sources & anti-phishing** — a green check in the address pill
+  for the project-maintained verified list (fetched live from
+  aegis-search.aegis-search.workers.dev/verified, refreshed daily), and a
+  warning when an address only *looks* like a verified site — the classic
+  one-character-away phishing shape
+- **Aegis Search** — the project's own engine as the default, with a
+  logo-only engine strip (Aegis, DuckDuckGo, Google, Bing, OpenAI)
+- **Launcher icons** — black (default), white or fully liquid glass,
+  switchable in Settings without a reinstall
+- **End-to-end encrypted sync** — Aegis ID sign-in live; the server only
+  ever sees ciphertext
 - **Real releases** — every build ends in a signed APK on the Releases page
-- Landing page: **https://aegis-browser.pages.dev** (Cloudflare Pages, free tier)
+- Landing page: **https://aegis-browser.pages.dev** (Cloudflare Pages, free
+  tier, theme-aware favicon)
 
 ## Get the browser
 
@@ -26,6 +39,52 @@ All the heavy work runs on GitHub's free hosted runners — the repository
 itself holds only text files (patches, scripts, workflow definitions), and
 one click on the Actions tab turns them into a signed APK 4-7 hours later.
 The full story is in `docs/Aegis_Free_Android_Build_Plan.docx` (+ .pdf).
+
+## What's new in v1.4
+
+The browser is now Chromium 156.0.8078.79 with the patch chain at **170
+patches** (010–170), every one public and reviewable.
+
+- **The Liquid Glass dock (patches 080–113, 158).** The browser chrome is
+  one 260×52 dp glass capsule: URL/trust pill, new tab, menu, hide. It
+  collapses into an edge bar, recalls on touch, and never traps itself
+  hidden again (the r116 race where the dock hid and the left-edge tap
+  stayed dead is fixed).
+- **Glass sheets everywhere (patches 100–153).** Search, tab manager, menu
+  and every dialog render as frosted liquid glass — dark-mode aware, with a
+  readable fallback when the device ships window blur disabled.
+- **Verified sources + phishing guard (patches 167).** The verified list is
+  fetched from the live page the maintainer edits; verified hosts get a
+  green tick inside the URL pill; lookalike hosts raise a one-time
+  "possible phishing" warning. Holding the URL pill opens a site-security
+  sheet with the full Chromium certificate viewer (subject, issuer,
+  validity, fingerprints).
+- **Editable address (patch 168).** Tapping the URL pill opens the search
+  sheet prefilled with the current URL — edit it, don't just re-search.
+- **More menu actions (patch 169).** Reload, Find in page, Share, Print,
+  Page zoom and Open PWA join the dock menu, all routed through the
+  browser's own menu ids.
+- **Glass toast (patch 170).** The stock Android pop-ups for sign-in
+  results and errors are replaced by a small themed glass pill.
+- **Search your way (patches 098, 160, 161).** Aegis Search is the default
+  engine; the dock's engine strip is logo-only — Aegis, DuckDuckGo, Google,
+  Bing and OpenAI (chatgpt.com added as a real prepopulated engine).
+- **Tab manager with favicons and badges (patch 162).** Every row shows the
+  site icon, a chip in the group's own color with the native group title,
+  and a Private badge on incognito rows.
+- **The stock incognito landing is retired (patch 159).** Private tabs land
+  on the Aegis home with its private status line — no Google-branded
+  "You've gone Incognito" page anywhere.
+- **Settings that match the home (patch 165).** Pure black in dark mode at
+  last — the activity's explicit background paints were bypassing every
+  theme fix before this one.
+- **Landing-page favicons that follow the theme (patches 166 + site).**
+  Site icons too dark for the dark home (or too light for the light one)
+  are composited onto a contrasting chip; aegis-browser.pages.dev now ships
+  a theme-aware favicon.
+- **Stability.** The r106 crash in Privacy settings (patch-155 regression)
+  and the tab-switcher relaunch crash are fixed; a crash trap writes a
+  readable stack to app storage for reportable failures.
 
 ## What's new in v1.3
 

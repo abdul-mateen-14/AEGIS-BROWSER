@@ -1,0 +1,272 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisSearchSheet.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisSearchSheet.java
+@@ -68,6 +68,16 @@
+ 
+     /** Builds and shows the sheet over the dock's activity content root. */
+     public static void show(AegisDockView dock) {
++        show(dock, null);
++    }
++
++    /**
++     * AEGIS (patch 168, r116 review: "when clicking on the dock it should
++     * give the option to edit current url not just search new one"): the
++     * sheet opens prefilled with the current URL - selected, so typing
++     * replaces it and the cursor keys edit it.
++     */
++    public static void show(AegisDockView dock, @Nullable String prefill) {
+         Activity activity = (Activity) dock.getContext();
+         if (!(activity instanceof ChromeTabbedActivity)) return;
+         ViewGroup content = activity.findViewById(android.R.id.content);
+@@ -97,6 +107,10 @@
+         // provider; the chip row below carries the active engine.
+         input.setHint(context.getString(R.string.aegis_dock_search_hint));
+         input.setSingleLine(true);
++        if (prefill != null && !prefill.isEmpty()) {
++            input.setText(prefill);
++            input.setSelection(prefill.length());
++        }
+         input.setTextSize(16);
+         input.setTextColor(context.getColor(R.color.aegis_glass_text));
+         input.setHintTextColor(context.getColor(R.color.aegis_glass_text_secondary));
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisSecuritySheet.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisSecuritySheet.java
+@@ -0,0 +1,173 @@
++// Copyright 2026 The Aegis Browser Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++package org.chromium.chrome.browser.aegis.dock;
++
++import android.app.Activity;
++import android.view.Gravity;
++import android.widget.LinearLayout;
++import android.widget.ScrollView;
++import android.widget.TextView;
++
++import org.chromium.build.annotations.NullMarked;
++import org.chromium.build.annotations.Nullable;
++import org.chromium.chrome.R;
++import org.chromium.chrome.browser.ChromeTabbedActivity;
++import org.chromium.chrome.browser.aegis.AegisGlassUi;
++import org.chromium.chrome.browser.aegis.AegisVerifiedSources;
++import org.chromium.chrome.browser.tab.Tab;
++import org.chromium.components.page_info.CertificateChainHelper;
++import org.chromium.components.page_info.CertificateViewer;
++
++/**
++ * Aegis site-security sheet (patch 168, r116 review: "sites certificates
++ * checking option on holding the dock"): what the current connection is,
++ * whether the site is a verified source, and the full Chromium certificate
++ * chain dialog one tap away. Long-press on the dock URL pill opens it.
++ */
++@NullMarked
++public class AegisSecuritySheet extends AegisGlassSheet {
++    private AegisSecuritySheet(AegisDockView dock) {
++        super(dock);
++    }
++
++    /** Opens the security sheet over {@code dock}'s activity. */
++    public static void show(AegisDockView dock) {
++        AegisSecuritySheet sheet = new AegisSecuritySheet(dock);
++        sheet.buildPanel();
++        present(dock, sheet);
++    }
++
++    private void buildPanel() {
++        TextView title = new TextView(getContext());
++        title.setText("Site security");
++        title.setTextSize(16);
++        title.setTypeface(title.getTypeface(), android.graphics.Typeface.BOLD);
++        title.setTextColor(getContext().getColor(R.color.aegis_text_primary));
++        title.setPadding(0, 0, 0, 10);
++        mPanel.addView(title);
++
++        ChromeTabbedActivity cta = (ChromeTabbedActivity) dock().getContext();
++        Tab tab = cta.getActivityTab();
++        String host = null;
++        boolean https = false;
++        if (tab != null && tab.getUrl() != null) {
++            host = tab.getUrl().getHost();
++            https = "https".equals(tab.getUrl().getScheme());
++        }
++
++        if (host == null || host.isEmpty()) {
++            mPanel.addView(row("No site open", "The current tab has no address."));
++            finishPanel(null, false, false);
++            return;
++        }
++
++        boolean verified =
++                AegisVerifiedSources.status(getContext(), host)
++                        == AegisVerifiedSources.VERIFIED;
++        String lookalike = AegisVerifiedSources.lookalikeOf(host);
++
++        ScrollView scroll = new ScrollView(getContext());
++        scroll.setVerticalScrollBarEnabled(false);
++        LinearLayout column = new LinearLayout(getContext());
++        column.setOrientation(LinearLayout.VERTICAL);
++        column.addView(row("Address", host));
++        column.addView(row("Connection",
++                https ? "HTTPS - encrypted link to the site"
++                      : "HTTP - NOT encrypted, anyone can read this traffic"));
++        if (verified) {
++            column.addView(row("Verified source",
++                    "Checked against the Aegis verified list. Safe to sign in "
++                            + "and fill forms."));
++        } else if (lookalike != null) {
++            column.addView(row("Possible phishing",
++                    "The address closely resembles the verified source "
++                            + lookalike + ". A few changed characters are a "
++                            + "classic fake-site trick."));
++        } else {
++            column.addView(row("Verified source",
++                    "Not on the Aegis verified list. Anyone can register any "
++                            + "domain - the list only marks sites that were "
++                            + "checked."));
++        }
++        scroll.addView(column);
++        mPanel.addView(
++                scroll,
++                new LinearLayout.LayoutParams(
++                        LinearLayout.LayoutParams.MATCH_PARENT,
++                        LinearLayout.LayoutParams.WRAP_CONTENT));
++        finishPanel(host, https, verified);
++    }
++
++    /** The certificate row + the verified-list footer. */
++    private void finishPanel(
++            @Nullable String host, boolean https, boolean verified) {
++        ChromeTabbedActivity cta = (ChromeTabbedActivity) dock().getContext();
++        Tab tab = cta.getActivityTab();
++        if (tab != null && tab.getWebContents() != null && https) {
++            TextView cert = AegisGlassUi.pill(
++                    getContext(), "View certificate", false);
++            cert.setGravity(Gravity.CENTER);
++            cert.setAllCaps(false);
++            cert.setOnClickListener(
++                    v -> {
++                        try {
++                            byte[][] chain = CertificateChainHelper
++                                    .getCertificateChain(tab.getWebContents());
++                            if (chain != null && chain.length > 0) {
++                                new CertificateViewer(getContext())
++                                        .showCertificateChain(chain);
++                            }
++                        } catch (RuntimeException certError) {
++                            AegisGlassUi.toast(getContext(),
++                                    "Certificate not available right now");
++                        }
++                    });
++            LinearLayout.LayoutParams certLp = new LinearLayout.LayoutParams(
++                    LinearLayout.LayoutParams.WRAP_CONTENT,
++                    LinearLayout.LayoutParams.WRAP_CONTENT);
++            int pad = (int) (10 * getResources().getDisplayMetrics().density);
++            certLp.topMargin = pad;
++            mPanel.addView(cert, certLp);
++        }
++
++        TextView footer = new TextView(getContext());
++        footer.setText("Verified list: aegis-search.aegis-search.workers.dev"
++                + "/verified - maintained by the project, refreshed daily.");
++        footer.setTextSize(11);
++        footer.setTextColor(getContext().getColor(R.color.aegis_text_secondary));
++        int pad = (int) (12 * getResources().getDisplayMetrics().density);
++        footer.setPadding(0, pad, 0, 0);
++        mPanel.addView(footer);
++    }
++
++    private TextView row(String label, String value) {
++        LinearLayout box = new LinearLayout(getContext());
++        box.setOrientation(LinearLayout.VERTICAL);
++        TextView key = new TextView(getContext());
++        key.setText(label);
++        key.setTextSize(10);
++        key.setAllCaps(true);
++        key.setLetterSpacing(0.08f);
++        key.setTypeface(key.getTypeface(), android.graphics.Typeface.BOLD);
++        key.setTextColor(getContext().getColor(R.color.aegis_text_secondary));
++        box.addView(key);
++        TextView val = new TextView(getContext());
++        val.setText(value);
++        val.setTextSize(13.5f);
++        if (label.equals("Possible phishing")) {
++            // Dark-aware danger ink (same palette as the patch-164 fix).
++            val.setTextColor(AegisGlassUi.isDark(getContext())
++                    ? 0xFFFFB4AB : 0xFFB3261E);
++        } else {
++            val.setTextColor(getContext().getColor(R.color.aegis_text_primary));
++        }
++        int top = (int) (3 * getResources().getDisplayMetrics().density);
++        val.setPadding(0, top, 0, 0);
++        box.addView(val);
++        int bottom = (int) (12 * getResources().getDisplayMetrics().density);
++        box.setPadding(0, 0, 0, bottom);
++        return box;
++    }
++}
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
+@@ -28,6 +28,7 @@
+ import org.chromium.chrome.R;
+ import org.chromium.chrome.browser.ChromeTabbedActivity;
+ import org.chromium.chrome.browser.aegis.AegisVerifiedSources;
++import org.chromium.chrome.browser.aegis.dock.AegisSecuritySheet;
+ import org.chromium.chrome.browser.tab.Tab;
+ import org.chromium.chrome.browser.tab.TabObserver;
+ import org.chromium.chrome.browser.tabmodel.TabModel;
+@@ -221,6 +222,14 @@
+                 R.drawable.aegis_ic_shield, 0, 0, 0);
+         mUrlPill.setCompoundDrawablePadding(vpad / 2);
+         mUrlPill.setOnClickListener(v -> openSearchOverlay());
++        // AEGIS (patch 168, r116 review: "sites certificates checking
++        // option on holding the dock"): holding the URL pill opens the
++        // glass site-security sheet.
++        mUrlPill.setOnLongClickListener(
++                v -> {
++                    AegisSecuritySheet.show(this);
++                    return true;
++                });
+         mPill.addView(mUrlPill, urlLp);
+         mPill.addView(makeButton(R.drawable.aegis_ic_plus, R.string.aegis_dock_new_tab,
+                 this::onNewTabClicked));
+@@ -616,9 +625,28 @@
+         AegisTabGridSheet.show(this);
+     }
+ 
+-    /** Opens the glass search sheet (patch 081). */
++    /**
++     * Opens the glass search sheet. Patch 168: the pill click edits the
++     * CURRENT url (prefilled, selected) instead of only searching anew -
++     * a clear tab stays a plain search.
++     */
+     public void openSearchOverlay() {
+-        AegisSearchSheet.show(this);
++        AegisSearchSheet.show(this, currentUrlSpec());
++    }
++
++    private @Nullable String currentUrlSpec() {
++        try {
++            Activity activity = (Activity) getContext();
++            if (!(activity instanceof ChromeTabbedActivity)) return null;
++            Tab tab = ((ChromeTabbedActivity) activity).getActivityTab();
++            if (tab != null && tab.getUrl() != null
++                    && !UrlUtilities.isNtpUrl(tab.getUrl())) {
++                return tab.getUrl().getSpec();
++            }
++        } catch (RuntimeException urlError) {
++            // No address to prefill - plain search mode.
++        }
++        return null;
+     }
+ 
+     @Override
+--- a/chrome/android/chrome_java_sources.gni
++++ b/chrome/android/chrome_java_sources.gni
+@@ -58,6 +58,7 @@
+   "java/src/org/chromium/chrome/browser/ZoomController.java",
+   "java/src/org/chromium/chrome/browser/about_settings/AboutChromePreferenceOSVersion.java",
+   "java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java",
++  "java/src/org/chromium/chrome/browser/aegis/dock/AegisSecuritySheet.java",
+   "java/src/org/chromium/chrome/browser/aegis/dock/AegisSearchSheet.java",
+   "java/src/org/chromium/chrome/browser/aegis/dock/AegisGlassSheet.java",
+   "java/src/org/chromium/chrome/browser/aegis/AegisGlassUi.java",

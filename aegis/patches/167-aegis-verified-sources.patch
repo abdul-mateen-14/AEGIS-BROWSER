@@ -1,0 +1,384 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisVerifiedSources.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisVerifiedSources.java
+@@ -0,0 +1,255 @@
++// Copyright 2026 The Aegis Browser Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++package org.chromium.chrome.browser.aegis;
++
++import android.content.Context;
++import android.content.SharedPreferences;
++import android.os.Handler;
++import android.os.Looper;
++
++import org.chromium.build.annotations.NullMarked;
++import org.chromium.build.annotations.Nullable;
++
++import java.io.BufferedReader;
++import java.io.InputStreamReader;
++import java.net.HttpURLConnection;
++import java.net.URL;
++import java.nio.charset.StandardCharsets;
++import java.util.ArrayList;
++import java.util.List;
++import java.util.Locale;
++
++/**
++ * The verified-source list (patch 167, r116 review: "verified sources
++ * ... always use this site so if I update the list you know").
++ *
++ * The single source of truth is the user-maintained page at
++ * aegis-search.aegis-search.workers.dev/verified - an HTML table whose
++ * rows carry the domain as &lt;tr id="amazon-com"&gt;. The manager fetches
++ * it, keeps it for 24 h (with a preferences cache so restarts are
++ * offline-safe) and answers three trust questions for the dock:
++ *   VERIFIED  - the host is on the list (exact or a subdomain)
++ *   LOOKALIKE - the host is NOT verified but only a few characters away
++ *               from one (typosquatting; the dock warns the user)
++ *   NEUTRAL   - everything else, no badge either way.
++ */
++@NullMarked
++public final class AegisVerifiedSources {
++    /** Trust answers for a host. */
++    public static final int NEUTRAL = 0;
++    public static final int VERIFIED = 1;
++    public static final int LOOKALIKE = 2;
++
++    private static final String VERIFIED_URL =
++            "https://aegis-search.aegis-search.workers.dev/verified";
++    private static final String PREF_LIST = "aegis_verified_list";
++    private static final String PREF_AT = "aegis_verified_at";
++    private static final long REFRESH_MS = 24L * 60 * 60 * 1000;
++    private static final long FETCH_TIMEOUT_MS = 8000;
++
++    private static final Object sLock = new Object();
++    private static List<String> sHosts;
++    private static long sFetchedAt;
++    private static boolean sFetching;
++    private static final Handler sMain = new Handler(Looper.getMainLooper());
++
++    private AegisVerifiedSources() {}
++
++    /**
++     * Trust status for {@code host}. Safe to call every second from the
++     * dock's refresh loop: after the first load everything is a cached
++     * lookup, and stale lists re-fetch on a background thread.
++     */
++    public static int status(Context context, @Nullable String host) {
++        ensure(context);
++        String reg = registered(host);
++        if (reg == null || reg.isEmpty()) return NEUTRAL;
++        List<String> hosts = snapshot();
++        if (hosts == null || hosts.isEmpty()) return NEUTRAL;
++        for (String entry : hosts) {
++            if (reg.equals(entry)) return VERIFIED;
++        }
++        for (String entry : hosts) {
++            if (isLookalike(reg, entry)) return LOOKALIKE;
++        }
++        return NEUTRAL;
++    }
++
++    /**
++     * The verified domain {@code host} resembles (for the warning copy),
++     * or null when the host is not a lookalike.
++     */
++    public static @Nullable String lookalikeOf(@Nullable String host) {
++        String reg = registered(host);
++        if (reg == null || reg.isEmpty()) return null;
++        List<String> hosts = snapshot();
++        if (hosts == null) return null;
++        for (String entry : hosts) {
++            if (isLookalike(reg, entry)) return entry;
++        }
++        return null;
++    }
++
++    /** Forces a refresh of the list (used by the security sheet). */
++    public static void refresh(Context context) {
++        synchronized (sLock) {
++            sFetchedAt = 0;
++        }
++        ensure(context);
++    }
++
++    private static List<String> snapshot() {
++        synchronized (sLock) {
++            return sHosts;
++        }
++    }
++
++    private static void ensure(Context context) {
++        Context app = context.getApplicationContext();
++        synchronized (sLock) {
++            if (sHosts == null) loadCache(app);
++            if (sHosts != null && System.currentTimeMillis() - sFetchedAt
++                            < REFRESH_MS) {
++                return;
++            }
++            if (sFetching) return;
++            sFetching = true;
++        }
++        new Thread(
++                () -> {
++                    List<String> fetched = fetchList();
++                    synchronized (sLock) {
++                        sFetching = false;
++                        if (fetched != null && !fetched.isEmpty()) {
++                            sHosts = fetched;
++                            sFetchedAt = System.currentTimeMillis();
++                            saveCache(app, fetched);
++                        } else if (sHosts != null) {
++                            // Keep serving the cached list; retry later.
++                            sFetchedAt = System.currentTimeMillis();
++                        }
++                    }
++                },
++                "AegisVerifiedFetch")
++                .start();
++    }
++
++    private static void loadCache(Context app) {
++        try {
++            SharedPreferences prefs = prefs(app);
++            long at = prefs.getLong(PREF_AT, 0);
++            String raw = prefs.getString(PREF_LIST, null);
++            if (raw == null || raw.isEmpty()) return;
++            List<String> hosts = new ArrayList<>();
++            for (String line : raw.split("\n")) {
++                if (!line.isEmpty()) hosts.add(line);
++            }
++            sHosts = hosts;
++            sFetchedAt = at;
++        } catch (RuntimeException cacheError) {
++            // A corrupt cache behaves like an empty one.
++        }
++    }
++
++    private static void saveCache(Context app, List<String> hosts) {
++        try {
++            prefs(app)
++                    .edit()
++                    .putString(PREF_LIST, String.join("\n", hosts))
++                    .putLong(PREF_AT, System.currentTimeMillis())
++                    .apply();
++        } catch (RuntimeException cacheWriteError) {
++            // Cache loss only costs one extra fetch.
++        }
++    }
++
++    private static SharedPreferences prefs(Context app) {
++        return app.getSharedPreferences("aegis_prefs", Context.MODE_PRIVATE);
++    }
++
++    /**
++     * Fetches the verified page and parses its table rows. The page is
++     * user-maintained HTML; the row id is the domain with dots written as
++     * dashes (&lt;tr id="amazon-com"&gt;).
++     */
++    private static List<String> fetchList() {
++        try {
++            HttpURLConnection connection =
++                    (HttpURLConnection) new URL(VERIFIED_URL).openConnection();
++            connection.setConnectTimeout(FETCH_TIMEOUT_MS);
++            connection.setReadTimeout(FETCH_TIMEOUT_MS);
++            connection.setInstanceFollowRedirects(true);
++            connection.setRequestProperty("User-Agent", "AegisBrowser");
++            if (connection.getResponseCode() != 200) return null;
++            StringBuilder html = new StringBuilder();
++            try (BufferedReader reader =
++                    new BufferedReader(new InputStreamReader(
++                            connection.getInputStream(), StandardCharsets.UTF_8))) {
++                String line;
++                while ((line = reader.readLine()) != null) html.append(line);
++            }
++            List<String> hosts = new ArrayList<>();
++            java.util.regex.Matcher matcher =
++                    java.util.regex.Pattern
++                            .compile("<tr[^>]*\\bid=\"([a-z0-9.-]+)\\b\"[^>]*>")
++                            .matcher(html);
++            while (matcher.find()) {
++                String id = matcher.group(1);
++                if (id.contains("-")) {
++                    hosts.add(id.replace('-', '.').toLowerCase(Locale.ROOT));
++                } else if (id.contains(".")) {
++                    hosts.add(id.toLowerCase(Locale.ROOT));
++                }
++            }
++            return hosts;
++        } catch (Exception fetchError) {
++            return null;
++        }
++    }
++
++    /** Strips "www." and lowercases; null for hosts this check ignores. */
++    private static @Nullable String registered(@Nullable String host) {
++        if (host == null) return null;
++        String h = host.trim().toLowerCase(Locale.ROOT);
++        if (h.isEmpty() || h.endsWith(".png") || h.contains(" ")) return null;
++        if (h.startsWith("www.")) h = h.substring(4);
++        return h;
++    }
++
++    /**
++     * Typosquat distance: a registered domain is a lookalike of a verified
++     * one when a small number of characters changed (1 for short names,
++     * up to 3 for long ones) - classic example: amason.com vs amazon.com.
++     */
++    private static boolean isLookalike(String host, String verified) {
++        if (host.equals(verified)) return false;
++        int distance = levenshtein(host, verified);
++        int max = Math.max(host.length(), verified.length());
++        if (max >= 12) return distance <= 3 && distance > 0;
++        if (max >= 8) return distance <= 2 && distance > 0;
++        return distance == 1 && Math.min(host.length(), verified.length()) >= 5;
++    }
++
++    /** Plain Levenshtein edit distance, small strings only. */
++    private static int levenshtein(String a, String b) {
++        int n = a.length(), m = b.length();
++        if (Math.abs(n - m) > 3) return Integer.MAX_VALUE;
++        int[] prev = new int[m + 1];
++        int[] curr = new int[m + 1];
++        for (int j = 0; j <= m; j++) prev[j] = j;
++        for (int i = 1; i <= n; i++) {
++            curr[0] = i;
++            for (int j = 1; j <= m; j++) {
++                int cost = a.charAt(i - 1) == b.charAt(j - 1) ? 0 : 1;
++                curr[j] = Math.min(
++                        Math.min(curr[j - 1] + 1, prev[j] + 1), prev[j - 1] + cost);
++            }
++            int[] swap = prev;
++            prev = curr;
++            curr = swap;
++        }
++        return prev[m];
++    }
++}
+--- a/chrome/android/java/res/drawable/aegis_ic_verified.xml
++++ b/chrome/android/java/res/drawable/aegis_ic_verified.xml
+@@ -0,0 +1,12 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- AEGIS (patch 167): the verified-source check shown inside the dock
++     URL pill - a filled disc with a check, monochrome accent ink. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24">
++    <path
++        android:pathData="M12,2 A10,10 0 1,0 12.01,2 Z M10.6,15.6 L6.9,11.9 L8.3,10.5 L10.6,12.8 L15.7,7.7 L17.1,9.1 Z"
++        android:fillColor="#3ECF8E" android:fillType="evenOdd"/>
++</vector>
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
+@@ -27,6 +27,7 @@
+ import org.chromium.build.annotations.Nullable;
+ import org.chromium.chrome.R;
+ import org.chromium.chrome.browser.ChromeTabbedActivity;
++import org.chromium.chrome.browser.aegis.AegisVerifiedSources;
+ import org.chromium.chrome.browser.tab.Tab;
+ import org.chromium.chrome.browser.tab.TabObserver;
+ import org.chromium.chrome.browser.tabmodel.TabModel;
+@@ -90,6 +91,9 @@
+     private boolean mImeOpen;
+     private @Nullable String mLastBound;
+     private @Nullable Tab mObservedTab;
++    /** AEGIS (patch 167): hosts the lookalike warning already fired for. */
++    private final java.util.HashSet<String> mWarnedLookalikes =
++            new java.util.HashSet<String>();
+     /** Last seen content offset (physical px); drives scroll direction. */
+     private int mLastContentOffsetY;
+     private boolean mHasContentOffset;
+@@ -518,6 +522,37 @@
+             mLastBound = next;
+             mUrlPill.setText(next);
+         }
++        // AEGIS (patch 167, r116 review: "verified sources ... a tick mark
++        // on url in dock ... so users know when filling a form etc that
++        // site is real"): the tick rides inside the pill for verified
++        // sources; a lookalike raises a one-time phishing warning.
++        String host = null;
++        boolean privateModel = false;
++        if (tab != null && tab.getUrl() != null
++                && !UrlUtilities.isNtpUrl(tab.getUrl())) {
++            host = tab.getUrl().getHost();
++            privateModel = tab.isIncognito();
++        }
++        int verified = AegisVerifiedSources.status(getContext(), host);
++        boolean tick = host != null && !privateModel
++                && verified == AegisVerifiedSources.VERIFIED;
++        if (tick) {
++            android.graphics.drawable.Drawable mark =
++                    getContext().getDrawable(R.drawable.aegis_ic_verified);
++            if (mark != null) {
++                int t = (int) (13 * getResources().getDisplayMetrics().density);
++                mark.setBounds(0, 0, t, t);
++                mUrlPill.setCompoundDrawablesRelative(mark, null, null, null);
++            }
++        } else {
++            mUrlPill.setCompoundDrawablesRelative(null, null, null, null);
++        }
++        if (host != null && !privateModel
++                && verified == AegisVerifiedSources.LOOKALIKE
++                && !mWarnedLookalikes.contains(host)) {
++            mWarnedLookalikes.add(host);
++            showLookalikeWarning(host);
++        }
+         // APK review 2026-11-15: the 1 Hz fallback poll never re-armed
+         // itself (it fired exactly once after attach), so tab switches left
+         // the URL pill showing the previous page. Re-arm after every run;
+@@ -531,6 +566,32 @@
+         if (spec.startsWith("https://")) return spec.substring(8);
+         if (spec.startsWith("http://")) return spec.substring(7);
+         return spec;
++    }
++
++    /**
++     * AEGIS (patch 167): a host that only LOOKS like a verified source is
++     * a classic phishing shape ("amason.com" for "amazon.com"). The dock
++     * tells the user once per host and per session; the site still loads -
++     * Aegis warns, it does not censor.
++     */
++    private void showLookalikeWarning(String host) {
++        Activity activity = (Activity) getContext();
++        if (!(activity instanceof ChromeTabbedActivity)) return;
++        if (activity.isFinishing() || activity.isDestroyed()) return;
++        String resembles = AegisVerifiedSources.lookalikeOf(host);
++        String message = "This address is NOT a verified source.\n\n"
++                + host
++                + (resembles != null ? "  closely resembles  " + resembles : "")
++                + "\n\nA few changed characters are a common phishing trick. "
++                + "Check the spelling before signing in or filling forms.";
++        android.app.AlertDialog dialog =
++                new android.app.AlertDialog.Builder(activity)
++                        .setTitle("Possible phishing")
++                        .setMessage(message)
++                        .setPositiveButton("I understand", null)
++                        .create();
++        org.chromium.chrome.browser.aegis.AegisGlassUi.apply(dialog, activity);
++        dialog.show();
+     }
+ 
+     /** Opens the Aegis glass menu sheet (patch 100). */
+--- a/chrome/android/chrome_java_sources.gni
++++ b/chrome/android/chrome_java_sources.gni
+@@ -71,6 +71,7 @@
+   "java/src/org/chromium/chrome/browser/aegis/home/AegisHomeView.java",
+   "java/src/org/chromium/chrome/browser/aegis/AegisIdManager.java",
+   "java/src/org/chromium/chrome/browser/aegis/AegisLauncherIcon.java",
++  "java/src/org/chromium/chrome/browser/aegis/AegisVerifiedSources.java",
+   "java/src/org/chromium/chrome/browser/aegis/sync/AegisCrypto.java",
+   "java/src/org/chromium/chrome/browser/aegis/sync/AegisSyncClient.java",
+   "java/src/org/chromium/chrome/browser/about_settings/AboutSettingsBridge.java",
+--- a/chrome/android/chrome_java_resources.gni
++++ b/chrome/android/chrome_java_resources.gni
+@@ -257,6 +257,7 @@
+   "java/res/drawable/aegis_logo_dark.xml",
+   "java/res/drawable/aegis_logo_glass.xml",
+   "java/res/drawable/aegis_url_pill.xml",
++  "java/res/drawable/aegis_ic_verified.xml",
+   "java/res/drawable/adaptive_toolbar_preference_header.xml",
+   "java/res/drawable/add_link.xml",
+   "java/res/drawable/add_photo_alternate_24dp.xml",

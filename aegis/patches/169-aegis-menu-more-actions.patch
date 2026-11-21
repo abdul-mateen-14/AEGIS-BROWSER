@@ -1,0 +1,122 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisMenuSheet.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisMenuSheet.java
+@@ -87,6 +87,21 @@
+                 () -> fire(R.id.download_page_id));
+         addTile(grid, R.string.aegis_menu_desktop_site, R.drawable.aegis_ic_desktop,
+                 () -> fire(R.id.request_desktop_site_id));
++        // AEGIS (patch 169, r116 review: "add more options like reload page
++        // PWA and other useful options which are still missing"): the
++        // browser's own routed ids, same as the stock menu.
++        addTile(grid, R.string.aegis_menu_reload, R.drawable.aegis_ic_reload,
++                () -> fire(R.id.reload_menu_id));
++        addTile(grid, R.string.aegis_menu_find, R.drawable.aegis_ic_find,
++                () -> fire(R.id.find_in_page_id));
++        addTile(grid, R.string.aegis_menu_share, R.drawable.aegis_ic_share,
++                () -> fire(R.id.share_menu_id));
++        addTile(grid, R.string.aegis_menu_print, R.drawable.aegis_ic_print,
++                () -> fire(R.id.print_id));
++        addTile(grid, R.string.aegis_menu_zoom, R.drawable.aegis_ic_zoom,
++                () -> fire(R.id.page_zoom_id));
++        addTile(grid, R.string.aegis_menu_pwa, R.drawable.aegis_ic_pwa,
++                () -> fire(R.id.open_webapk_id));
+         addTile(grid, R.string.aegis_menu_settings, R.drawable.aegis_ic_settings,
+                 () -> {
+                     dismiss();
+--- a/chrome/android/java/res/values/aegis_tokens.xml
++++ b/chrome/android/java/res/values/aegis_tokens.xml
+@@ -99,6 +99,13 @@
+     <string name="aegis_menu_reading_list">Reading list</string>
+     <string name="aegis_menu_desktop_site">Desktop site</string>
+     <string name="aegis_menu_settings">Settings</string>
++    <!-- AEGIS (patch 169): the actions the r116 review asked for. -->
++    <string name="aegis_menu_reload">Reload page</string>
++    <string name="aegis_menu_find">Find in page</string>
++    <string name="aegis_menu_share">Share</string>
++    <string name="aegis_menu_print">Print</string>
++    <string name="aegis_menu_zoom">Page zoom</string>
++    <string name="aegis_menu_pwa">Open PWA</string>
+     <!-- Home (Plate 01). %1$s = clock, %2$s = date, %3$s = blocked count. -->
+     <string name="aegis_home_status">Hardened · %1$s hosts blocked</string>
+     <string name="aegis_home_quick">Quick shields</string>
+--- a/chrome/android/chrome_java_resources.gni
++++ b/chrome/android/chrome_java_resources.gni
+@@ -257,7 +257,13 @@
+   "java/res/drawable/aegis_logo_dark.xml",
+   "java/res/drawable/aegis_logo_glass.xml",
+   "java/res/drawable/aegis_url_pill.xml",
++  "java/res/drawable/aegis_ic_find.xml",
++  "java/res/drawable/aegis_ic_pwa.xml",
++  "java/res/drawable/aegis_ic_print.xml",
++  "java/res/drawable/aegis_ic_reload.xml",
++  "java/res/drawable/aegis_ic_share.xml",
+   "java/res/drawable/aegis_ic_verified.xml",
++  "java/res/drawable/aegis_ic_zoom.xml",
+   "java/res/drawable/adaptive_toolbar_preference_header.xml",
+   "java/res/drawable/add_link.xml",
+   "java/res/drawable/add_photo_alternate_24dp.xml",
+--- a/chrome/android/java/res/drawable/aegis_ic_reload.xml
++++ b/chrome/android/java/res/drawable/aegis_ic_reload.xml
+@@ -0,0 +1,8 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- AEGIS (patch 169): circular reload arrow. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp" android:height="24dp"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:pathData="M12,5 V7 A5,5 0 1,0 17,12 H19 A7,7 0 1,1 12,5 Z M12,5 H16 V1 H18 V7 H12 Z"
++        android:fillColor="#DE101114"/>
++</vector>
+--- a/chrome/android/java/res/drawable/aegis_ic_find.xml
++++ b/chrome/android/java/res/drawable/aegis_ic_find.xml
+@@ -0,0 +1,8 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- AEGIS (patch 169): magnifier for find in page. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp" android:height="24dp"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:pathData="M10.5,4 A6.5,6.5 0 1,0 10.51,17 A6.5,6.5 0 0,0 10.5,4 Z M10.5,6 A4.5,4.5 0 1,1 10.51,15 A4.5,4.5 0 0,1 10.5,6 Z M15.4,13.98 L20.5,19.06 L19.06,20.5 L13.98,15.4 Z"
++        android:fillColor="#DE101114" android:fillType="evenOdd"/>
++</vector>
+--- a/chrome/android/java/res/drawable/aegis_ic_share.xml
++++ b/chrome/android/java/res/drawable/aegis_ic_share.xml
+@@ -0,0 +1,8 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- AEGIS (patch 169): android share glyph. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp" android:height="24dp"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:pathData="M18,16.1 C17.24,16.1 16.56,16.39 16.04,16.85 L8.91,12.7 C8.96,12.47 9,12.24 9,12 C9,11.76 8.96,11.53 8.91,11.3 L15.96,7.19 C16.5,7.69 17.21,8 18,8 A3,3 0 1,0 15,5 C15,5.24 15.04,5.47 15.09,5.7 L8.04,9.81 C7.5,9.31 6.79,9 6,9 A3,3 0 1,0 9,12 C9,11.76 8.96,11.53 8.91,11.3 L16.04,15.45 C16.56,15.91 17.24,16.2 18,16.2 A3,3 0 1,0 18,16.1 Z"
++        android:fillColor="#DE101114" android:fillType="evenOdd"/>
++</vector>
+--- a/chrome/android/java/res/drawable/aegis_ic_print.xml
++++ b/chrome/android/java/res/drawable/aegis_ic_print.xml
+@@ -0,0 +1,8 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- AEGIS (patch 169): printer glyph. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp" android:height="24dp"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:pathData="M7,3 H17 V7 H7 Z M6,18 V20 H18 V18 Z M19,8 H5 A3,3 0 0,0 2,11 V16 H6 V19 H18 V16 H22 V11 A3,3 0 0,0 19,8 Z M6,10.5 A1,1 0 1,1 6.01,10.49 Z M18,14 H16 V12 H18 Z"
++        android:fillColor="#DE101114"/>
++</vector>
+--- a/chrome/android/java/res/drawable/aegis_ic_zoom.xml
++++ b/chrome/android/java/res/drawable/aegis_ic_zoom.xml
+@@ -0,0 +1,8 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- AEGIS (patch 169): text-zoom AA glyph. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp" android:height="24dp"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:pathData="M2,20 L7.5,4 H10.5 L16,20 H13.2 L12,16.2 H6 L4.8,20 Z M9,7.6 L6.7,14 H11.3 Z M15,20 V17.6 L20.6,11.8 H15.4 V9.6 H23.2 V12 L17.7,17.8 H23.4 V20 Z"
++        android:fillColor="#DE101114"/>
++</vector>
+--- a/chrome/android/java/res/drawable/aegis_ic_pwa.xml
++++ b/chrome/android/java/res/drawable/aegis_ic_pwa.xml
+@@ -0,0 +1,8 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- AEGIS (patch 169): app-on-home glyph for PWA. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp" android:height="24dp"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:pathData="M5,3 H13 A2,2 0 0,1 15,5 V12 H13 V5 H5 V19 H13 V21 H5 A2,2 0 0,1 3,19 V5 A2,2 0 0,1 5,3 Z M17,7 L22,12 L17,17 L15.6,15.6 L18.2,13 H10 V11 H18.2 L15.6,8.4 Z"
++        android:fillColor="#DE101114"/>
++</vector>

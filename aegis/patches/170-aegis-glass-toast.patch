@@ -1,0 +1,112 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisGlassUi.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisGlassUi.java
+@@ -194,4 +194,60 @@
+         view.setTextSize(15f);
+         return view;
+     }
+-}
++
++    /**
++     * AEGIS (patch 170, r116 review: "remove the notification pop up it
++     * looks too bad, make a new one small and good one matches our
++     * theme"): the stock Android toast for sign-in results and errors.
++     * A small glass pill floats bottom-center for ~2.6 s and fades - same
++     * tokens as the dialogs, dark-mode aware, never steals focus.
++     */
++    public static void toast(Context context, String message) {
++        try {
++            if (!(context instanceof Activity)) return;
++            Activity activity = (Activity) context;
++            if (activity.isFinishing() || activity.isDestroyed()) return;
++            android.view.ViewGroup content =
++                    activity.findViewById(android.R.id.content);
++            if (content == null) return;
++
++            TextView pill = new TextView(context);
++            pill.setText(message);
++            pill.setTextSize(13f);
++            pill.setMaxLines(2);
++            pill.setEllipsize(android.text.TextUtils.TruncateAt.END);
++            boolean dark = isDark(context);
++            pill.setTextColor(dark ? TEXT_PRIMARY_DARK : TEXT_PRIMARY_LIGHT);
++            pill.setBackground(glass(context, 20f, false));
++            float d = density(context);
++            int hpad = (int) (16 * d);
++            int vpad = (int) (10 * d);
++            pill.setPadding(hpad, vpad, hpad, vpad);
++            pill.setElevation(6 * d);
++
++            android.widget.FrameLayout.LayoutParams lp =
++                    new android.widget.FrameLayout.LayoutParams(
++                            android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
++                            android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
++                            Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
++            lp.bottomMargin = (int) (72 * d);
++            lp.leftMargin = (int) (24 * d);
++            lp.rightMargin = (int) (24 * d);
++            content.addView(pill, lp);
++            pill.setAlpha(0f);
++            pill.animate().alpha(1f).setDuration(140).start();
++            pill.postDelayed(
++                    () -> {
++                        pill.animate()
++                                .alpha(0f)
++                                .setDuration(200)
++                                .withEndAction(
++                                        () -> content.removeView(pill))
++                                .start();
++                    },
++                    2600);
++        } catch (RuntimeException toastError) {
++            // A toast must never break the flow it reports about.
++        }
++    }
++
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisEcosystemSettings.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisEcosystemSettings.java
+@@ -20,7 +20,7 @@
+ import android.widget.LinearLayout;
+ import android.widget.ScrollView;
+ import android.widget.TextView;
+-import android.widget.Toast;
++import org.chromium.chrome.browser.aegis.AegisGlassUi;
+ 
+ import androidx.preference.Preference;
+ 
+@@ -130,7 +130,8 @@
+                                             "application/xhtml+xml"}),
+                     AegisBookmarkImporter.IMPORT_REQUEST_CODE);
+         } catch (ActivityNotFoundException e) {
+-            Toast.makeText(getContext(), "No file picker available", Toast.LENGTH_SHORT)
++            AegisGlassUi.toast(getContext(), "No file picker available");
++            // patch 170: was Toast.makeText(..., LENGTH_SHORT)
+                     .show();
+         }
+     }
+@@ -244,7 +245,7 @@
+         String email = emailField.getText().toString().trim();
+         String passphrase = passphraseField.getText().toString();
+         if (email.isEmpty() || passphrase.isEmpty()) {
+-            Toast.makeText(context, "Enter your email and passphrase.", Toast.LENGTH_SHORT).show();
++            AegisGlassUi.toast(context, "Enter your email and passphrase.");
+             return;
+         }
+         setSignInDialogBusy(dialog, true);
+@@ -257,7 +258,7 @@
+                     dialog.dismiss();
+                 } else {
+                     dialog.setTitle("Aegis ID");
+-                    Toast.makeText(context, errorOrSummary, Toast.LENGTH_LONG).show();
++                    AegisGlassUi.toast(context, errorOrSummary);
+                 }
+                 refreshIdentityState();
+             }
+@@ -376,7 +377,7 @@
+                             loadDevicesInto(dialog, list);
+                         } else {
+                             revoke.setEnabled(true);
+-                            Toast.makeText(context, errorOrSummary, Toast.LENGTH_LONG).show();
++                            AegisGlassUi.toast(context, errorOrSummary);
+                         }
+                     }
+                 });
