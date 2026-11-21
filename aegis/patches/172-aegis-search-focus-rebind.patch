@@ -1,0 +1,38 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisSearchSheet.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisSearchSheet.java
+@@ -195,6 +195,7 @@
+                         ProfileManager.getLastUsedRegularProfile());
+         service.runWhenLoaded(() -> buildChips(context, chipRow, service));
+ 
++        input.setFocusableInTouchMode(true);
+         input.requestFocus();
+         input.post(
+                 () -> {
+@@ -203,6 +204,27 @@
+                                     context.getSystemService(Context.INPUT_METHOD_SERVICE);
+                     if (imm != null) imm.showSoftInput(input, 0);
+                 });
++        // AEGIS (patch 172, r117 report: "when a new tab opens the address
++        // bar comes above with keyboard but the text doesn't write on the
++        // bar until we tap on the bar"): on a fresh tab the window is
++        // still settling focus when showSoftInput runs, so the IME came
++        // up with no editor bound - typing went nowhere. Re-assert focus
++        // and binding twice; each pass acts only when the field really
++        // holds window focus, so a user who already tapped is untouched.
++        Runnable reassert =
++                () -> {
++                    if (!input.isAttachedToWindow()) return;
++                    InputMethodManager imm =
++                            (InputMethodManager)
++                                    context.getSystemService(Context.INPUT_METHOD_SERVICE);
++                    if (imm == null) return;
++                    if (!input.isFocused()) input.requestFocus();
++                    if (input.isFocused() && input.hasWindowFocus()) {
++                        imm.showSoftInput(input, 0);
++                    }
++                };
++        input.postDelayed(reassert, 140);
++        input.postDelayed(reassert, 420);
+     }
+ 
+     /**

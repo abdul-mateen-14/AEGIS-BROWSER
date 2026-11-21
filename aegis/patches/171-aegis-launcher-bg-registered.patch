@@ -1,0 +1,10 @@
+--- a/chrome/android/chrome_java_resources.gni
++++ b/chrome/android/chrome_java_resources.gni
+@@ -251,6 +251,7 @@
+   "java/res/drawable/aegis_ic_reading.xml",
+   "java/res/drawable/aegis_ic_settings.xml",
+   "java/res/drawable/aegis_ic_shield.xml",
++  "java/res/drawable/aegis_launcher_bg_white.xml",
+   "java/res/drawable/aegis_launcher_glass.xml",
+   "java/res/drawable/aegis_launcher_glass_bg.xml",
+   "java/res/drawable/aegis_launcher_white.xml",
