@@ -1,0 +1,229 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisMenuSheet.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisMenuSheet.java
+@@ -117,7 +117,7 @@
+                                 android.widget.Toast.LENGTH_SHORT).show();
+                         return;
+                     }
+-                    fire(R.id.add_to_homescreen_id);
++                    fire(R.id.open_webapk_id);
+                 });
+         addTile(grid, R.string.aegis_menu_settings, R.drawable.aegis_ic_settings,
+                 () -> {
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisEngineIcons.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisEngineIcons.java
+@@ -34,7 +34,7 @@
+ 
+     /** Dispatch on the engine keyword (patch 176 logos). */
+     public static Bitmap iconFor(String keyword, int sizePx, boolean dark) {
+-        String k = keyword == null ? "" : keyword.toLowerCase(Locale.ROOT);
++        String k = keyword == null ? "" : keyword.toLowerCase();
+         if (k.contains("aegis")) return aegis(sizePx, dark);
+         if (k.contains("duckduckgo")) return duckduckgo(sizePx);
+         if (k.contains("google")) return google(sizePx);
+@@ -158,4 +158,36 @@
+         canvas.drawPath(tail, p);
+         return bmp;
+     }
++    /** AEGIS (patch 177): the brand mark as the fallback chip. */
++    private static Bitmap aegis(int sizePx, boolean dark) {
++        Bitmap bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
++        Canvas canvas = new Canvas(bmp);
++        Paint p = paintOf(dark ? 0xFFF2F3F7 : 0xFF101114);
++        p.setStyle(Paint.Style.STROKE);
++        p.setStrokeWidth(sizePx * 0.09f);
++        p.setStrokeJoin(Paint.Join.ROUND);
++        float s = sizePx;
++        Path big = new Path();
++        big.moveTo(s * 0.50f, s * 0.13f);
++        big.lineTo(s * 0.15f, s * 0.87f);
++        big.lineTo(s * 0.85f, s * 0.87f);
++        big.close();
++        canvas.drawPath(big, p);
++        Path nested = new Path();
++        nested.moveTo(s * 0.63f, s * 0.42f);
++        nested.lineTo(s * 0.48f, s * 0.76f);
++        nested.lineTo(s * 0.83f, s * 0.76f);
++        nested.close();
++        canvas.drawPath(nested, p);
++        p.setStyle(Paint.Style.FILL);
++        Path bar = new Path();
++        bar.moveTo(s * 0.10f, s * 0.76f);
++        bar.lineTo(s * 0.66f, s * 0.76f);
++        bar.lineTo(s * 0.56f, s * 0.93f);
++        bar.lineTo(s * 0.20f, s * 0.93f);
++        bar.close();
++        canvas.drawPath(bar, p);
++        return bmp;
++    }
++
+ }
+--- a/chrome/android/java/res/drawable/aegis_launcher_bg_white.xml
++++ b/chrome/android/java/res/drawable/aegis_launcher_bg_white.xml
+@@ -1,5 +1,6 @@
+ <?xml version="1.0" encoding="utf-8"?>
+-<!-- AEGIS (patch 163): solid white background layer. -->
++<!-- AEGIS (patch 177): the white-variant background, redrawn from the
++     reference render - near-black tile behind the pure white mark. -->
+ <vector xmlns:android="http://schemas.android.com/apk/res/android"
+     android:width="108dp"
+     android:height="108dp"
+@@ -7,5 +8,5 @@
+     android:viewportHeight="108">
+     <path
+         android:pathData="M0,0h108v108h-108z"
+-        android:fillColor="#FFFFFF"/>
++        android:fillColor="#0A0A0C"/>
+ </vector>
+--- a/chrome/android/java/res/drawable/aegis_launcher_glass_bg.xml
++++ b/chrome/android/java/res/drawable/aegis_launcher_glass_bg.xml
+@@ -1,37 +1,53 @@
+ <?xml version="1.0" encoding="utf-8"?>
+-<!-- AEGIS (patch 163): liquid-glass background layer - layered
+-     translucent gradients, no brand color, so the wallpaper reads
+-     through the frosted disc. -->
++<!-- AEGIS (patch 177): the liquid-glass background, redrawn from the
++     reference render - dark smoked glass with a top-left specular and a
++     bottom rim glow, edged like moulded glass. -->
+ <vector xmlns:android="http://schemas.android.com/apk/res/android"
+     xmlns:aapt="http://schemas.android.com/aapt"
+     android:width="108dp"
+     android:height="108dp"
+     android:viewportWidth="108"
+     android:viewportHeight="108">
+-    <path
+-        android:pathData="M0,0h108v108h-108z">
++    <path android:pathData="M0,0h108v108h-108z">
+         <aapt:attr name="android:fillColor">
+             <gradient
+                 android:type="linear"
+-                android:startX="0" android:startY="0"
+-                android:endX="108" android:endY="108">
+-                <item android:offset="0.0" android:color="#66FFFFFF"/>
+-                <item android:offset="0.55" android:color="#3DEDEFF4"/>
+-                <item android:offset="1.0" android:color="#59C9CDD6"/>
++                android:startX="10" android:startY="0"
++                android:endX="98" android:endY="108">
++                <item android:offset="0.0" android:color="#FF35373D"/>
++                <item android:offset="0.55" android:color="#FF1B1C20"/>
++                <item android:offset="1.0" android:color="#FF0C0D10"/>
+             </gradient>
+         </aapt:attr>
+     </path>
+-    <path
+-        android:pathData="M54,16 a38,38 0 1,0 0.01,0 z">
++    <path android:pathData="M54,54 m-52,0 a52,52 0 1,0 104,0 a52,52 0 1,0 -104,0 z">
++        <aapt:attr name="android:fillColor">
++            <gradient
++                android:type="radial"
++                android:centerX="34" android:centerY="24"
++                android:gradientRadius="64">
++                <item android:offset="0.0" android:color="#5CFFFFFF"/>
++                <item android:offset="0.55" android:color="#1FFFFFFF"/>
++                <item android:offset="1.0" android:color="#00FFFFFF"/>
++            </gradient>
++        </aapt:attr>
++    </path>
++    <path android:pathData="M54,54 m-52,0 a52,52 0 1,0 104,0 a52,52 0 1,0 -104,0 z">
+         <aapt:attr name="android:fillColor">
+             <gradient
+                 android:type="radial"
+-                android:centerX="42" android:centerY="34"
+-                android:gradientRadius="72">
+-                <item android:offset="0.0" android:color="#8CFFFFFF"/>
+-                <item android:offset="0.7" android:color="#40FFFFFF"/>
+-                <item android:offset="1.0" android:color="#14FFFFFF"/>
++                android:centerX="54" android:centerY="112"
++                android:gradientRadius="62">
++                <item android:offset="0.0" android:color="#2EFFFFFF"/>
++                <item android:offset="0.6" android:color="#0FFFFFFF"/>
++                <item android:offset="1.0" android:color="#00FFFFFF"/>
+             </gradient>
+         </aapt:attr>
+     </path>
++    <path
++        android:pathData="M3,3 h102 v102 h-102 z"
++        android:strokeColor="#47FFFFFF" android:strokeWidth="2"/>
++    <path
++        android:pathData="M8,10 L64,10 L26,98 L8,98 Z"
++        android:fillColor="#14FFFFFF"/>
+ </vector>
+--- a/chrome/android/java/res/drawable/aegis_logo_dark.xml
++++ b/chrome/android/java/res/drawable/aegis_logo_dark.xml
+@@ -1,11 +1,21 @@
+ <?xml version="1.0" encoding="utf-8"?>
+-<!-- AEGIS (patch 163): the mark in ink, for the white variant. -->
++<!-- AEGIS (patch 177): the white variant foreground - the triangle-A in
++     pure white, redrawn from the reference render. Also used in-app on
++     dark surfaces. -->
+ <vector xmlns:android="http://schemas.android.com/apk/res/android"
+     android:width="108dp"
+     android:height="108dp"
+     android:viewportWidth="108"
+     android:viewportHeight="108">
+     <path
+-        android:pathData="M53.51,38.36 L 38.22,67.38 L 38.00,68.62 L 38.13,69.29 L 38.67,69.64 L 60.22,69.64 L 60.76,69.29 L 61.29,68.27 L 61.11,67.20 L 55.69,55.73 L 55.78,55.02 L 57.82,51.02 L 58.27,50.67 L 58.84,50.62 L 59.47,51.11 L 68.44,69.56 L 69.33,69.64 L 69.91,68.49 L 69.87,67.69 L 60.49,49.51 L 60.00,48.89 L 59.29,48.53 L 58.18,48.67 L 57.33,49.47 L 51.38,61.38 L 50.80,62.04 L 50.27,62.27 L 46.18,62.27 L 45.47,61.73 L 45.38,60.80 L 55.51,40.93 L 55.56,40.09 L 54.80,38.67 L 54.31,38.36 Z M39.56,67.73 L 41.51,63.78 L 41.96,63.42 L 57.56,63.38 L 58.00,63.56 L 58.18,63.73 L 59.78,67.02 L 60.09,67.91 L 59.91,68.36 L 59.42,68.67 L 40.36,68.67 L 39.96,68.53 L 39.64,68.22 Z"
+-        android:fillColor="#1A1A1F" android:fillType="evenOdd"/>
++        android:pathData="M54,14 L16,89 L92,89 Z"
++        android:strokeColor="#FFFFFF" android:strokeWidth="7"
++        android:strokeLineJoin="round"/>
++    <path
++        android:pathData="M65,42 L49,78 L86,78 Z"
++        android:strokeColor="#FFFFFF" android:strokeWidth="7"
++        android:strokeLineJoin="round"/>
++    <path
++        android:pathData="M11,78 L70,78 L59,94 L23,94 Z"
++        android:fillColor="#FFFFFF"/>
+ </vector>
+--- a/chrome/android/java/res/drawable/aegis_logo_glass.xml
++++ b/chrome/android/java/res/drawable/aegis_logo_glass.xml
+@@ -1,16 +1,42 @@
+ <?xml version="1.0" encoding="utf-8"?>
+-<!-- AEGIS (patch 163): the mark formed from the glass itself -
+-     translucent white with a faint brighter rim, no color. -->
++<!-- AEGIS (patch 177): the brand mark, glass grade, in-app - translucent fills with
++     bright moulded edges, per the reference render. -->
+ <vector xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:aapt="http://schemas.android.com/aapt"
+     android:width="108dp"
+     android:height="108dp"
+     android:viewportWidth="108"
+     android:viewportHeight="108">
+     <path
+-        android:pathData="M53.51,38.36 L 38.22,67.38 L 38.00,68.62 L 38.13,69.29 L 38.67,69.64 L 60.22,69.64 L 60.76,69.29 L 61.29,68.27 L 61.11,67.20 L 55.69,55.73 L 55.78,55.02 L 57.82,51.02 L 58.27,50.67 L 58.84,50.62 L 59.47,51.11 L 68.44,69.56 L 69.33,69.64 L 69.91,68.49 L 69.87,67.69 L 60.49,49.51 L 60.00,48.89 L 59.29,48.53 L 58.18,48.67 L 57.33,49.47 L 51.38,61.38 L 50.80,62.04 L 50.27,62.27 L 46.18,62.27 L 45.47,61.73 L 45.38,60.80 L 55.51,40.93 L 55.56,40.09 L 54.80,38.67 L 54.31,38.36 Z M39.56,67.73 L 41.51,63.78 L 41.96,63.42 L 57.56,63.38 L 58.00,63.56 L 58.18,63.73 L 59.78,67.02 L 60.09,67.91 L 59.91,68.36 L 59.42,68.67 L 40.36,68.67 L 39.96,68.53 L 39.64,68.22 Z"
+-        android:fillColor="#CCFFFFFF" android:fillType="evenOdd"/>
+-    <path
+-        android:pathData="M53.51,38.36 L 38.22,67.38 L 38.00,68.62 L 38.13,69.29 L 38.67,69.64 L 60.22,69.64 L 60.76,69.29 L 61.29,68.27 L 61.11,67.20 L 55.69,55.73 L 55.78,55.02 L 57.82,51.02 L 58.27,50.67 L 58.84,50.62 L 59.47,51.11 L 68.44,69.56 L 69.33,69.64 L 69.91,68.49 L 69.87,67.69 L 60.49,49.51 L 60.00,48.89 L 59.29,48.53 L 58.18,48.67 L 57.33,49.47 L 51.38,61.38 L 50.80,62.04 L 50.27,62.27 L 46.18,62.27 L 45.47,61.73 L 45.38,60.80 L 55.51,40.93 L 55.56,40.09 L 54.80,38.67 L 54.31,38.36 Z M39.56,67.73 L 41.51,63.78 L 41.96,63.42 L 57.56,63.38 L 58.00,63.56 L 58.18,63.73 L 59.78,67.02 L 60.09,67.91 L 59.91,68.36 L 59.42,68.67 L 40.36,68.67 L 39.96,68.53 L 39.64,68.22 Z"
+-        android:strokeColor="#66FFFFFF" android:strokeWidth="0.8"
+-        android:fillType="evenOdd"/>
++        android:pathData="M54,14 L16,89 L92,89 Z"
++        android:strokeWidth="5"
++        android:strokeLineJoin="round">
++        <aapt:attr name="android:fillColor">
++            <gradient
++                android:type="linear"
++                android:startX="16" android:startY="14"
++                android:endX="92" android:endY="89">
++                <item android:offset="0.0" android:color="#66FFFFFF"/>
++                <item android:offset="1.0" android:color="#2EFFFFFF"/>
++            </gradient>
++        </aapt:attr>
++        <aapt:attr name="android:strokeColor">
++            <gradient
++                android:type="linear"
++                android:startX="54" android:startY="14"
++                android:endX="54" android:endY="89">
++                <item android:offset="0.0" android:color="#F2FFFFFF"/>
++                <item android:offset="0.7" android:color="#99FFFFFF"/>
++                <item android:offset="1.0" android:color="#CCFFFFFF"/>
++            </gradient>
++        </aapt:attr>
++    </path>
++    <path android:pathData="M65,42 L49,78 L86,78 Z"
++        android:strokeColor="#D9FFFFFF" android:strokeWidth="5"
++        android:strokeLineJoin="round"
++        android:fillColor="#4DFFFFFF"/>
++    <path android:pathData="M11,78 L70,78 L59,94 L23,94 Z"
++        android:fillColor="#8CFFFFFF"
++        android:strokeColor="#E8FFFFFF" android:strokeWidth="3"
++        android:strokeLineJoin="round"/>
+ </vector>
