@@ -1,0 +1,405 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisVerifiedSources.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisVerifiedSources.java
+@@ -46,7 +46,9 @@
+             "https://aegis-search.aegis-search.workers.dev/verified";
+     private static final String PREF_LIST = "aegis_verified_list";
+     private static final String PREF_AT = "aegis_verified_at";
+-    private static final long REFRESH_MS = 24L * 60 * 60 * 1000;
++    // AEGIS (patch 176): 24h made list edits take up to a day to show;
++    // an hourly re-fetch keeps badges and warnings close to real time.
++    private static final long REFRESH_MS = 60L * 60 * 1000;
+     private static final int FETCH_TIMEOUT_MS = 8000;
+ 
+     private static final Object sLock = new Object();
+@@ -195,13 +197,13 @@
+                     java.util.regex.Pattern
+                             .compile("<tr[^>]*\\bid=\"([a-z0-9.-]+)\\b\"[^>]*>")
+                             .matcher(html);
++            // AEGIS (patch 176): store the id EXACTLY as published (only
++            // lowercased). The old replace('-','.') rewrite broke every
++            // hyphenated host: aegis-search.aegis-search.workers.dev was
++            // never exact-matched, so real verified sites got the
++            // "possible phishing" warning with a dotted fake name.
+             while (matcher.find()) {
+-                String id = matcher.group(1);
+-                if (id.contains("-")) {
+-                    hosts.add(id.replace('-', '.').toLowerCase(Locale.ROOT));
+-                } else if (id.contains(".")) {
+-                    hosts.add(id.toLowerCase(Locale.ROOT));
+-                }
++                hosts.add(matcher.group(1).toLowerCase(Locale.ROOT));
+             }
+             return hosts;
+         } catch (Exception fetchError) {
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
+@@ -742,6 +742,10 @@
+                 && mSliverTouch.getVisibility() != VISIBLE) {
+             mSliverTouch.setVisibility(VISIBLE);
+             mSliverBar.setAlpha(1f);
++            // AEGIS (patch 176): the heal above restored only the touch
++            // proxy; if mSliverBar itself was left GONE the collapsed dock
++            // stayed invisible (the "dock disappears" report). Restore it.
++            mSliverBar.setVisibility(VISIBLE);
+         } else if (mExpanded && mPill.getVisibility() != VISIBLE) {
+             mPill.setAlpha(1f);
+             mPill.setVisibility(VISIBLE);
+--- a/chrome/android/java/res/xml/aegis_ecosystem_preferences.xml
++++ b/chrome/android/java/res/xml/aegis_ecosystem_preferences.xml
+@@ -36,7 +36,7 @@
+         android:summary="corex.site.je" />
+     <org.chromium.components.browser_ui.settings.ChromeBasePreference
+         android:key="aegis_os"
+-        android:title="AEGIS OS"
++        android:title="OS private Messenger"
+         android:summary="os-cloudflare.pages.dev" />
+     <org.chromium.components.browser_ui.settings.ChromeBasePreference
+         android:key="aegis_soc"
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisEcosystemSettings.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisEcosystemSettings.java
+@@ -44,7 +44,7 @@
+  * Aegis Ecosystem: the AEGIS product family behind this browser.
+  *
+  * Opens the project sites: the AM Products page (full product line),
+- * CoreX, AEGIS OS and AEGIS SOC. Modeled on AboutChromeSettings, the
++ * CoreX, OS private Messenger and AEGIS SOC. Modeled on AboutChromeSettings, the
+  * smallest working ChromeBaseSettingsFragment at the pinned tag.
+  */
+ @NullMarked
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisMenuSheet.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisMenuSheet.java
+@@ -101,7 +101,24 @@
+         addTile(grid, R.string.aegis_menu_zoom, R.drawable.aegis_ic_zoom,
+                 () -> fire(R.id.page_zoom_id));
+         addTile(grid, R.string.aegis_menu_pwa, R.drawable.aegis_ic_pwa,
+-                () -> fire(R.id.open_webapk_id));
++                () -> {
++                    // AEGIS (patch 176): open_webapk_id crashed on non-http
++                    // tabs - GURL could not parse chrome-native://newtab/.
++                    // "Install as app" now routes to the stock
++                    // add-to-homescreen (PWA install) flow and is only
++                    // offered on real web pages.
++                    String url = currentTabUrl();
++                    if (url == null
++                            || !(url.startsWith("http://")
++                                    || url.startsWith("https://"))) {
++                        android.widget.Toast.makeText(
++                                getContext(),
++                                R.string.aegis_menu_pwa_guard,
++                                android.widget.Toast.LENGTH_SHORT).show();
++                        return;
++                    }
++                    fire(R.id.add_to_homescreen_id);
++                });
+         addTile(grid, R.string.aegis_menu_settings, R.drawable.aegis_ic_settings,
+                 () -> {
+                     dismiss();
+@@ -178,5 +195,21 @@
+         }
+         return ctx.getString(R.string.aegis_menu_home);
+     }
++    /** AEGIS (patch 176): the active tab URL, or null when unavailable. */
++    private String currentTabUrl() {
++        try {
++            android.content.Context ctx = dock().getContext();
++            if (!(ctx instanceof ChromeTabbedActivity)) return null;
++            ChromeTabbedActivity cta = (ChromeTabbedActivity) ctx;
++            if (cta.getActivityTab() == null
++                    || cta.getActivityTab().getUrl() == null) {
++                return null;
++            }
++            return cta.getActivityTab().getUrl().getSpec();
++        } catch (Exception e) {
++            return null;
++        }
++    }
++
+ }
+ 
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisEngineIcons.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisEngineIcons.java
+@@ -30,135 +30,132 @@
+      * {@code dark} is the sheet's dark mode (the bare Aegis mark switches
+      * ink; the four third-party logos sit on their own brand discs).
+      */
++    
++
++    /** Dispatch on the engine keyword (patch 176 logos). */
+     public static Bitmap iconFor(String keyword, int sizePx, boolean dark) {
+-        String k = keyword == null ? "" : keyword.toLowerCase();
++        String k = keyword == null ? "" : keyword.toLowerCase(Locale.ROOT);
+         if (k.contains("aegis")) return aegis(sizePx, dark);
+         if (k.contains("duckduckgo")) return duckduckgo(sizePx);
+         if (k.contains("google")) return google(sizePx);
+         if (k.contains("bing")) return bing(sizePx);
++        if (k.contains("startpage")) return letterDisc(sizePx, 0xFF6674D8, "S", 0xFFFFFFFF, false);
++        if (k.contains("wikipedia")) return letterDisc(sizePx, 0xFFFFFFFF, "W", 0xFF202122, true);
++        if (k.contains("ecosia")) return letterDisc(sizePx, 0xFF008009, "e", 0xFFFFFFFF, false);
++        if (k.contains("brave")) return letterDisc(sizePx, 0xFFFB542B, "B", 0xFFFFFFFF, false);
++        if (k.contains("qwant")) return letterDisc(sizePx, 0xFFF0719B, "Q", 0xFFFFFFFF, false);
++        if (k.contains("mojeek")) return letterDisc(sizePx, 0xFFC41E3A, "m", 0xFFFFFFFF, false);
+         if (k.contains("chatgpt") || k.contains("openai")) return openai(sizePx);
+         return aegis(sizePx, dark);
+     }
+ 
+-    private static Paint fill(int color) {
++    // ---- patch 176: brand-accurate engine logos -------------------------
++
++    private static Paint paintOf(int color) {
+         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+         p.setColor(color);
+         return p;
+     }
+ 
+-    private static Bitmap disc(int sizePx, int color) {
++    private static Paint textPaint(int color, float sizePx, boolean serif) {
++        Paint p = paintOf(color);
++        p.setTextSize(sizePx);
++        p.setTextAlign(Paint.Align.CENTER);
++        p.setTypeface(Typeface.create(
++                serif ? Typeface.SERIF : Typeface.SANS_SERIF, Typeface.BOLD));
++        return p;
++    }
++
++    private static Bitmap circle(int sizePx, int color) {
+         Bitmap bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
+-        Canvas canvas = new Canvas(bmp);
+-        canvas.drawCircle(sizePx / 2f, sizePx / 2f, sizePx / 2f, fill(color));
++        new Canvas(bmp).drawCircle(sizePx / 2f, sizePx / 2f, sizePx / 2f,
++                paintOf(color));
+         return bmp;
+     }
+ 
+-    /** The Aegis shield mark (accent-on-glass, same geometry as home). */
+-    private static Bitmap aegis(int sizePx, boolean dark) {
+-        Bitmap bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
++    private static Bitmap letterDisc(int sizePx, int bg, String letter,
++            int fg, boolean serif) {
++        Bitmap bmp = circle(sizePx, bg);
+         Canvas canvas = new Canvas(bmp);
+-        Paint paint = fill(dark ? 0xFFF6F6F7 : 0xFF0A0A0B);
+-        float cx = sizePx / 2f;
+-        Path shield = new Path();
+-        shield.moveTo(cx, sizePx * 0.14f);
+-        shield.lineTo(sizePx * 0.82f, sizePx * 0.28f);
+-        shield.lineTo(sizePx * 0.82f, sizePx * 0.55f);
+-        shield.quadTo(sizePx * 0.82f, sizePx * 0.78f, cx, sizePx * 0.90f);
+-        shield.quadTo(sizePx * 0.18f, sizePx * 0.78f, sizePx * 0.18f, sizePx * 0.55f);
+-        shield.lineTo(sizePx * 0.18f, sizePx * 0.28f);
+-        shield.close();
+-        canvas.drawPath(shield, paint);
+-        paint.setStyle(Paint.Style.STROKE);
+-        paint.setStrokeWidth(sizePx * 0.07f);
+-        paint.setColor(dark ? 0xFF0A0A0B : 0xFFF6F6F7);
+-        canvas.drawLine(sizePx * 0.38f, sizePx * 0.52f, cx, sizePx * 0.68f, paint);
+-        canvas.drawLine(cx, sizePx * 0.68f, sizePx * 0.66f, sizePx * 0.40f, paint);
++        Paint p = textPaint(fg, sizePx * 0.52f, serif);
++        float y = sizePx / 2f - (p.ascent() + p.descent()) / 2f;
++        canvas.drawText(letter, sizePx / 2f, y, p);
+         return bmp;
+     }
+ 
+-    /** DuckDuckGo: red disc with a simple white duck glyph. */
++    /** DuckDuckGo: the orange disc with the white duck (head, beak, eye). */
+     private static Bitmap duckduckgo(int sizePx) {
+-        Bitmap bmp = disc(sizePx, 0xFFDE5833);
++        Bitmap bmp = circle(sizePx, 0xFFDE5833);
+         Canvas canvas = new Canvas(bmp);
+-        Paint white = fill(0xFFFFFFFF);
++        float s = sizePx;
+         // head
+-        canvas.drawCircle(sizePx * 0.52f, sizePx * 0.42f, sizePx * 0.16f, white);
+-        // body
+-        canvas.drawCircle(sizePx * 0.46f, sizePx * 0.62f, sizePx * 0.19f, white);
+-        // beak
+-        Paint orange = fill(0xFFF0A030);
++        canvas.drawCircle(s * 0.50f, s * 0.46f, s * 0.21f, paintOf(0xFFFFFFFF));
++        // neck / body wedge
++        Path body = new Path();
++        body.moveTo(s * 0.36f, s * 0.58f);
++        body.quadTo(s * 0.42f, s * 0.82f, s * 0.58f, s * 0.82f);
++        body.quadTo(s * 0.62f, s * 0.68f, s * 0.62f, s * 0.55f);
++        body.close();
++        canvas.drawPath(body, paintOf(0xFFFFFFFF));
++        // beak (orange)
+         Path beak = new Path();
+-        beak.moveTo(sizePx * 0.64f, sizePx * 0.40f);
+-        beak.lineTo(sizePx * 0.82f, sizePx * 0.45f);
+-        beak.lineTo(sizePx * 0.64f, sizePx * 0.50f);
++        beak.moveTo(s * 0.66f, s * 0.40f);
++        beak.lineTo(s * 0.86f, s * 0.47f);
++        beak.lineTo(s * 0.66f, s * 0.53f);
+         beak.close();
+-        canvas.drawPath(beak, orange);
++        canvas.drawPath(beak, paintOf(0xFFF0A030));
+         // eye
+-        canvas.drawCircle(sizePx * 0.56f, sizePx * 0.38f, sizePx * 0.035f, fill(0xFF2D2D2D));
++        canvas.drawCircle(s * 0.56f, s * 0.42f, s * 0.04f, paintOf(0xFF2D2D2D));
+         return bmp;
+     }
+ 
+-    /** Google: the four-color G on white. */
++    /** Google: the four-colour G (blue/green/yellow/red segments + bar). */
+     private static Bitmap google(int sizePx) {
+-        Bitmap bmp = disc(sizePx, 0xFFFFFFFF);
++        Bitmap bmp = circle(sizePx, 0xFFFFFFFF);
+         Canvas canvas = new Canvas(bmp);
+-        float r = sizePx * 0.30f;
+-        float cx = sizePx / 2f;
+-        float cy = sizePx / 2f;
+-        float stroke = sizePx * 0.135f;
+-        RectF oval = new RectF(cx - r, cy - r, cx + r, cy + r);
++        float s = sizePx;
++        float cx = s / 2f, cy = s / 2f;
++        float r = s * 0.30f;
++        float w = s * 0.115f;
+         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+         p.setStyle(Paint.Style.STROKE);
+-        p.setStrokeWidth(stroke);
+-        // red top
+-        p.setColor(0xFFEA4335);
+-        canvas.drawArc(oval, 150f, 95f, false, p);
+-        // yellow left-bottom
+-        p.setColor(0xFFFBBC05);
+-        canvas.drawArc(oval, 245f, 65f, false, p);
+-        // green bottom
+-        p.setColor(0xFF34A853);
+-        canvas.drawArc(oval, 310f, 85f, false, p);
+-        // blue right arc + bar
++        p.setStrokeWidth(w);
++        int[][] segs = {
++                {0xFF4285F4, -18, 40},   // blue: right/top
++                {0xFF34A853, 50, 130},   // green: bottom
++                {0xFFFBBC05, 140, 220},  // yellow: bottom-left
++                {0xFFEA4335, 230, 310},  // red: left/top
++        };
++        for (int[] seg : segs) {
++            p.setColor(seg[0]);
++            canvas.drawArc(cx - r, cy - r, cx + r, cy + r, seg[1],
++                    seg[2] - seg[1], false, p);
++        }
++        // the G's horizontal bar
++        p.setStyle(Paint.Style.FILL);
+         p.setColor(0xFF4285F4);
+-        canvas.drawArc(oval, 35f, 65f, false, p);
+-        canvas.drawRect(cx + r - stroke / 2f, cy - stroke / 2f, cx + r + stroke / 2f,
+-                cy + r, p);
++        canvas.drawRect(cx, cy - w / 2f, cx + r, cy + w / 2f, p);
+         return bmp;
+     }
+ 
+-    /** Bing: teal disc with the lowercase b. */
++    /** Bing: the teal disc with the white lowercase b. */
+     private static Bitmap bing(int sizePx) {
+-        Bitmap bmp = disc(sizePx, 0xFF008373);
+-        Canvas canvas = new Canvas(bmp);
+-        Paint white = fill(0xFFFFFFFF);
+-        white.setTextSize(sizePx * 0.62f);
+-        white.setTypeface(Typeface.create("sans-serif", Typeface.BOLD | Typeface.ITALIC));
+-        white.setTextAlign(Paint.Align.CENTER);
+-        Paint.FontMetrics fm = white.getFontMetrics();
+-        float y = sizePx / 2f - (fm.ascent + fm.descent) / 2f;
+-        canvas.drawText("b", sizePx / 2f, y, white);
+-        return bmp;
++        return letterDisc(sizePx, 0xFF008373, "b", 0xFFFFFFFF, false);
+     }
+ 
+-    /** OpenAI: the hexagonal knot, simplified to six rotated strokes. */
++    /** OpenAI/ChatGPT: the teal disc with the white knot swirl. */
+     private static Bitmap openai(int sizePx) {
+-        Bitmap bmp = disc(sizePx, 0xFF101013);
++        Bitmap bmp = circle(sizePx, 0xFF10A37F);
+         Canvas canvas = new Canvas(bmp);
+-        Paint white = new Paint(Paint.ANTI_ALIAS_FLAG);
+-        white.setColor(0xFFFFFFFF);
+-        white.setStyle(Paint.Style.STROKE);
+-        white.setStrokeWidth(sizePx * 0.10f);
+-        white.setStrokeCap(Paint.Cap.ROUND);
+-        float r = sizePx * 0.26f;
+-        RectF oval = new RectF(-r, -r, r, r);
+-        for (int i = 0; i < 6; i++) {
+-            canvas.save();
+-            canvas.translate(sizePx / 2f, sizePx / 2f);
+-            canvas.rotate(60f * i);
+-            canvas.drawArc(oval, 15f, 120f, false, white);
+-            canvas.restore();
+-        }
++        float s = sizePx;
++        Paint p = paintOf(0xFFFFFFFF);
++        p.setStyle(Paint.Style.STROKE);
++        p.setStrokeWidth(s * 0.075f);
++        canvas.drawCircle(s / 2f, s / 2f, s * 0.26f, p);
++        Path tail = new Path();
++        tail.moveTo(s * 0.74f, s * 0.30f);
++        tail.quadTo(s * 0.80f, s * 0.50f, s * 0.62f, s * 0.72f);
++        canvas.drawPath(tail, p);
+         return bmp;
+     }
+ }
+--- a/chrome/android/java/res/values/aegis_tokens.xml
++++ b/chrome/android/java/res/values/aegis_tokens.xml
+@@ -105,7 +105,9 @@
+     <string name="aegis_menu_share">Share</string>
+     <string name="aegis_menu_print">Print</string>
+     <string name="aegis_menu_zoom">Page zoom</string>
+-    <string name="aegis_menu_pwa">Open PWA</string>
++    <string name="aegis_menu_pwa">Install as app</string>
++    <!-- AEGIS (patch 176): guard message for install-as-app. -->
++    <string name="aegis_menu_pwa_guard">Open a website first, then install it as an app</string>
+     <!-- Home (Plate 01). %1$s = clock, %2$s = date, %3$s = blocked count. -->
+     <string name="aegis_home_status">Hardened · %1$s hosts blocked</string>
+     <string name="aegis_home_quick">Quick shields</string>
+--- a/chrome/android/java/res/drawable/aegis_ic_reload.xml
++++ b/chrome/android/java/res/drawable/aegis_ic_reload.xml
+@@ -4,5 +4,5 @@
+     android:width="24dp" android:height="24dp"
+     android:viewportWidth="24" android:viewportHeight="24">
+     <path android:pathData="M12,5 V7 A5,5 0 1,0 17,12 H19 A7,7 0 1,1 12,5 Z M12,5 H16 V1 H18 V7 H12 Z"
+-        android:fillColor="#DE101114"/>
++        android:fillColor="@color/aegis_glass_icon"/>
+ </vector>
+--- a/chrome/android/java/res/drawable/aegis_ic_find.xml
++++ b/chrome/android/java/res/drawable/aegis_ic_find.xml
+@@ -4,5 +4,5 @@
+     android:width="24dp" android:height="24dp"
+     android:viewportWidth="24" android:viewportHeight="24">
+     <path android:pathData="M10.5,4 A6.5,6.5 0 1,0 10.51,17 A6.5,6.5 0 0,0 10.5,4 Z M10.5,6 A4.5,4.5 0 1,1 10.51,15 A4.5,4.5 0 0,1 10.5,6 Z M15.4,13.98 L20.5,19.06 L19.06,20.5 L13.98,15.4 Z"
+-        android:fillColor="#DE101114" android:fillType="evenOdd"/>
++        android:fillColor="@color/aegis_glass_icon" android:fillType="evenOdd"/>
+ </vector>
+--- a/chrome/android/java/res/drawable/aegis_ic_share.xml
++++ b/chrome/android/java/res/drawable/aegis_ic_share.xml
+@@ -4,5 +4,5 @@
+     android:width="24dp" android:height="24dp"
+     android:viewportWidth="24" android:viewportHeight="24">
+     <path android:pathData="M18,16.1 C17.24,16.1 16.56,16.39 16.04,16.85 L8.91,12.7 C8.96,12.47 9,12.24 9,12 C9,11.76 8.96,11.53 8.91,11.3 L15.96,7.19 C16.5,7.69 17.21,8 18,8 A3,3 0 1,0 15,5 C15,5.24 15.04,5.47 15.09,5.7 L8.04,9.81 C7.5,9.31 6.79,9 6,9 A3,3 0 1,0 9,12 C9,11.76 8.96,11.53 8.91,11.3 L16.04,15.45 C16.56,15.91 17.24,16.2 18,16.2 A3,3 0 1,0 18,16.1 Z"
+-        android:fillColor="#DE101114" android:fillType="evenOdd"/>
++        android:fillColor="@color/aegis_glass_icon" android:fillType="evenOdd"/>
+ </vector>
+--- a/chrome/android/java/res/drawable/aegis_ic_print.xml
++++ b/chrome/android/java/res/drawable/aegis_ic_print.xml
+@@ -4,5 +4,5 @@
+     android:width="24dp" android:height="24dp"
+     android:viewportWidth="24" android:viewportHeight="24">
+     <path android:pathData="M7,3 H17 V7 H7 Z M6,18 V20 H18 V18 Z M19,8 H5 A3,3 0 0,0 2,11 V16 H6 V19 H18 V16 H22 V11 A3,3 0 0,0 19,8 Z M6,10.5 A1,1 0 1,1 6.01,10.49 Z M18,14 H16 V12 H18 Z"
+-        android:fillColor="#DE101114"/>
++        android:fillColor="@color/aegis_glass_icon"/>
+ </vector>
+--- a/chrome/android/java/res/drawable/aegis_ic_zoom.xml
++++ b/chrome/android/java/res/drawable/aegis_ic_zoom.xml
+@@ -4,5 +4,5 @@
+     android:width="24dp" android:height="24dp"
+     android:viewportWidth="24" android:viewportHeight="24">
+     <path android:pathData="M2,20 L7.5,4 H10.5 L16,20 H13.2 L12,16.2 H6 L4.8,20 Z M9,7.6 L6.7,14 H11.3 Z M15,20 V17.6 L20.6,11.8 H15.4 V9.6 H23.2 V12 L17.7,17.8 H23.4 V20 Z"
+-        android:fillColor="#DE101114"/>
++        android:fillColor="@color/aegis_glass_icon"/>
+ </vector>
+--- a/chrome/android/java/res/drawable/aegis_ic_pwa.xml
++++ b/chrome/android/java/res/drawable/aegis_ic_pwa.xml
+@@ -4,5 +4,5 @@
+     android:width="24dp" android:height="24dp"
+     android:viewportWidth="24" android:viewportHeight="24">
+     <path android:pathData="M5,3 H13 A2,2 0 0,1 15,5 V12 H13 V5 H5 V19 H13 V21 H5 A2,2 0 0,1 3,19 V5 A2,2 0 0,1 5,3 Z M17,7 L22,12 L17,17 L15.6,15.6 L18.2,13 H10 V11 H18.2 L15.6,8.4 Z"
+-        android:fillColor="#DE101114"/>
++        android:fillColor="@color/aegis_glass_icon"/>
+ </vector>
