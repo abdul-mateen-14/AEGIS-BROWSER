@@ -1,0 +1,8 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisGlassUi.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisGlassUi.java
+@@ -250,4 +250,4 @@
+             // A toast must never break the flow it reports about.
+         }
+     }
+-
++}
