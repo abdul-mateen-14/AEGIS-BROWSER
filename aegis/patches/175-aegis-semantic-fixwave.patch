@@ -1,0 +1,86 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisGlassUi.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisGlassUi.java
+@@ -4,6 +4,7 @@
+ 
+ package org.chromium.chrome.browser.aegis;
+ 
++import android.app.Activity;
+ import android.app.Dialog;
+ import android.content.Context;
+ import android.content.res.Configuration;
+@@ -12,6 +13,7 @@
+ import android.graphics.drawable.InsetDrawable;
+ import android.graphics.drawable.LayerDrawable;
+ import android.os.Build;
++import android.view.Gravity;
+ import android.view.Window;
+ import android.view.WindowManager;
+ import android.widget.Button;
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisSearchSheet.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisSearchSheet.java
+@@ -39,6 +39,8 @@
+ 
+ import java.util.ArrayList;
+ import java.util.List;
++import org.chromium.chrome.browser.aegis.AegisEngineIcons;
++import org.chromium.chrome.browser.aegis.AegisGlassUi;
+ 
+ /**
+  * Aegis glass search sheet (patch 101, v2): the dock's URL-pill tap target.
+@@ -261,9 +263,6 @@
+         if (!(context instanceof Activity)) return;
+         Activity activity = (Activity) context;
+         if (activity.isFinishing() || activity.isDestroyed()) return;
+-        if (!(context instanceof Activity)) return;
+-        Activity activity = (Activity) context;
+-        if (activity.isFinishing() || activity.isDestroyed()) return;
+         chipRow.removeAllViews();
+         TemplateUrl dse = service.getDefaultSearchEngineTemplateUrl();
+         String dseKeyword = dse != null ? dse.getKeyword() : null;
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisSecuritySheet.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisSecuritySheet.java
+@@ -142,7 +142,7 @@
+         mPanel.addView(footer);
+     }
+ 
+-    private TextView row(String label, String value) {
++    private LinearLayout row(String label, String value) {
+         LinearLayout box = new LinearLayout(getContext());
+         box.setOrientation(LinearLayout.VERTICAL);
+         TextView key = new TextView(getContext());
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisTabGridSheet.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisTabGridSheet.java
+@@ -385,17 +385,17 @@
+                 ((ChromeTabbedActivity) dock().getContext())
+                         .getTabModelSelector()
+                         .getModel(private_);
+-        if (!private_ && cardModel != null && tab.getGroupId() != null
+-                && cardModel.tabGroupExists(tab.getGroupId())) {
+-            int colorId = cardModel.getTabGroupColorWithFallback(tab.getGroupId());
++        if (!private_ && cardModel != null && tab.getTabGroupId() != null
++                && cardModel.tabGroupExists(tab.getTabGroupId())) {
++            int colorId = cardModel.getTabGroupColorWithFallback(tab.getTabGroupId());
+             int color =
+                     TabGroupColorPickerUtils.getTabGroupColorPickerItemColor(
+                             getContext(), colorId, /* isIncognito= */ false);
+-            String groupTitle = cardModel.getTabGroupTitle(tab.getGroupId());
++            String groupTitle = cardModel.getTabGroupTitle(tab.getTabGroupId());
+             String label = groupTitle == null || groupTitle.isEmpty()
+                     ? getContext().getString(
+                             R.string.aegis_sheet_group_count,
+-                            cardModel.getTabCountForGroup(tab.getGroupId()))
++                            cardModel.getTabCountForGroup(tab.getTabGroupId()))
+                     : groupTitle;
+             hostRow.addView(badge(label, color, private_));
+         }
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisVerifiedSources.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisVerifiedSources.java
+@@ -47,7 +47,7 @@
+     private static final String PREF_LIST = "aegis_verified_list";
+     private static final String PREF_AT = "aegis_verified_at";
+     private static final long REFRESH_MS = 24L * 60 * 60 * 1000;
+-    private static final long FETCH_TIMEOUT_MS = 8000;
++    private static final int FETCH_TIMEOUT_MS = 8000;
+ 
+     private static final Object sLock = new Object();
+     private static List<String> sHosts;
