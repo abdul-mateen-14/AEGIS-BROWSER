@@ -1,0 +1,10 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisEcosystemSettings.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisEcosystemSettings.java
+@@ -132,7 +132,6 @@
+         } catch (ActivityNotFoundException e) {
+             AegisGlassUi.toast(getContext(), "No file picker available");
+             // patch 170: was Toast.makeText(..., LENGTH_SHORT)
+-                    .show();
+         }
+     }
+ 
