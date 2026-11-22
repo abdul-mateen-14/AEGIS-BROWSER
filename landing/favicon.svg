@@ -1,15 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">
-  <!-- Aegis mark - theme aware (patch r117): dark ink on white in light
-       browser themes, white ink on black in dark ones. Browsers without
-       media-query support take the light default. -->
+  <!-- Aegis mark - theme aware, transparent canvas: dark ink in light
+       browser themes, white ink in dark ones. No background tile; the
+       canvas shows through, like favicon-light/dark.svg. -->
   <style>
-    .bg { fill: #ffffff; }
     .fg { fill: #101014; }
     @media (prefers-color-scheme: dark) {
-      .bg { fill: #070707; }
       .fg { fill: #ffffff; }
     }
   </style>
-  <rect class="bg" width="108" height="108"/>
   <path class="fg" fill-rule="evenodd" transform="translate(-17.5,-17.55) scale(1.327)" d="M53.91,23.99 L 23.00,83.92 L 68.98,83.92 L 56.58,57.92 L 62.52,46.21 L 80.95,83.92 L 84.83,83.92 L 63.04,41.64 L 48.49,70.49 L 36.35,70.49 L 56.93,30.19 Z M26.10,82.29 L 31.18,72.21 L 61.49,72.21 L 66.40,82.29 Z"/>
 </svg>
