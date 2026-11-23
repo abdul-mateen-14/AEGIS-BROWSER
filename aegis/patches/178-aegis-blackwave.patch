@@ -1,0 +1,1390 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisMenuSheet.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisMenuSheet.java
+@@ -117,7 +117,13 @@
+                                 android.widget.Toast.LENGTH_SHORT).show();
+                         return;
+                     }
+-                    fire(R.id.open_webapk_id);
++                    // AEGIS (patch 178): open_webapk_id only OPENS an
++                    // already-installed site app; users hit "install as
++                    // app" expecting the install flow. Route to the
++                    // universal installer (ChromeActivity: AppInstall-
++                    // MenuHandler.doUniversalInstall), still behind the
++                    // http(s) guard from 176.
++                    fire(R.id.universal_install);
+                 });
+         addTile(grid, R.string.aegis_menu_settings, R.drawable.aegis_ic_settings,
+                 () -> {
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
+@@ -656,6 +656,21 @@
+     }
+ 
+     @Override
++    protected void onWindowFocusChanged(boolean hasWindowFocus) {
++        super.onWindowFocusChanged(hasWindowFocus);
++        // AEGIS (patch 178): the dock vanished after task switches, sheets
++        // and media pickers, and 176's onLayout heal only ran on layout
++        // passes - a stray GONE survived until the next relayout, which on
++        // a static screen may never come. On every focus regain, force the
++        // resting state visible.
++        if (hasWindowFocus && !mExpanded) {
++            mSliverTouch.setVisibility(VISIBLE);
++            mSliverBar.setAlpha(1f);
++            mSliverBar.setVisibility(VISIBLE);
++        }
++    }
++
++    @Override
+     protected void onDetachedFromWindow() {
+         super.onDetachedFromWindow();
+         removeCallbacks(mRefresh);
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisVerifiedSources.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisVerifiedSources.java
+@@ -194,16 +194,23 @@
+             }
+             List<String> hosts = new ArrayList<>();
+             java.util.regex.Matcher matcher =
+-                    java.util.regex.Pattern
+-                            .compile("<tr[^>]*\\bid=\"([a-z0-9.-]+)\\b\"[^>]*>")
+-                            .matcher(html);
+-            // AEGIS (patch 176): store the id EXACTLY as published (only
+-            // lowercased). The old replace('-','.') rewrite broke every
+-            // hyphenated host: aegis-search.aegis-search.workers.dev was
+-            // never exact-matched, so real verified sites got the
+-            // "possible phishing" warning with a dotted fake name.
++            java.util.regex.Pattern
++                    .compile("<tr[^>]*\\bid=\"[a-z0-9.-]+\"[^>]*>(.*?)</tr>")
++                    .matcher(html);
++            // AEGIS (patch 178): take the DOMAIN from the table's first
++            // <td> cell, verbatim. The row id is a slug (the5ers-com) and
++            // the domain cell is dotted (the5ers.com) - never rewrite one
++            // into the other: 176 stored slugs (dots read as dashes), the
++            // original rewrote slugs into dots, both mismatched hyphenated
++            // domains. The published domain string is the source of truth.
++            java.util.regex.Pattern cell =
++                    java.util.regex.Pattern.compile("<td[^>]*>(.*?)</td>");
+             while (matcher.find()) {
+-                hosts.add(matcher.group(1).toLowerCase(Locale.ROOT));
++                java.util.regex.Matcher c = cell.matcher(matcher.group(1));
++                if (!c.find()) continue;
++                String domain = c.group(1).replaceAll("<[^>]+>", "")
++                        .trim().toLowerCase(Locale.ROOT);
++                if (!domain.isEmpty()) hosts.add(domain);
+             }
+             return hosts;
+         } catch (Exception fetchError) {
+--- a/ui/android/java/res/values/color_palette.xml
++++ b/ui/android/java/res/values/color_palette.xml
+@@ -100,17 +100,17 @@
+     <color name="gm3_baseline_surface_tint_light">#6991D6</color>
+     <color name="gm3_baseline_surface_tint_dark">#D1E1FF</color>
+     <color name="gm3_baseline_surface_container_light">#F0F4F9</color>
+-    <color name="gm3_baseline_surface_container_dark">#1E1F20</color>
++    <color name="gm3_baseline_surface_container_dark">#0E0F11</color>
+     <color name="gm3_baseline_surface_light">#FFFFFF</color>
+-    <color name="gm3_baseline_surface_dark">#131314</color>
++    <color name="gm3_baseline_surface_dark">#0B0B0D</color>
+     <color name="gm3_baseline_surface_container_low_light">#F8FAFD</color>
+-    <color name="gm3_baseline_surface_container_low_dark">#1B1B1B</color>
++    <color name="gm3_baseline_surface_container_low_dark">#0D0E10</color>
+     <color name="gm3_baseline_surface_container_high_light">#E9EEF6</color>
+-    <color name="gm3_baseline_surface_container_high_dark">#282A2C</color>
++    <color name="gm3_baseline_surface_container_high_dark">#121316</color>
+     <color name="gm3_baseline_surface_container_highest_light">#DDE3EA</color>
+-    <color name="gm3_baseline_surface_container_highest_dark">#333537</color>
++    <color name="gm3_baseline_surface_container_highest_dark">#191A1D</color>
+     <color name="gm3_baseline_surface_bright_light">@color/gm3_baseline_surface_light</color>
+-    <color name="gm3_baseline_surface_bright_dark">#37393B</color>
++    <color name="gm3_baseline_surface_bright_dark">#1C1D21</color>
+     <color name="gm3_baseline_surface_dim_light">#D3DBE5</color>
+     <color name="gm3_baseline_surface_dim_dark">@color/gm3_baseline_surface_dark</color>
+ 
+--- a/third_party/search_engines_data/resources/definitions/regional_settings.json
++++ b/third_party/search_engines_data/resources/definitions/regional_settings.json
+@@ -133,6 +133,8 @@
+     "AE": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -143,6 +145,8 @@
+     "AF": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&bing",
+         "&brave",
+@@ -153,6 +157,8 @@
+     "AL": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&yep",
+@@ -163,6 +169,8 @@
+     "AM": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&yandex_ru",
+         "&brave",
+@@ -173,6 +181,8 @@
+     "AO": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -183,6 +193,8 @@
+     "AR": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -193,6 +205,8 @@
+     "AT": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&duckduckgo",
+@@ -206,6 +220,8 @@
+     "AU": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&duckduckgo",
+@@ -216,6 +232,8 @@
+     "AZ": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&yandex_ru",
+         "&brave",
+@@ -226,6 +244,8 @@
+     "BA": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&yep",
+         "&brave",
+@@ -236,6 +256,8 @@
+     "BD": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -246,6 +268,8 @@
+     "BE": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&duckduckgo",
+@@ -259,6 +283,8 @@
+     "BF": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&bing",
+         "&brave",
+@@ -269,6 +295,8 @@
+     "BG": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&duckduckgo",
+@@ -282,6 +310,8 @@
+     "BJ": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -292,6 +322,8 @@
+     "BO": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -302,6 +334,8 @@
+     "BR": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -312,6 +346,8 @@
+     "BY": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&yandex_by",
+         "&bing",
+@@ -322,6 +358,8 @@
+     "CA": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&duckduckgo",
+@@ -332,6 +370,8 @@
+     "CD": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&bing",
+         "&brave",
+@@ -342,6 +382,8 @@
+     "CG": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&bing",
+         "&brave",
+@@ -352,6 +394,8 @@
+     "CH": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&duckduckgo",
+@@ -362,6 +406,8 @@
+     "CI": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&bing",
+         "&brave",
+@@ -372,6 +418,8 @@
+     "CL": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -382,6 +430,8 @@
+     "CM": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&bing",
+         "&brave",
+@@ -392,6 +442,8 @@
+     "CN": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&baidu",
+         "&bing",
+@@ -402,6 +454,8 @@
+     "CO": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -412,6 +466,8 @@
+     "CR": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -422,6 +478,8 @@
+     "CU": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&duckduckgo",
+@@ -432,6 +490,8 @@
+     "CY": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&duckduckgo",
+@@ -445,6 +505,8 @@
+     "CZ": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&seznam",
+         "&brave",
+@@ -458,6 +520,8 @@
+     "DE": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&duckduckgo",
+         "&brave",
+@@ -471,6 +535,8 @@
+     "DK": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&duckduckgo",
+@@ -484,6 +550,8 @@
+     "DO": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -494,6 +562,8 @@
+     "DZ": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -504,6 +574,8 @@
+     "EC": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -514,6 +586,8 @@
+     "EE": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&duckduckgo",
+@@ -527,6 +601,8 @@
+     "EG": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -537,6 +613,8 @@
+     "ES": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&duckduckgo",
+@@ -550,6 +628,8 @@
+     "ET": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&bing",
+         "&brave",
+@@ -560,6 +640,8 @@
+     "FI": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&duckduckgo",
+@@ -573,6 +655,8 @@
+     "FR": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&ecosia",
+@@ -586,6 +670,8 @@
+     "GB": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&duckduckgo",
+         "&brave",
+@@ -596,6 +682,8 @@
+     "GE": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&yandex_com",
+         "&brave",
+@@ -606,6 +694,8 @@
+     "GH": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&bing",
+         "&brave",
+@@ -616,6 +706,8 @@
+     "GM": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&bing",
+         "&duckduckgo",
+@@ -626,6 +718,8 @@
+     "GN": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&bing",
+         "&duckduckgo",
+@@ -636,6 +730,8 @@
+     "GR": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&duckduckgo",
+@@ -649,6 +745,8 @@
+     "GT": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -659,6 +757,8 @@
+     "HK": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&baidu",
+         "&brave",
+@@ -669,6 +769,8 @@
+     "HN": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -679,6 +781,8 @@
+     "HR": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&duckduckgo",
+@@ -692,6 +796,8 @@
+     "HU": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -705,6 +811,8 @@
+     "ID": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -715,6 +823,8 @@
+     "IE": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&duckduckgo",
+         "&brave",
+@@ -728,6 +838,8 @@
+     "IL": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -738,6 +850,8 @@
+     "IN": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -748,6 +862,8 @@
+     "IQ": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -758,6 +874,8 @@
+     "IR": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -768,6 +886,8 @@
+     "IS": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&duckduckgo",
+         "&brave",
+@@ -781,6 +901,8 @@
+     "IT": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -794,6 +916,8 @@
+     "JO": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -804,6 +928,8 @@
+     "JP": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&yahoo_jp",
+         "&bing",
+@@ -814,6 +940,8 @@
+     "KE": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -824,6 +952,8 @@
+     "KG": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&yandex_ru",
+         "&brave",
+@@ -834,6 +964,8 @@
+     "KH": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -844,6 +976,8 @@
+     "KR": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&naver",
+         "&daum",
+@@ -854,6 +988,8 @@
+     "KZ": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&yandex_kz",
+         "&brave",
+@@ -864,6 +1000,8 @@
+     "LA": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -874,6 +1012,8 @@
+     "LB": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -884,6 +1024,8 @@
+     "LI": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&duckduckgo",
+         "&brave",
+@@ -897,6 +1039,8 @@
+     "LK": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -907,6 +1051,8 @@
+     "LT": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&duckduckgo",
+@@ -920,6 +1066,8 @@
+     "LU": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&duckduckgo",
+@@ -933,6 +1081,8 @@
+     "LV": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&duckduckgo",
+@@ -946,6 +1096,8 @@
+     "LY": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -956,6 +1108,8 @@
+     "MA": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -966,6 +1120,8 @@
+     "MD": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&yandex_ru",
+         "&brave",
+@@ -976,6 +1132,8 @@
+     "ME": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&yep",
+         "&brave",
+@@ -986,6 +1144,8 @@
+     "MG": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&bing",
+         "&brave",
+@@ -996,6 +1156,8 @@
+     "MK": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&yep",
+         "&brave",
+@@ -1006,6 +1168,8 @@
+     "ML": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&bing",
+         "&duckduckgo",
+@@ -1016,6 +1180,8 @@
+     "MM": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&bing",
+         "&brave",
+@@ -1026,6 +1192,8 @@
+     "MN": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&naver",
+@@ -1036,6 +1204,8 @@
+     "MO": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&baidu",
+         "&brave",
+@@ -1046,6 +1216,8 @@
+     "MT": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -1059,6 +1231,8 @@
+     "MX": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -1069,6 +1243,8 @@
+     "MY": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -1079,6 +1255,8 @@
+     "MZ": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&bing",
+         "&brave",
+@@ -1089,6 +1267,8 @@
+     "NE": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&bing",
+         "&brave",
+@@ -1099,6 +1279,8 @@
+     "NG": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -1109,6 +1291,8 @@
+     "NL": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&duckduckgo",
+         "&brave",
+@@ -1122,6 +1306,8 @@
+     "NO": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&duckduckgo",
+         "&brave",
+@@ -1135,6 +1321,8 @@
+     "NP": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -1145,6 +1333,8 @@
+     "NZ": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&duckduckgo",
+@@ -1155,6 +1345,8 @@
+     "PE": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -1165,6 +1357,8 @@
+     "PH": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -1175,6 +1369,8 @@
+     "PK": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -1185,6 +1381,8 @@
+     "PL": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&duckduckgo",
+@@ -1198,6 +1396,8 @@
+     "PT": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -1211,6 +1411,8 @@
+     "RO": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&duckduckgo",
+@@ -1224,6 +1426,8 @@
+     "RS": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&yep",
+@@ -1234,6 +1438,8 @@
+     "RU": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&yandex_ru",
+         "&duckduckgo",
+@@ -1244,6 +1450,8 @@
+     "SA": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -1254,6 +1462,8 @@
+     "SD": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&duckduckgo",
+@@ -1264,6 +1474,8 @@
+     "SE": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&duckduckgo",
+         "&brave",
+@@ -1277,6 +1489,8 @@
+     "SG": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&baidu",
+@@ -1287,6 +1501,8 @@
+     "SI": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&duckduckgo",
+@@ -1300,6 +1516,8 @@
+     "SK": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&duckduckgo",
+@@ -1313,6 +1531,8 @@
+     "SL": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&bing",
+         "&brave",
+@@ -1323,6 +1543,8 @@
+     "SN": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&bing",
+         "&brave",
+@@ -1333,6 +1555,8 @@
+     "SO": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -1343,6 +1567,8 @@
+     "SV": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -1353,6 +1579,8 @@
+     "TD": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&bing",
+         "&brave",
+@@ -1363,6 +1591,8 @@
+     "TG": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&bing",
+         "&brave",
+@@ -1373,6 +1603,8 @@
+     "TH": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -1383,6 +1615,8 @@
+     "TJ": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&yandex_ru",
+         "&brave",
+@@ -1393,6 +1627,8 @@
+     "TM": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&yandex_ru",
+         "&brave",
+@@ -1403,6 +1639,8 @@
+     "TN": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -1413,6 +1651,8 @@
+     "TR": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&yandex_tr",
+         "&brave",
+@@ -1423,6 +1663,8 @@
+     "TW": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&baidu",
+@@ -1433,6 +1675,8 @@
+     "TZ": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&bing",
+         "&brave",
+@@ -1443,6 +1687,8 @@
+     "UA": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&yandex_ru",
+         "&brave",
+@@ -1453,6 +1699,8 @@
+     "UG": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&bing",
+         "&brave",
+@@ -1463,6 +1711,8 @@
+     "US": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&duckduckgo",
+         "&brave",
+@@ -1473,6 +1723,8 @@
+     "UY": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -1483,6 +1735,8 @@
+     "UZ": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&yandex_ru",
+         "&brave",
+@@ -1493,6 +1747,8 @@
+     "VE": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&bing",
+         "&brave",
+@@ -1503,6 +1759,8 @@
+     "VN": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&coccoc",
+         "&brave",
+@@ -1513,6 +1771,8 @@
+     "XK": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&yep",
+         "&brave",
+@@ -1523,6 +1783,8 @@
+     "YE": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&bing",
+         "&brave",
+@@ -1533,6 +1795,8 @@
+     "ZA": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&brave",
+         "&bing",
+@@ -1543,6 +1807,8 @@
+     "ZW": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&bing",
+         "&brave",
+@@ -1553,6 +1819,8 @@
+     "ZZ": {
+       "search_engines": [
+         "&aegis",
++        "&google",
++        "&chatgpt",
+         "&openai",
+         "&bing",
+         "&yahoo"
+--- a/third_party/search_engines_data/resources/definitions/prepopulated_engines.json
++++ b/third_party/search_engines_data/resources/definitions/prepopulated_engines.json
+@@ -37,6 +37,14 @@
+       "type": "SEARCH_ENGINE_AEGIS",
+       "id": 118
+     },
++    "chatgpt": {
++      "name": "ChatGPT",
++      "keyword": "chatgpt.com",
++      "favicon_url": "https://chatgpt.com/favicon.ico",
++      "search_url": "https://chatgpt.com/?q={searchTerms}&hints=search",
++      "type": "SEARCH_ENGINE_CHATGPT",
++      "id": 119
++    },
+     "baidu": {
+       "name": "\u767e\u5ea6",
+       "keyword": "baidu.com",
+--- a/components/search_engines/search_engine_type.h
++++ b/components/search_engines/search_engine_type.h
+@@ -102,6 +102,7 @@
+   SEARCH_ENGINE_PERPLEXITY = 82,
+ 
+   SEARCH_ENGINE_AEGIS = 83,
++  SEARCH_ENGINE_CHATGPT = 84,
+   SEARCH_ENGINE_OPENAI = 84,
+ 
+   SEARCH_ENGINE_MAX  // Bounding value needed for UMA histogram macro.
+--- a/chrome/android/java/AndroidManifest.xml
++++ b/chrome/android/java/AndroidManifest.xml
+@@ -704,16 +704,6 @@
+                 <category android:name="android.intent.category.LAUNCHER" />
+             </intent-filter>
+         </activity-alias>
+-        <activity-alias android:name="com.aegis.launcher.Glass"
+-            android:targetActivity="org.chromium.chrome.browser.ChromeTabbedActivity"
+-            android:icon="@drawable/aegis_launcher_glass"
+-            android:enabled="false"
+-            android:exported="true">
+-            <intent-filter>
+-                <action android:name="android.intent.action.MAIN" />
+-                <category android:name="android.intent.category.LAUNCHER" />
+-            </intent-filter>
+-        </activity-alias>
+         <activity android:name="org.chromium.chrome.browser.ChromeTabbedActivity2"
+             android:theme="@style/Theme.Chromium.TabbedMode"
+             android:exported="false"
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisLauncherIcon.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisLauncherIcon.java
+@@ -13,7 +13,7 @@
+ 
+ /**
+  * Launcher icon variants (patch 163, r116 review: black default, white
+- * background, liquid glass). Implemented with activity-aliases: exactly
++ * background; glass variant removed in 178). Implemented with activity-aliases: exactly
+  * one launcher identity is enabled at a time, switched with
+  * PackageManager.setComponentEnabledSetting - the mechanism launcher
+  * icon-pack apps use, no restart needed.
+@@ -24,11 +24,11 @@
+     /** The stock launcher alias from the Chromium manifest. */
+     private static final String MAIN_ALIAS = "com.google.android.apps.chrome.Main";
+     private static final String WHITE_ALIAS = "com.aegis.launcher.White";
+-    private static final String GLASS_ALIAS = "com.aegis.launcher.Glass";
++    // GLASS_ALIAS removed in 178 (liquid variant dropped per review).
+ 
+     /** Display names for the chooser, indexed with the variant ids. */
+-    public static final String[] VARIANTS = {"black", "white", "glass"};
+-    public static final String[] LABELS = {"Black (default)", "White", "Liquid glass"};
++    public static final String[] VARIANTS = {"black", "white"};
++    public static final String[] LABELS = {"Black (default)", "White"};
+ 
+     private AegisLauncherIcon() {}
+ 
+@@ -46,7 +46,6 @@
+         prefs(context).edit().putString(PREF, variant).apply();
+         setAlias(context, MAIN_ALIAS, "black".equals(variant));
+         setAlias(context, WHITE_ALIAS, "white".equals(variant));
+-        setAlias(context, GLASS_ALIAS, "glass".equals(variant));
+     }
+ 
+     private static void setAlias(Context context, String alias, boolean enabled) {
