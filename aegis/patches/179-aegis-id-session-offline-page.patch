@@ -1,0 +1,127 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisIdManager.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisIdManager.java
+@@ -36,7 +36,8 @@
+  *   - The vault key is generated on-device and only ever stored server-side
+  *     wrapped (AES-256-GCM) under the KEK; unwrapping happens in memory.
+  *   - Persisted state is identity-only: email, a stable device UUID and the
+- *     signed-in flag ("aegis_id_prefs"). Access/refresh tokens and the vault
++ *     signed-in flag ("aegis_id_prefs"). The refresh token persists too
++ *     (patch 179) so the session survives process death; the vault
+  *     key are volatile - a process restart keeps the identity but requires
+  *     a fresh sign-in before any backend call works again.
+  *
+@@ -58,6 +59,7 @@
+     private static final String KEY_EMAIL = "aegis_id_email";
+     private static final String KEY_DEVICE_UUID = "aegis_id_device_uuid";
+     private static final String KEY_SIGNED_IN = "aegis_id_signed_in";
++    private static final String KEY_REFRESH = "aegis_id_refresh";
+     private static final int DEVICE_NAME_MAX = 64;
+ 
+     private static AegisIdManager sInstance;
+@@ -88,6 +90,14 @@
+         mPrefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+         mDeviceUuid = getOrCreateDeviceUuid();
+         mDeviceName = sanitizeDeviceName(Build.MODEL);
++        // AEGIS (patch 179): restore the persisted refresh token. The
++        // access token stays null; the sync client's 401-retry mints a
++        // fresh one from the refresh token on the first call, and adopt()
++        // persists the rotation. dropStaleSession() no longer fires
++        // because tokens are no longer null after restart.
++        if (isSignedIn()) {
++            mRefreshToken = mPrefs.getString(KEY_REFRESH, null);
++        }
+     }
+ 
+     /** True when this device's identity is marked signed-in. */
+@@ -212,7 +222,11 @@
+         JSONObject user = data.getJSONObject("user");
+         mVaultKey = unwrapVaultKey(password, creds, kdf, user);
+         client.setVaultKey(mVaultKey);
+-        mPrefs.edit().putString(KEY_EMAIL, email).putBoolean(KEY_SIGNED_IN, true).apply();
++        // AEGIS (patch 179): persist the refresh token so a restart can
++        // rebuild the session - "manage device" used to demand re-login
++        // after every app reopen because only the flag survived.
++        mPrefs.edit().putString(KEY_EMAIL, email).putBoolean(KEY_SIGNED_IN, true)
++                .putString(KEY_REFRESH, mRefreshToken).apply();
+         return email;
+     }
+ 
+@@ -248,6 +262,11 @@
+     private void adopt(AegisSyncClient client) {
+         mAccessToken = client.accessToken();
+         mRefreshToken = client.refreshToken();
++        // AEGIS (patch 179): keep the rotation so the NEXT restart also
++        // restores a live session.
++        if (mRefreshToken != null) {
++            mPrefs.edit().putString(KEY_REFRESH, mRefreshToken).apply();
++        }
+     }
+ 
+     /** A 401 with no tokens left means the volatile session died with the
+@@ -262,7 +281,8 @@
+         mAccessToken = null;
+         mRefreshToken = null;
+         mVaultKey = null;
+-        mPrefs.edit().putBoolean(KEY_SIGNED_IN, false).remove(KEY_EMAIL).apply();
++        mPrefs.edit().putBoolean(KEY_SIGNED_IN, false).remove(KEY_EMAIL)
++                .remove(KEY_REFRESH).apply();
+     }
+ 
+     private String getOrCreateDeviceUuid() {
+--- a/components/neterror/resources/neterror.html
++++ b/components/neterror/resources/neterror.html
+@@ -28,5 +28,54 @@
+       <audio id="offline-sound-reached" src="sounds/score-reached.mp3"></audio>
+     </template>
+   </div>
++  <div id="aegis-offline">
++    <svg viewBox="0 0 108 108" width="72" height="72" aria-hidden="true">
++      <path d="M54,14 L16,89 L92,89 Z" fill="none" stroke="#E8EAF2"
++            stroke-width="5" stroke-linejoin="round" opacity="0.9"/>
++      <path d="M65,42 L49,78 L86,78 Z" fill="none" stroke="#E8EAF2"
++            stroke-width="5" stroke-linejoin="round" opacity="0.65"/>
++      <path d="M11,78 L70,78 L59,94 L23,94 Z" fill="#B9BCC7"/>
++    </svg>
++    <h1>You're offline</h1>
++    <p class="aegis-sub">No internet connection. Aegis will pick up right
++      where you left off once you're back online.</p>
++    <button id="aegis-retry">Try again</button>
++    <div class="aegis-foot">AEGIS &middot; private by default</div>
++  </div>
++  <style>
++    #aegis-offline {
++      position: fixed; inset: 0; z-index: 2147483647;
++      background: linear-gradient(160deg, #131418 0%, #0B0B0D 70%);
++      display: flex; flex-direction: column; align-items: center;
++      justify-content: center; text-align: center; padding: 24px;
++      font-family: 'Segoe UI', Roboto, sans-serif; color: #E8EAF2;
++      cursor: default;
++    }
++    #aegis-offline h1 {
++      font-size: clamp(1.5rem, 6vw, 2.2rem); font-weight: 600;
++      margin: 20px 0 8px; letter-spacing: 0.2px;
++    }
++    #aegis-offline .aegis-sub {
++      font-size: clamp(0.9rem, 3.5vw, 1.05rem); color: #A9ADB8;
++      max-width: 34em; margin: 0 0 28px; line-height: 1.5;
++    }
++    #aegis-offline #aegis-retry {
++      background: rgba(232,234,242,0.08); color: #E8EAF2;
++      border: 1px solid rgba(232,234,242,0.35); border-radius: 24px;
++      padding: 12px 40px; font-size: 1rem; cursor: pointer;
++    }
++    #aegis-offline #aegis-retry:active { background: rgba(232,234,242,0.18); }
++    #aegis-offline .aegis-foot {
++      position: absolute; bottom: 18px; font-size: 0.72rem;
++      letter-spacing: 2px; color: #5E616B;
++    }
++    body.neterror > #content, body.neterror > #offline-resources {
++      display: none !important;
++    }
++  </style>
++  <script>
++    document.getElementById('aegis-retry').addEventListener('click',
++        function () { location.reload(); });
++  </script>
+ </body>
+ </html>
