@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Aegis launcher icon - traced from aegis/branding/logo/aegis-logo-rounded.png (curved corners) -->
+<!-- AEGIS (patch 183): the traced brand mark, spec-sized (mark at 72/108 of the layer). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
     <path
-        android:pathData="M53.51,38.36 L 38.22,67.38 L 38.00,68.62 L 38.13,69.29 L 38.67,69.64 L 60.22,69.64 L 60.76,69.29 L 61.29,68.27 L 61.11,67.20 L 55.69,55.73 L 55.78,55.02 L 57.82,51.02 L 58.27,50.67 L 58.84,50.62 L 59.47,51.11 L 68.44,69.56 L 69.33,69.64 L 69.91,68.49 L 69.87,67.69 L 60.49,49.51 L 60.00,48.89 L 59.29,48.53 L 58.18,48.67 L 57.33,49.47 L 51.38,61.38 L 50.80,62.04 L 50.27,62.27 L 46.18,62.27 L 45.47,61.73 L 45.38,60.80 L 55.51,40.93 L 55.56,40.09 L 54.80,38.67 L 54.31,38.36 Z M39.56,67.73 L 41.51,63.78 L 41.96,63.42 L 57.56,63.38 L 58.00,63.56 L 58.18,63.73 L 59.78,67.02 L 60.09,67.91 L 59.91,68.36 L 59.42,68.67 L 40.36,68.67 L 39.96,68.53 L 39.64,68.22 Z"
+        android:pathData="M58.64,18.07 L65.79,32.69 L49.33,64.97 L46.81,70.31 L32.08,70.31 Z M64.26,40.36 L56.97,54.71 L72.22,86.76 L73.42,89.47 L73.70,90.05 L84.33,90.05 L87.58,88.24 Z M25.69,72.45 L62.97,72.45 L68.84,84.80 L19.49,84.80 Z"
         android:fillColor="#FFFFFF" android:fillType="evenOdd" />
 </vector>
