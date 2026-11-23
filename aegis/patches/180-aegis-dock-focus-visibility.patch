@@ -1,0 +1,11 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
+@@ -656,7 +656,7 @@
+     }
+ 
+     @Override
+-    protected void onWindowFocusChanged(boolean hasWindowFocus) {
++    public void onWindowFocusChanged(boolean hasWindowFocus) {
+         super.onWindowFocusChanged(hasWindowFocus);
+         // AEGIS (patch 178): the dock vanished after task switches, sheets
+         // and media pickers, and 176's onLayout heal only ran on layout
