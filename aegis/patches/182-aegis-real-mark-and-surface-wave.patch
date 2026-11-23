@@ -1,0 +1,331 @@
+--- a/chrome/android/java/res/drawable/aegis_logo_dark.xml
++++ b/chrome/android/java/res/drawable/aegis_logo_dark.xml
+@@ -8,7 +8,12 @@
+     android:viewportWidth="108"
+     android:viewportHeight="108">
+     <path
+-        android:pathData="M48,13 L20,80 M48,13 L62,80 M60,34 L39,80 M60,34 L74,80 M20,80 L74,80"
+-        android:strokeColor="#FFFFFF" android:strokeWidth="5.5"
+-        android:strokeLineCap="butt" android:strokeLineJoin="miter"/>
++        android:pathData="M 58.64,18.07 L 65.79,32.69 L 49.33,64.97 L 46.81,70.31 L 32.08,70.31 Z"
++        android:fillColor="#FFFFFF"/>
++    <path
++        android:pathData="M 64.26,40.36 L 56.97,54.71 L 72.22,86.76 L 73.42,89.47 L 73.70,90.05 L 84.33,90.05 L 87.58,88.24 Z"
++        android:fillColor="#FFFFFF"/>
++    <path
++        android:pathData="M 25.69,72.45 L 62.97,72.45 L 68.84,84.80 L 19.49,84.80 Z"
++        android:fillColor="#FFFFFF"/>
+ </vector>
+--- a/chrome/android/java/res/drawable/aegis_launcher_white.xml
++++ b/chrome/android/java/res/drawable/aegis_launcher_white.xml
+@@ -2,5 +2,7 @@
+ <!-- AEGIS (patch 163): the white-background launcher variant. -->
+ <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+     <background android:drawable="@drawable/aegis_launcher_bg_white"/>
+-    <foreground android:drawable="@drawable/aegis_logo_dark"/>
++    <!-- AEGIS (patch 182): white-stroke mark on the white background was
++         invisible - the variant needs the dark-ink mark. -->
++    <foreground android:drawable="@drawable/aegis_logo_light"/>
+ </adaptive-icon>
+--- a/chrome/android/chrome_java_resources.gni
++++ b/chrome/android/chrome_java_resources.gni
+@@ -256,6 +256,7 @@
+   "java/res/drawable/aegis_launcher_glass_bg.xml",
+   "java/res/drawable/aegis_launcher_white.xml",
+   "java/res/drawable/aegis_logo_dark.xml",
++  "java/res/drawable/aegis_logo_light.xml",
+   "java/res/drawable/aegis_logo_glass.xml",
+   "java/res/drawable/aegis_url_pill.xml",
+   "java/res/drawable/aegis_ic_find.xml",
+--- a/chrome/android/java/res/drawable/aegis_logo_light.xml
++++ b/chrome/android/java/res/drawable/aegis_logo_light.xml
+@@ -0,0 +1,19 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- AEGIS (patch 182): the white launcher variant's foreground - the same
++     traced brand mark with the ink flipped near-black, i.e. the dark icon
++     with the background changed to white (r117). -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="108dp"
++    android:height="108dp"
++    android:viewportWidth="108"
++    android:viewportHeight="108">
++    <path
++        android:pathData="M 58.64,18.07 L 65.79,32.69 L 49.33,64.97 L 46.81,70.31 L 32.08,70.31 Z"
++        android:fillColor="#0B0B0D"/>
++    <path
++        android:pathData="M 64.26,40.36 L 56.97,54.71 L 72.22,86.76 L 73.42,89.47 L 73.70,90.05 L 84.33,90.05 L 87.58,88.24 Z"
++        android:fillColor="#0B0B0D"/>
++    <path
++        android:pathData="M 25.69,72.45 L 62.97,72.45 L 68.84,84.80 L 19.49,84.80 Z"
++        android:fillColor="#0B0B0D"/>
++</vector>
+--- a/components/neterror/resources/neterror.html
++++ b/components/neterror/resources/neterror.html
+@@ -29,9 +29,10 @@
+     </template>
+   </div>
+   <div id="aegis-offline">
+-    <svg viewBox="0 0 108 108" width="72" height="72" aria-hidden="true">
+-      <path d="M48,13 L20,80 M48,13 L62,80 M60,34 L39,80 M60,34 L74,80 M20,80 L74,80" fill="none" stroke="#E8EAF2"
+-            stroke-width="5.5"/>
++    <svg viewBox="0 0 96 100" width="72" height="75" aria-hidden="true">
++      <path class="aegis-mark" d="M54.44,0.10 L64.37,20.40 L41.52,65.23 L38.01,72.65 L17.55,72.65 Z"/>
++      <path class="aegis-mark" d="M62.25,31.06 L52.12,50.99 L73.31,95.50 L74.97,99.27 L75.36,100.07 L90.13,100.07 L94.64,97.55 Z"/>
++      <path class="aegis-mark" d="M8.68,75.63 L60.46,75.63 L68.61,92.78 L0.07,92.78 Z"/>
+     </svg>
+     <h1>You're offline</h1>
+     <p class="aegis-sub">No internet connection. Aegis will pick up right
+@@ -48,6 +49,19 @@
+       font-family: 'Segoe UI', Roboto, sans-serif; color: #E8EAF2;
+       cursor: default;
+     }
++    .aegis-mark { fill: currentColor; }
++    @media (prefers-color-scheme: light) {
++      #aegis-offline {
++        background: linear-gradient(160deg, #FFFFFF 0%, #EEF1F6 70%);
++        color: #101114;
++      }
++      #aegis-offline .aegis-sub { color: #5E616B; }
++      #aegis-offline #aegis-retry {
++        background: rgba(16,17,20,0.06); color: #101114;
++        border-color: rgba(16,17,20,0.35);
++      }
++      #aegis-offline .aegis-foot { color: #9AA0AB; }
++    }
+     #aegis-offline h1 {
+       font-size: clamp(1.5rem, 6vw, 2.2rem); font-weight: 600;
+       margin: 20px 0 8px; letter-spacing: 0.2px;
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisSearchSheet.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisSearchSheet.java
+@@ -7,7 +7,9 @@
+ import android.app.Activity;
+ import android.content.Context;
+ import android.graphics.Rect;
++import android.graphics.Typeface;
+ import android.graphics.drawable.GradientDrawable;
++import android.util.TypedValue;
+ import android.widget.ImageView;
+ import android.os.Build;
+ import android.text.TextUtils;
+@@ -287,11 +289,17 @@
+             String keyword = engine.getKeyword();
+             boolean active =
+                     dseKeyword != null && keyword != null && keyword.equals(dseKeyword);
+-            ImageView chip = new ImageView(context);
+-            chip.setImageBitmap(AegisEngineIcons.iconFor(
+-                    keyword, logo, AegisGlassUi.isDark(context)));
++            // AEGIS (patch 182): the drawn logos lost to the user's r117
++            // verdict - show the engines' names as text pills instead.
+             String name = engine.getShortName();
++            TextView chip = new TextView(context);
++            chip.setText(name != null ? name : wanted);
+             chip.setContentDescription(name != null ? name : wanted);
++            chip.setTextColor(context.getColor(R.color.aegis_glass_chip_text));
++            chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
++            chip.setTypeface(Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD));
++            chip.setSingleLine(true);
++            chip.setPadding((int) (10 * d), 0, (int) (10 * d), 0);
+             GradientDrawable chipBg = new GradientDrawable();
+             chipBg.setColor(context.getColor(active ? R.color.aegis_glass_chip_active
+                                                     : R.color.aegis_glass_chip));
+@@ -309,8 +317,8 @@
+                         if (keyword == null) return;
+                         service.setSearchEngine(keyword);
+                     });
+-            LinearLayout.LayoutParams chipLp =
+-                    new LinearLayout.LayoutParams(chipW, chipH);
++            LinearLayout.LayoutParams chipLp = new LinearLayout.LayoutParams(
++                    ViewGroup.LayoutParams.WRAP_CONTENT, chipH);
+             chipLp.rightMargin = pad / 2;
+             chipRow.addView(chip, chipLp);
+             seen++;
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisMenuSheet.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisMenuSheet.java
+@@ -92,8 +92,9 @@
+         // browser's own routed ids, same as the stock menu.
+         addTile(grid, R.string.aegis_menu_reload, R.drawable.aegis_ic_reload,
+                 () -> fire(R.id.reload_menu_id));
+-        addTile(grid, R.string.aegis_menu_find, R.drawable.aegis_ic_find,
+-                () -> fire(R.id.find_in_page_id));
++        // AEGIS (patch 182): find-in-page removed by user decision - the
++        // bar lives in the container patch 150 pins GONE and any revival
++        // renders broken.
+         addTile(grid, R.string.aegis_menu_share, R.drawable.aegis_ic_share,
+                 () -> fire(R.id.share_menu_id));
+         addTile(grid, R.string.aegis_menu_print, R.drawable.aegis_ic_print,
+--- a/chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/top/ToolbarControlContainer.java
++++ b/chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/top/ToolbarControlContainer.java
+@@ -390,29 +390,6 @@
+         mVerticalTabsContainerWidthSupplier = ObservableSuppliers.createNonNull(0);
+     }
+ 
+-    // AEGIS (patch 181): patch 150 pins this container GONE so the
+-    // Google header can never draw - and swallowed the find bar, which
+-    // lives inside it. FindToolbarManager lifts and restores the pin via
+-    // this gate; while active, the inner header row stays hidden so only
+-    // the find bar shows.
+-    private boolean mAegisFindActive;
+-
+-    /** Patch 181 gate: called by FindToolbarManager on show/hide. */
+-    public void aegisShowForFind(boolean active) {
+-        mAegisFindActive = active;
+-        if (active) {
+-            if (mToolbarContainer != null) {
+-                mToolbarContainer.setVisibility(View.GONE);
+-            }
+-            super.setVisibility(View.VISIBLE);
+-        } else {
+-            super.setVisibility(View.GONE);
+-            if (mToolbarContainer != null) {
+-                mToolbarContainer.setVisibility(View.VISIBLE);
+-            }
+-        }
+-    }
+-
+     @Override
+     public void setVisibility(int visibility) {
+         mMidVisibilityToggle = true;
+@@ -424,7 +401,7 @@
+         // omnibox focus, the patch 139 re-assert loop - can ever draw the
+         // Google header, while every view inside stays findable because
+         // the container remains in the hierarchy.
+-        super.setVisibility(mAegisFindActive ? visibility : View.GONE);
++        super.setVisibility(View.GONE);
+         mMidVisibilityToggle = false;
+     }
+ 
+--- a/chrome/android/java/src/org/chromium/chrome/browser/findinpage/FindToolbarManager.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/findinpage/FindToolbarManager.java
+@@ -107,7 +107,6 @@
+         if (mFindToolbar == null) return;
+ 
+         mFindToolbar.deactivate(clearSelection);
+-        aegisFindGate(false);
+     }
+ 
+     /**
+@@ -130,7 +129,6 @@
+                         @Override
+                         public void onFindToolbarShown() {
+                             mNotifiedShown = true;
+-                            aegisFindGate(true);
+                             for (FindToolbarObserver observer : mObservers) {
+                                 observer.onFindToolbarShown();
+                             }
+@@ -139,7 +137,6 @@
+                         @Override
+                         public void onFindToolbarHidden() {
+                             mNotifiedShown = false;
+-                            aegisFindGate(false);
+                             for (FindToolbarObserver observer : mObservers) {
+                                 observer.onFindToolbarHidden();
+                             }
+@@ -152,27 +149,9 @@
+             }
+             mBackPressManager.addHandler(mFindToolbar, BackPressHandler.Type.FIND_TOOLBAR);
+         }
+-        aegisFindGate(true);
+         mFindToolbar.activate();
+     }
+ 
+-    // AEGIS (patch 181): the toolbar control container is pinned GONE
+-    // by patch 150 (the Google header must never draw) and the find bar
+-    // lives inside it - lift the pin while find is showing, restore it
+-    // after, or the bar animates into a view nothing can draw.
+-    private void aegisFindGate(boolean active) {
+-        if (mFindToolbar == null) return;
+-        android.view.ViewParent p = mFindToolbar.getParent();
+-        while (p != null && !(p instanceof
+-                org.chromium.chrome.browser.toolbar.top.ToolbarControlContainer)) {
+-            p = p.getParent();
+-        }
+-        if (p != null) {
+-            ((org.chromium.chrome.browser.toolbar.top.ToolbarControlContainer) p)
+-                    .aegisShowForFind(active);
+-        }
+-    }
+-
+     /**
+      * Sets the {@link SideUiStateProvider} to observe side UI changes.
+      *
+--- a/chrome/android/java/src/org/chromium/chrome/browser/ChromeBaseAppCompatActivity.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/ChromeBaseAppCompatActivity.java
+@@ -828,9 +828,13 @@
+         AutomotiveBackButtonToolbarCoordinator.hideBackButtonToolbar(this);
+     }
+ 
+-    /** Returns whether dynamic colors should be applied. */
++    /**
++     * AEGIS (patch 182): dynamic colors off - the wallpaper palette painted
++     * the settings cards #393939 in dark mode (r117). The brand runs a
++     * fixed near-black palette (patch 178's blackwave tiers).
++     */
+     protected boolean shouldApplyDynamicColors() {
+-        return true;
++        return false;
+     }
+ 
+     /**
+--- a/components/browser_ui/theme/android/java/res/values-night/themes.xml
++++ b/components/browser_ui/theme/android/java/res/values-night/themes.xml
+@@ -6,7 +6,15 @@
+ -->
+ 
+ <resources>
+-    <style name="Theme.BrowserUI.DayNight" parent="Theme.BrowserUI.Dark"/>
++    <!-- AEGIS (patch 182): pin the M3 surface containers to the blackwave
++         tiers - with dynamic colors off these attrs are the final answer
++         for every dark activity on this theme chain. -->
++    <style name="Theme.BrowserUI.DayNight" parent="Theme.BrowserUI.Dark">
++        <item name="colorSurfaceContainer">@color/gm3_baseline_surface_container_dark</item>
++        <item name="colorSurfaceContainerLow">@color/gm3_baseline_surface_container_low_dark</item>
++        <item name="colorSurfaceContainerHigh">@color/gm3_baseline_surface_container_high_dark</item>
++        <item name="colorSurfaceContainerHighest">@color/gm3_baseline_surface_container_highest_dark</item>
++    </style>
+     <style name="Theme.BrowserUI.DayNight.DialogWhenLarge" parent="Theme.BrowserUI.Dark.DialogWhenLarge"/>
+     <style name="Theme.BrowserUI.DayNight.AlertDialog.NoActionBar" parent="Theme.BrowserUI.Dark.AlertDialog.NoActionBar"/>
+ </resources>
+--- a/chrome/android/java/res/xml/main_preferences.xml
++++ b/chrome/android/java/res/xml/main_preferences.xml
+@@ -30,7 +30,7 @@
+         android:key="aegis_app_icon"
+         android:order="3"
+         android:title="App icon"
+-        android:summary="Black (default) · White · Liquid glass"/>
++        android:summary="Black (default) · White"/>
+     <org.chromium.components.browser_ui.settings.ChromeBasePreferenceCategory
+         android:key="basics_section"
+         android:order="5"
+--- a/chrome/android/java/src/org/chromium/chrome/browser/settings/MainSettings.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/settings/MainSettings.java
+@@ -211,7 +211,9 @@
+             Context context = getContext() != null ? getContext() : getActivity();
+             if (context == null) return true;
+             String current = AegisLauncherIcon.current(context);
+-            int checked = "white".equals(current) ? 1 : ("glass".equals(current) ? 2 : 0);
++            // AEGIS (patch 182): two variants since 178 - a stale glass
++            // index would crash the dialog.
++            int checked = "white".equals(current) ? 1 : 0;
+             new android.app.AlertDialog.Builder(context)
+                     .setTitle("App icon")
+                     .setSingleChoiceItems(
+@@ -220,7 +222,7 @@
+                                 AegisLauncherIcon.apply(
+                                         context, AegisLauncherIcon.VARIANTS[which]);
+                                 preference.setSummary(
+-                                        "Black (default) · White · Liquid glass - now: "
++                                        "Black (default) · White - now: "
+                                         + AegisLauncherIcon.LABELS[which]);
+                                 dialog.dismiss();
+                             })
+--- a/third_party/search_engines_data/resources/definitions/prepopulated_engines.json
++++ b/third_party/search_engines_data/resources/definitions/prepopulated_engines.json
+@@ -31,7 +31,7 @@
+     "aegis": {
+       "name": "Aegis Search",
+       "keyword": "aegis-search.aegis-search.workers.dev",
+-      "favicon_url": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 108 108'%3E%3Crect width='108' height='108' rx='24' fill='%230B0B0D'/%3E%3Cpath d='M48,13 L20,80 M48,13 L62,80 M60,34 L39,80 M60,34 L74,80 M20,80 L74,80' fill='none' stroke='%23FFFFFF' stroke-width='5.5'/%3E%3C/svg%3E",
++      "favicon_url": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 108 108'%3E%3Crect width='108' height='108' rx='24' fill='%230B0B0D'/%3E%3Cpath fill='%23FFFFFF' d='M58.64,18.07L65.79,32.69L49.33,64.97L46.81,70.31L32.08,70.31Z'/%3E%3Cpath fill='%23FFFFFF' d='M64.26,40.36L56.97,54.71L72.22,86.76L73.42,89.47L73.70,90.05L84.33,90.05L87.58,88.24Z'/%3E%3Cpath fill='%23FFFFFF' d='M25.69,72.45L62.97,72.45L68.84,84.80L19.49,84.80Z'/%3E%3C/svg%3E",
+       "search_url": "https://aegis-search.aegis-search.workers.dev/search?q={searchTerms}",
+       "suggest_url": "https://aegis-search.aegis-search.workers.dev/suggest?q={searchTerms}",
+       "type": "SEARCH_ENGINE_AEGIS",
