@@ -1,0 +1,263 @@
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisVerifiedSources.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisVerifiedSources.java
+@@ -70,8 +70,11 @@
+         if (reg == null || reg.isEmpty()) return NEUTRAL;
+         List<String> hosts = snapshot();
+         if (hosts == null || hosts.isEmpty()) return NEUTRAL;
++        // AEGIS (patch 181): subdomain-tolerant - mail.google.com is
++        // verified by google.com; the exact match alone left every real
++        // subdomain unbadged.
+         for (String entry : hosts) {
+-            if (reg.equals(entry)) return VERIFIED;
++            if (reg.equals(entry) || reg.endsWith("." + entry)) return VERIFIED;
+         }
+         for (String entry : hosts) {
+             if (isLookalike(reg, entry)) return LOOKALIKE;
+@@ -210,7 +213,13 @@
+                 if (!c.find()) continue;
+                 String domain = c.group(1).replaceAll("<[^>]+>", "")
+                         .trim().toLowerCase(Locale.ROOT);
+-                if (!domain.isEmpty()) hosts.add(domain);
++                // AEGIS (patch 181): only domain-shaped rows match a
++                // host - profile paths like x.com/abdul_mateen_14 are
++                // published entries but can never verify a hostname.
++                if (!domain.isEmpty() && !domain.contains("/")
++                        && !domain.contains(" ")) {
++                    hosts.add(domain);
++                }
+             }
+             return hosts;
+         } catch (Exception fetchError) {
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
+@@ -422,6 +422,7 @@
+             mPill.setScaleY(1f);
+             mPill.setAlpha(1f);
+             mSliverBar.setAlpha(1f);
++            mSliverBar.setVisibility(VISIBLE);
+             mSliverTouch.setVisibility(VISIBLE);
+             return;
+         }
+@@ -432,6 +433,9 @@
+         // end action and the dock stayed hidden with no recall surface.
+         // State now flips synchronously - the animations are cosmetic only.
+         mSliverTouch.setVisibility(VISIBLE);
++        // AEGIS (patch 181): the bar left GONE from construction made the
++        // whole collapsed dock invisible - nothing to see or tap.
++        mSliverBar.setVisibility(VISIBLE);
+         mSliverBar.setAlpha(0f);
+         mSliverBar.animate().alpha(1f).setDuration(140).start();
+         mPill.animate()
+--- a/chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/top/ToolbarControlContainer.java
++++ b/chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/top/ToolbarControlContainer.java
+@@ -390,6 +390,29 @@
+         mVerticalTabsContainerWidthSupplier = ObservableSuppliers.createNonNull(0);
+     }
+ 
++    // AEGIS (patch 181): patch 150 pins this container GONE so the
++    // Google header can never draw - and swallowed the find bar, which
++    // lives inside it. FindToolbarManager lifts and restores the pin via
++    // this gate; while active, the inner header row stays hidden so only
++    // the find bar shows.
++    private boolean mAegisFindActive;
++
++    /** Patch 181 gate: called by FindToolbarManager on show/hide. */
++    public void aegisShowForFind(boolean active) {
++        mAegisFindActive = active;
++        if (active) {
++            if (mToolbarContainer != null) {
++                mToolbarContainer.setVisibility(View.GONE);
++            }
++            super.setVisibility(View.VISIBLE);
++        } else {
++            super.setVisibility(View.GONE);
++            if (mToolbarContainer != null) {
++                mToolbarContainer.setVisibility(View.VISIBLE);
++            }
++        }
++    }
++
+     @Override
+     public void setVisibility(int visibility) {
+         mMidVisibilityToggle = true;
+@@ -401,7 +424,7 @@
+         // omnibox focus, the patch 139 re-assert loop - can ever draw the
+         // Google header, while every view inside stays findable because
+         // the container remains in the hierarchy.
+-        super.setVisibility(View.GONE);
++        super.setVisibility(mAegisFindActive ? visibility : View.GONE);
+         mMidVisibilityToggle = false;
+     }
+ 
+--- a/chrome/android/java/src/org/chromium/chrome/browser/findinpage/FindToolbarManager.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/findinpage/FindToolbarManager.java
+@@ -107,6 +107,7 @@
+         if (mFindToolbar == null) return;
+ 
+         mFindToolbar.deactivate(clearSelection);
++        aegisFindGate(false);
+     }
+ 
+     /**
+@@ -129,6 +130,7 @@
+                         @Override
+                         public void onFindToolbarShown() {
+                             mNotifiedShown = true;
++                            aegisFindGate(true);
+                             for (FindToolbarObserver observer : mObservers) {
+                                 observer.onFindToolbarShown();
+                             }
+@@ -137,6 +139,7 @@
+                         @Override
+                         public void onFindToolbarHidden() {
+                             mNotifiedShown = false;
++                            aegisFindGate(false);
+                             for (FindToolbarObserver observer : mObservers) {
+                                 observer.onFindToolbarHidden();
+                             }
+@@ -149,9 +152,27 @@
+             }
+             mBackPressManager.addHandler(mFindToolbar, BackPressHandler.Type.FIND_TOOLBAR);
+         }
++        aegisFindGate(true);
+         mFindToolbar.activate();
+     }
+ 
++    // AEGIS (patch 181): the toolbar control container is pinned GONE
++    // by patch 150 (the Google header must never draw) and the find bar
++    // lives inside it - lift the pin while find is showing, restore it
++    // after, or the bar animates into a view nothing can draw.
++    private void aegisFindGate(boolean active) {
++        if (mFindToolbar == null) return;
++        android.view.ViewParent p = mFindToolbar.getParent();
++        while (p != null && !(p instanceof
++                org.chromium.chrome.browser.toolbar.top.ToolbarControlContainer)) {
++            p = p.getParent();
++        }
++        if (p != null) {
++            ((org.chromium.chrome.browser.toolbar.top.ToolbarControlContainer) p)
++                    .aegisShowForFind(active);
++        }
++    }
++
+     /**
+      * Sets the {@link SideUiStateProvider} to observe side UI changes.
+      *
+--- a/components/messages/android/internal/java/res/layout/message_banner_view.xml
++++ b/components/messages/android/internal/java/res/layout/message_banner_view.xml
+@@ -34,6 +34,7 @@
+ 
+         <ImageView
+             android:id="@+id/message_icon"
++            android:visibility="gone"
+             app:tint="@macro/default_icon_color_accent1"
+             android:layout_marginHorizontal="@dimen/message_icon_margin"
+             android:layout_width="wrap_content"
+--- a/chrome/browser/ui/android/strings/android_chrome_strings.grd
++++ b/chrome/browser/ui/android/strings/android_chrome_strings.grd
+@@ -2163,7 +2163,7 @@
+         About Aegis
+       </message>
+       <message name="IDS_LEGAL_INFORMATION_SUMMARY" desc="Summary for legal information" meaning="Android">
+-        Copyright <ph name="year">%1$d<ex>2014</ex></ph> Google LLC. All rights reserved.
++        Copyright <ph name="year">%1$d<ex>2014</ex></ph> Aegis. All rights reserved.
+       </message>
+       <message name="IDS_APPLICATION_VERSION_TITLE" desc="Title for application version">
+         Application version
+--- a/chrome/android/java/res/drawable/aegis_logo_dark.xml
++++ b/chrome/android/java/res/drawable/aegis_logo_dark.xml
+@@ -8,14 +8,7 @@
+     android:viewportWidth="108"
+     android:viewportHeight="108">
+     <path
+-        android:pathData="M54,14 L16,89 L92,89 Z"
+-        android:strokeColor="#FFFFFF" android:strokeWidth="7"
+-        android:strokeLineJoin="round"/>
+-    <path
+-        android:pathData="M65,42 L49,78 L86,78 Z"
+-        android:strokeColor="#FFFFFF" android:strokeWidth="7"
+-        android:strokeLineJoin="round"/>
+-    <path
+-        android:pathData="M11,78 L70,78 L59,94 L23,94 Z"
+-        android:fillColor="#FFFFFF"/>
++        android:pathData="M48,13 L20,80 M48,13 L62,80 M60,34 L39,80 M60,34 L74,80 M20,80 L74,80"
++        android:strokeColor="#FFFFFF" android:strokeWidth="5.5"
++        android:strokeLineCap="butt" android:strokeLineJoin="miter"/>
+ </vector>
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisEngineIcons.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisEngineIcons.java
+@@ -167,26 +167,27 @@
+         p.setStrokeWidth(sizePx * 0.09f);
+         p.setStrokeJoin(Paint.Join.ROUND);
+         float s = sizePx;
+-        Path big = new Path();
+-        big.moveTo(s * 0.50f, s * 0.13f);
+-        big.lineTo(s * 0.15f, s * 0.87f);
+-        big.lineTo(s * 0.85f, s * 0.87f);
+-        big.close();
+-        canvas.drawPath(big, p);
+-        Path nested = new Path();
+-        nested.moveTo(s * 0.63f, s * 0.42f);
+-        nested.lineTo(s * 0.48f, s * 0.76f);
+-        nested.lineTo(s * 0.83f, s * 0.76f);
+-        nested.close();
+-        canvas.drawPath(nested, p);
+-        p.setStyle(Paint.Style.FILL);
+-        Path bar = new Path();
+-        bar.moveTo(s * 0.10f, s * 0.76f);
+-        bar.lineTo(s * 0.66f, s * 0.76f);
+-        bar.lineTo(s * 0.56f, s * 0.93f);
+-        bar.lineTo(s * 0.20f, s * 0.93f);
+-        bar.close();
+-        canvas.drawPath(bar, p);
++        // AEGIS (patch 181): the real brand mark - two peaks sharing a
++        // base, traced from the reference render (Aegis-browser.png).
++        p.setStrokeCap(Paint.Cap.BUTT);
++        p.setStrokeJoin(Paint.Join.MITER);
++        Path leg = new Path();
++        leg.moveTo(s * 0.49f, s * 0.12f);
++        leg.lineTo(s * 0.18f, s * 0.86f);
++        canvas.drawPath(leg, p);
++        leg = new Path();
++        leg.moveTo(s * 0.49f, s * 0.12f);
++        leg.lineTo(s * 0.63f, s * 0.86f);
++        canvas.drawPath(leg, p);
++        leg = new Path();
++        leg.moveTo(s * 0.61f, s * 0.34f);
++        leg.lineTo(s * 0.36f, s * 0.86f);
++        canvas.drawPath(leg, p);
++        leg = new Path();
++        leg.moveTo(s * 0.61f, s * 0.34f);
++        leg.lineTo(s * 0.80f, s * 0.86f);
++        canvas.drawPath(leg, p);
++        canvas.drawLine(s * 0.18f, s * 0.86f, s * 0.80f, s * 0.86f, p);
+         return bmp;
+     }
+ 
+--- a/components/neterror/resources/neterror.html
++++ b/components/neterror/resources/neterror.html
+@@ -30,11 +30,8 @@
+   </div>
+   <div id="aegis-offline">
+     <svg viewBox="0 0 108 108" width="72" height="72" aria-hidden="true">
+-      <path d="M54,14 L16,89 L92,89 Z" fill="none" stroke="#E8EAF2"
+-            stroke-width="5" stroke-linejoin="round" opacity="0.9"/>
+-      <path d="M65,42 L49,78 L86,78 Z" fill="none" stroke="#E8EAF2"
+-            stroke-width="5" stroke-linejoin="round" opacity="0.65"/>
+-      <path d="M11,78 L70,78 L59,94 L23,94 Z" fill="#B9BCC7"/>
++      <path d="M48,13 L20,80 M48,13 L62,80 M60,34 L39,80 M60,34 L74,80 M20,80 L74,80" fill="none" stroke="#E8EAF2"
++            stroke-width="5.5"/>
+     </svg>
+     <h1>You're offline</h1>
+     <p class="aegis-sub">No internet connection. Aegis will pick up right
+--- a/third_party/search_engines_data/resources/definitions/prepopulated_engines.json
++++ b/third_party/search_engines_data/resources/definitions/prepopulated_engines.json
+@@ -31,7 +31,7 @@
+     "aegis": {
+       "name": "Aegis Search",
+       "keyword": "aegis-search.aegis-search.workers.dev",
+-      "favicon_url": "https://aegis-search.aegis-search.workers.dev/favicon.svg",
++      "favicon_url": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 108 108'%3E%3Crect width='108' height='108' rx='24' fill='%230B0B0D'/%3E%3Cpath d='M48,13 L20,80 M48,13 L62,80 M60,34 L39,80 M60,34 L74,80 M20,80 L74,80' fill='none' stroke='%23FFFFFF' stroke-width='5.5'/%3E%3C/svg%3E",
+       "search_url": "https://aegis-search.aegis-search.workers.dev/search?q={searchTerms}",
+       "suggest_url": "https://aegis-search.aegis-search.workers.dev/suggest?q={searchTerms}",
+       "type": "SEARCH_ENGINE_AEGIS",
