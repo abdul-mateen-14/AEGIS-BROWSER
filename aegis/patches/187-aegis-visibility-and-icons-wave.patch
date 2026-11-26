@@ -156,7 +156,7 @@
              android:paddingTop="@dimen/message_banner_vertical_padding"
 -            android:paddingBottom="@dimen/message_banner_vertical_padding">
 +            android:paddingBottom="@dimen/message_banner_vertical_padding"
-+            android:paddingStart="@dimen/message_icon_margin"
++            android:paddingStart="@dimen/message_icon_margin">
  
              <TextView
                  android:id="@+id/message_title"
