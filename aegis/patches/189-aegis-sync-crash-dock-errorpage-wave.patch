@@ -1,0 +1,325 @@
+# Aegis patch 189 - sync-crash fix, dock behavior, error-page split, UI trims
+# 2026-11-27 wave from the r145 field reports:
+#   1. crash 1795784411305: "Native method not present" right after Aegis ID
+#      re-login - the sync merge calls PasswordStoreBridge JNI whose
+#      registration table went stale in a banked build. Fix: fail-soft merge
+#      + force JNI registration regeneration (file touch) + the bridge will
+#      re-register on this build.
+#   2. dock auto-hid on the new tab / Aegis home (r145 report) - hold it.
+#   3. new tab from the tab grid arrived with the dock still collapsed.
+#   4. dock search had no recommendations - open tabs + famous places now.
+#   5. dock URL pill opened in caret mode - select-all instead, pencil row
+#      switches back to editing (r145 report).
+#   6. "Automatically open tab groups from other devices" still shown
+#      although there is no Google sync backend - remove the row.
+#   7. notification permission rationale dialog filled the whole screen -
+#      compact layout, stays anchored to the bottom.
+#   8. every net error showed the "You're offline" hero - gate it on
+#      upstream's html.offline classification so site-side errors show the
+#      real error page.
+
+--- a/chrome/android/java/res/values/aegis_tokens.xml
++++ b/chrome/android/java/res/values/aegis_tokens.xml
+@@ -70,2 +70,4 @@
+     <string name="aegis_dock_search">Search</string>
+     <string name="aegis_dock_search_hint">Search or type URL</string>
++    <string name="aegis_dock_edit_address">Edit address</string>
++    <string name="aegis_dock_suggestions">Suggestions</string>
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
+@@ -105,3 +105,10 @@
+                 public void onShown(Tab tab, int type) {
+                     refreshUrl();
++                    // AEGIS (patch 189, r145 report): a new tab opened from
++                    // the tab grid landed on the home surface with the dock
++                    // still collapsed - the entry point vanished exactly
++                    // when there was nothing to scroll. Recall the dock on
++                    // every arrival at a native new-tab / Aegis home.
++                    if (tab != null && UrlUtilities.isNtpUrl(tab.getUrl())
++                            && !mExpanded) expand();
+                 }
+@@ -133,5 +139,13 @@
+                     if (delta < 0) {
+                         removeCallbacks(mScrollCollapse);
+                         if (AegisGlassSheet.isAnySheetShowing() || mImeOpen) return;
++                        // AEGIS (patch 189, r145 report): the coordinator
++                        // still animates its bottom offsets on the native
++                        // new-tab page, which kept auto-collapsing the dock
++                        // there ("dock should not hide in the new tab/home
++                        // page"). Home never scrolls content - hold the
++                        // dock; real page scrolling still collapses it.
++                        if (mObservedTab == null
++                                || UrlUtilities.isNtpUrl(mObservedTab.getUrl())) return;
+                         postDelayed(mScrollCollapse, SCROLL_IDLE_MS);
+                     } else if (delta > 0) {
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisSearchSheet.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisSearchSheet.java
+@@ -115,4 +115,7 @@
+         if (prefill != null && !prefill.isEmpty()) {
+             input.setText(prefill);
+-            input.setSelection(prefill.length());
++            // AEGIS (patch 189, r145 report): the sheet opens with the
++            // whole address selected, so the first keystroke replaces it
++            // with a fresh query or URL; the row below returns to editing.
++            input.setSelection(0, prefill.length());
+         }
+@@ -137,3 +138,41 @@
+         panel.addView(input);
++
++        // AEGIS (patch 189, r145 report): pencil affordance at the end of
++        // the address - tap to leave select-all mode and place the caret
++        // at the end of the address for editing.
++        if (prefill != null && !prefill.isEmpty()) {
++            TextView editBtn = new TextView(context);
++            editBtn.setText(context.getString(R.string.aegis_dock_edit_address));
++            editBtn.setTextSize(12);
++            editBtn.setTextColor(
++                    context.getColor(R.color.aegis_glass_text_secondary));
++            editBtn.setPadding(0, pad / 4, 0, pad / 2);
++            editBtn.setOnClickListener(
++                    v -> input.setSelection(input.getText().length()));
++            panel.addView(editBtn);
++        }
++
++        // AEGIS (patch 189, r145 report): live recommendations under the
++        // query field - open tabs first, then famous destinations whose
++        // names match the typed words ("tabs from our history and famous
++        // queries"). Browser-history rows follow once their store API is
++        // wired in a later wave; tabs + destinations ship here.
++        LinearLayout sugg = new LinearLayout(context);
++        sugg.setOrientation(LinearLayout.VERTICAL);
++        panel.addView(sugg);
++        final Runnable[] suggRun = {null};
++        input.addTextChangedListener(new android.text.TextWatcher() {
++            @Override
++            public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
++            @Override
++            public void onTextChanged(CharSequence s, int a, int b, int c) {}
++            @Override
++            public void afterTextChanged(android.text.Editable e) {
++                if (suggRun[0] != null) sheet.removeCallbacks(suggRun[0]);
++                suggRun[0] = () -> renderSuggestions(sheet, sugg, input, pad);
++                sheet.postDelayed(suggRun[0], 220);
++            }
++        });
++        sugg.post(() -> renderSuggestions(sheet, sugg, input, pad));
+ 
+         LinearLayout chipRow = new LinearLayout(context);
+@@ -395,3 +424,91 @@
+         return null;
+     }
++
++    /** Famous destinations matched against the typed words (patch 189). */
++    private static final String[][] FAMOUS_PLACES = {
++        {"Wikipedia", "https://en.wikipedia.org"},
++        {"YouTube", "https://www.youtube.com"},
++        {"GitHub", "https://github.com"},
++        {"Reddit", "https://www.reddit.com"},
++        {"OpenStreetMap", "https://www.openstreetmap.org"},
++        {"Hacker News", "https://news.ycombinator.com"},
++        {"Amazon", "https://www.amazon.com"},
++        {"Weather", "https://wttr.in"},
++    };
++
++    /**
++     * AEGIS (patch 189): fills the recommendation box for the query being
++     * typed. Open tabs match on title and URL; the famous-place list
++     * matches on name and host. Tapping a row navigates exactly like the
++     * query field itself (same resolve/load path as {@link #go}).
++     */
++    private static void renderSuggestions(
++            AegisSearchSheet sheet, LinearLayout box, EditText input, int pad) {
++        Context context = sheet.getContext();
++        Activity activity = (Activity) context;
++        if (!(activity instanceof ChromeTabbedActivity)) return;
++        ChromeTabbedActivity cta = (ChromeTabbedActivity) activity;
++        String query = input.getText() == null ? "" : input.getText().toString().trim();
++        String lower = query.toLowerCase();
++        List<String[]> rows = new ArrayList<>();
++        org.chromium.chrome.browser.tabmodel.TabModel normal =
++                cta.getTabModelSelector().getModel(false);
++        if (normal != null) {
++            for (int i = 0; i < normal.getCount() && rows.size() < 4; i++) {
++                Tab tab = normal.getTabAt(i);
++                if (tab == null || tab.getUrl() == null) continue;
++                String spec = tab.getUrl().getSpec();
++                if (spec.startsWith("chrome-native://newtab")) continue;
++                String title = tab.getTitle();
++                boolean hit = query.isEmpty()
++                        || (title != null && title.toLowerCase().contains(lower))
++                        || spec.toLowerCase().contains(lower);
++                if (hit) {
++                    rows.add(new String[] {
++                            title != null && !title.isEmpty() ? title : spec,
++                            spec});
++                }
++            }
++        }
++        for (String[] fav : FAMOUS_PLACES) {
++            if (rows.size() >= 7) break;
++            if (query.isEmpty()
++                    || fav[0].toLowerCase().contains(lower)
++                    || fav[1].toLowerCase().contains(lower)) {
++                rows.add(fav);
++            }
++        }
++        if (rows.isEmpty()) return;
++        box.removeAllViews();
++        TextView head = new TextView(context);
++        head.setText(context.getString(R.string.aegis_dock_suggestions));
++        head.setTextSize(11);
++        head.setAllCaps(true);
++        head.setTextColor(
++                context.getColor(R.color.aegis_glass_text_secondary));
++        head.setPadding(0, pad / 2, 0, 0);
++        box.addView(head);
++        for (String[] row : rows) {
++            TextView item = new TextView(context);
++            item.setSingleLine(true);
++            item.setEllipsize(android.text.TextUtils.TruncateAt.END);
++            item.setText(row[0]);
++            item.setTextSize(14);
++            item.setTextColor(context.getColor(R.color.aegis_glass_text));
++            item.setPadding(0, pad / 2, 0, pad / 2);
++            item.setOnClickListener(v -> {
++                dismiss(sheet);
++                LoadUrlParams params = new LoadUrlParams(row[1]);
++                Tab tab = cta.getActivityTab();
++                if (tab != null) {
++                    tab.loadUrl(params);
++                } else {
++                    cta.getTabCreator(false)
++                            .createNewTab(params, TabLaunchType.FROM_LINK,
++                                    /* parent= */ null);
++                }
++            });
++            box.addView(item);
++        }
++    }
+ }
+--- a/chrome/browser/password_manager/android/java/src/org/chromium/chrome/browser/password_manager/PasswordStoreBridge.java
++++ b/chrome/browser/password_manager/android/java/src/org/chromium/chrome/browser/password_manager/PasswordStoreBridge.java
+@@ -225,6 +225,12 @@
+         void getAllCredentials(
+                 long nativePasswordStoreBridge, PasswordStoreCredential[] credentials);
+ 
++        // AEGIS (patch 189): file body touched so ninja re-runs JNI
++        // registration generation for this class. A banked build kept a
++        // stale GEN_JNI table without removePasswordCredential, so the
++        // sync merge threw "Native method not present" right after
++        // re-login (crash 1795784411305). No behavior change here - the
++        // fail-soft merge lives in AegisPasswordsSettings.
+         void removePasswordCredential(
+                 long nativePasswordStoreBridge,
+                 PasswordStoreCredential credential);
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisPasswordsSettings.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisPasswordsSettings.java
+@@ -641,11 +641,39 @@
+             mHandler.post(() -> {
+                 // Phase B: merge into the store on the UI thread.
+-                for (PasswordStoreCredential cred : insertsFinal) {
+-                    if (mBridge != null) mBridge.insertPasswordCredential(cred);
+-                }
+-                for (PasswordStoreCredential cred : deletesFinal) {
+-                    if (mBridge != null) mBridge.removePasswordCredential(cred);
+-                }
++                // AEGIS (patch 189, crash 1795784411305): a JNI bridge whose
++                // registration went stale in a banked build threw "Native
++                // method not present" and killed the app right after
++                // re-login, which also lost the fresh sign-in. The merge is
++                // now fail-soft: a broken bridge reports and stops the sync
++                // instead of crashing the browser.
++                boolean bridgeBroken = false;
++                for (PasswordStoreCredential cred : insertsFinal) {
++                    if (mBridge == null) continue;
++                    try {
++                        mBridge.insertPasswordCredential(cred);
++                    } catch (Throwable bridgeError) {
++                        bridgeBroken = true;
++                    }
++                }
++                for (PasswordStoreCredential cred : deletesFinal) {
++                    if (mBridge == null) continue;
++                    try {
++                        mBridge.removePasswordCredential(cred);
++                    } catch (Throwable bridgeError) {
++                        bridgeBroken = true;
++                    }
++                }
++                if (bridgeBroken) {
++                    if (isAdded()) {
++                        Toast.makeText(getContext(),
++                                "Password store unavailable - restart to "
++                                        + "finish sync",
++                                Toast.LENGTH_LONG).show();
++                        reloadList();
++                        reloadPasskeys();
++                    }
++                    return;
++                }
+                 if (errorPhase1 != null || mExecutor == null) {
+                     if (isAdded()) {
+                         Toast.makeText(getContext(),
+--- a/chrome/android/features/tab_ui/java/src/org/chromium/chrome/browser/tasks/tab_management/TabsSettings.java
++++ b/chrome/android/features/tab_ui/java/src/org/chromium/chrome/browser/tasks/tab_management/TabsSettings.java
+@@ -37,3 +37,2 @@
+ import org.chromium.chrome.browser.tab.TabArchiveSettings;
+-import org.chromium.chrome.browser.tab_group_sync.TabGroupSyncFeatures;
+ import org.chromium.components.browser_ui.settings.ChromeSwitchPreference;
+@@ -256,3 +255,8 @@
+     private static boolean isTabGroupSyncAutoOpenConfigurable(Profile profile) {
+-        return TabGroupSyncFeatures.isTabGroupSyncEnabled(profile);
++        // AEGIS (patch 189): there is no Google sync backend in this
++        // browser, so the "Automatically open tab groups from other
++        // devices" switch is always dead weight - hide it from the screen
++        // and from the settings search index. The pref stays force-disabled
++        // by patch 188's ChromeActivity guard.
++        return false;
+     }
+--- a/chrome/browser/notifications/android/java/res/layout/notification_permission_rationale_dialog.xml
++++ b/chrome/browser/notifications/android/java/res/layout/notification_permission_rationale_dialog.xml
+@@ -8,6 +8,6 @@
+ <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+     xmlns:app="http://schemas.android.com/apk/res-auto"
+     android:layout_width="wrap_content"
+-    android:layout_height="match_parent"
++    android:layout_height="wrap_content"
+     android:orientation="vertical">
+ 
+@@ -15,9 +15,10 @@
+   <ImageView
+       android:layout_width="wrap_content"
+-      android:layout_height="0dp"
+-      android:layout_marginVertical="20dp"
++      android:layout_height="64dp"
++      android:layout_marginVertical="4dp"
+       android:layout_gravity="center_horizontal"
+       android:importantForAccessibility="no"
++      android:scaleType="fitCenter"
+       android:layout_weight="1"
+       android:src="@drawable/notification_permission_rationale_dialog_header"
+       app:srcCompat="@drawable/notification_permission_rationale_dialog_header" />
+--- a/components/neterror/resources/neterror.html
++++ b/components/neterror/resources/neterror.html
+@@ -46,8 +46,14 @@
+     #aegis-offline {
+       position: fixed; inset: 0; z-index: 2147483647;
+       background: linear-gradient(160deg, #131418 0%, #0B0B0D 70%);
+-      display: flex; flex-direction: column; align-items: center;
++      /* AEGIS (patch 189, r145 report): the hero used to cover every net
++         error - even site-side failures said "You're offline". Upstream
++         neterror.js tags html.offline only for errors that really are
++         connectivity failures, so the hero now rides that class and other
++         errors show the standard page with the true reason. */
++      display: none; flex-direction: column; align-items: center;
+       justify-content: center; text-align: center; padding: 24px;
+       font-family: 'Segoe UI', Roboto, sans-serif; color: #E8EAF2;
+       cursor: default;
+     }
++    html.offline #aegis-offline { display: flex; }
+@@ -66,3 +71,4 @@
+-    body.neterror > #content, body.neterror > #offline-resources {
++    html.offline body.neterror > #content,
++    html.offline body.neterror > #offline-resources {
+       display: none !important;
+     }

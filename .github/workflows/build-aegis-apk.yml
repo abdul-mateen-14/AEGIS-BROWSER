@@ -453,6 +453,14 @@ jobs:
           path: ${{ github.workspace }}/${{ env.APK_NAME }}
           retention-days: 1
 
+      - name: Upload R8 mapping (crash de-obfuscation)
+        if: env.BUILD_DONE == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: r8-mapping
+          path: /home/runner/aegis-work/out/*/apks/*.mapping
+          retention-days: 60
+
       - name: Attach APK to a draft GitHub Release
         if: env.BUILD_DONE == '1'
         env:
