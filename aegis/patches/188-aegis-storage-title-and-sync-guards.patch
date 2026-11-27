@@ -1,0 +1,52 @@
+# AEGIS patch 188: honest storage-page title + dead Google-sync
+# guards. See the commit message for the per-item rationale.
+--- a/chrome/browser/ui/android/strings/android_chrome_strings.grd
++++ b/chrome/browser/ui/android/strings/android_chrome_strings.grd
+@@ -5751,7 +5751,7 @@ To change this setting, <ph name="BEGIN_LINK">BEGIN_LINK</ph>delete the Aegis da
+ 
+       <!-- Storage Preference UI strings for clearing storage. -->
+       <message name="IDS_STORAGE_MANAGEMENT_ACTIVITY_LABEL" desc="Title for Chrome's Manage Space Activity.">
+-         Google <ph name="APP_NAME">%1$s<ex>Aegis</ex></ph> storage
++         <ph name="APP_NAME">%1$s<ex>Aegis</ex></ph> storage
+       </message>
+       <message name="IDS_STORAGE_MANAGEMENT_UNIMPORTANT_SITE_DATA_DESCRIPTION" desc="Text to describe the data stored by unimportant or infrequent sites.">
+         Stored data that Aegis doesn't think is important (e.g. sites with no saved settings or that you don't visit often)
+--- a/chrome/android/java/src/org/chromium/chrome/browser/site_settings/ManageSpaceActivity.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/site_settings/ManageSpaceActivity.java
+@@ -82,10 +82,15 @@ public class ManageSpaceActivity extends ChromeBaseAppCompatActivity
+ 
+         setContentView(R.layout.manage_space_activity);
+         Resources r = getResources();
++        // AEGIS (patch 188): R.string.app_name still resolves to the
++        // grit-generated 'Chromium' in this milestone - use the real
++        // application label so the system storage page is titled with
++        // the browser's actual name.
+         setTitle(
+                 String.format(
+                         r.getString(R.string.storage_management_activity_label),
+-                        r.getString(R.string.app_name)));
++                        getApplicationInfo().loadLabel(
++                                getPackageManager()).toString()));
+         assumeNonNull(getSupportActionBar()).setDisplayHomeAsUpEnabled(true);
+ 
+         mSiteDataSizeText = findViewById(R.id.site_data_storage_size_text);
+--- a/chrome/android/java/src/org/chromium/chrome/browser/app/ChromeActivity.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/app/ChromeActivity.java
+@@ -2334,6 +2334,17 @@ public abstract class ChromeActivity extends AsyncInitializationActivity
+     public void finishNativeInitialization() {
+         mNativeInitialized = true;
+ 
++        // AEGIS (patch 188): the "Automatically open tab groups from
++        // other devices" switch drives Google sync (Saved Tab Groups),
++        // which has no account in this build - the pref only ever makes
++        // the UI promise something it cannot deliver. Keep it and the
++        // feature pref firmly off until the Aegis sync backend takes
++        // over tab-group sharing (see the sync audit, 2026-11-27).
++        SharedPreferencesManager aegisSyncPrefs =
++                ChromeSharedPreferences.getInstance();
++        aegisSyncPrefs.writeBoolean("auto_open_synced_tab_groups_switch", false);
++        aegisSyncPrefs.writeBoolean("auto_open_synced_tab_groups", false);
++
+         if (ChromeFeatureList.isEnabled(ChromeFeatureList.UMA_SESSION_CORRECTNESS_FIXES)) {
+             startUmaSession();
+         }
