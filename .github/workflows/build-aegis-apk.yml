@@ -235,6 +235,34 @@ jobs:
             echo "No branding hook - APK will keep Chromium package identity."
           fi
 
+      - name: Settings source inventory (audit artifact - locate UI rows to remove)
+        run: |
+          # Sync audit 2026-11-27: the "Automatically open tab groups from
+          # other devices" switch and the send-tab surfaces live somewhere the
+          # upstream dir listings did not cover. Upload the full settings-side
+          # source set from the PATCHED tree so the next patch wave can remove
+          # dead rows precisely (artifact kept 30 days).
+          if [ -d "$WORK/src/chrome/android/java" ]; then
+            tar czf "$GITHUB_WORKSPACE/settings-inventory.tgz" \
+              -C "$WORK/src" \
+              chrome/android/java/res/xml \
+              chrome/android/java/src/org/chromium/chrome/browser/settings \
+              chrome/android/java/src/org/chromium/chrome/browser/preferences \
+              chrome/browser/ui/android/strings \
+              components/browser_ui/settings/android/java \
+              components/browser_ui/strings/android \
+              2>/dev/null || true
+            ls -la "$GITHUB_WORKSPACE/settings-inventory.tgz" || true
+          fi
+
+      - name: Upload settings inventory (audit)
+        if: hashFiles('settings-inventory.tgz') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: settings-inventory
+          path: ${{ github.workspace }}/settings-inventory.tgz
+          retention-days: 30
+
       - name: Re-stamp patched/branded sources to bank epoch (keep bank clean)
         run: |
           # git apply + branding rewrite files with CURRENT mtimes, which made
