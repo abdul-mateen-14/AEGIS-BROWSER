@@ -20,11 +20,10 @@
 
 --- a/chrome/android/java/res/values/aegis_tokens.xml
 +++ b/chrome/android/java/res/values/aegis_tokens.xml
-@@ -70,2 +70,4 @@
-     <string name="aegis_dock_search">Search</string>
-     <string name="aegis_dock_search_hint">Search or type URL</string>
+@@ -123,1 +123,3 @@
 +    <string name="aegis_dock_edit_address">Edit address</string>
 +    <string name="aegis_dock_suggestions">Suggestions</string>
+ </resources>
 --- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
 +++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/dock/AegisDockView.java
 @@ -105,3 +105,10 @@
@@ -301,25 +300,19 @@
        app:srcCompat="@drawable/notification_permission_rationale_dialog_header" />
 --- a/components/neterror/resources/neterror.html
 +++ b/components/neterror/resources/neterror.html
-@@ -46,8 +46,14 @@
-     #aegis-offline {
-       position: fixed; inset: 0; z-index: 2147483647;
-       background: linear-gradient(160deg, #131418 0%, #0B0B0D 70%);
--      display: flex; flex-direction: column; align-items: center;
-+      /* AEGIS (patch 189, r145 report): the hero used to cover every net
-+         error - even site-side failures said "You're offline". Upstream
-+         neterror.js tags html.offline only for errors that really are
-+         connectivity failures, so the hero now rides that class and other
-+         errors show the standard page with the true reason. */
-+      display: none; flex-direction: column; align-items: center;
-       justify-content: center; text-align: center; padding: 24px;
-       font-family: 'Segoe UI', Roboto, sans-serif; color: #E8EAF2;
-       cursor: default;
-     }
-+    html.offline #aegis-offline { display: flex; }
-@@ -66,3 +71,4 @@
--    body.neterror > #content, body.neterror > #offline-resources {
-+    html.offline body.neterror > #content,
-+    html.offline body.neterror > #offline-resources {
-       display: none !important;
-     }
+@@ -78,1 +78,14 @@
++<style>
++  /* AEGIS (patch 189, r145 report): patch 179's offline hero covered every
++     net error - even site-side failures said "You're offline". Upstream
++     neterror.js tags html.offline only for errors that really are
++     connectivity failures, so the hero rides that class: hidden by
++     default, shown only while offline. Other errors keep the standard
++     page with the true reason. Later-in-document rules win the cascade. */
++  #aegis-offline { display: none; }
++  html.offline #aegis-offline { display: flex; }
++  body.neterror > #content, body.neterror > #offline-resources { display: revert !important; }
++  html.offline body.neterror > #content,
++  html.offline body.neterror > #offline-resources { display: none !important; }
++</style>
+ </body>
+</html>
