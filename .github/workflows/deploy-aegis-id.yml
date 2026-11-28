@@ -88,6 +88,21 @@ jobs:
           m=$(curl -s https://aegis-id.pages.dev/deploy-marker.txt)
           echo "deploy-marker.txt -> $m"
 
+      - name: Dump project identity (subdomain/domains/latest)
+        run: |
+          curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/aegis-id" \
+            | jq '{name: .result.name, subdomain: .result.subdomain, domains: .result.domains, prod_branch: .result.production_branch, latest: .result.latest_deployment url: .result.latest_deployment.url, latest_env: .result.latest_deployment.environment, latest_modified: .result.latest_deployment.modified_on, aliases: .result.latest_deployment.aliases}'
+          echo "---- try the latest deployment's own URL ----"
+          LURL=$(curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/aegis-id" \
+            | jq -r '.result.latest_deployment.url')
+          curl -s -o /dev/null -w "$LURL -> %{http_code} %{size_download}b\n" "$LURL"
+          curl -s -o /dev/null -w "$LURL/deploy-marker.txt -> %{http_code}\n" "$LURL/deploy-marker.txt"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
       - name: Diagnose production alias (which deployment is live?)
         run: |
           curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
