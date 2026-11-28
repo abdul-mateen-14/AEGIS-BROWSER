@@ -92,7 +92,7 @@ jobs:
         run: |
           curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/aegis-id" \
-            | jq '{name: .result.name, subdomain: .result.subdomain, domains: .result.domains, prod_branch: .result.production_branch, latest: .result.latest_deployment url: .result.latest_deployment.url, latest_env: .result.latest_deployment.environment, latest_modified: .result.latest_deployment.modified_on, aliases: .result.latest_deployment.aliases}'
+            | jq '{name: .result.name, subdomain: .result.subdomain, domains: .result.domains, prod_branch: .result.production_branch, latest_url: .result.latest_deployment.url, latest_env: .result.latest_deployment.environment, latest_modified: .result.latest_deployment.modified_on}'
           echo "---- try the latest deployment's own URL ----"
           LURL=$(curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/aegis-id" \
