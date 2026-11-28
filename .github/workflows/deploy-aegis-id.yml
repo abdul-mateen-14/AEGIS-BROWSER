@@ -69,10 +69,16 @@ jobs:
 
       - name: Verify the production domain serves it
         run: |
-          sleep 12
+          sleep 15
           code=$(curl -s -o /dev/null -w "%{http_code}" https://aegis-id.pages.dev/)
           echo "https://aegis-id.pages.dev/ -> HTTP $code"
           test "$code" = "200"
+          n=$(curl -s https://aegis-id.pages.dev/ | grep -c favicon || true)
+          echo "favicon references in live HTML: $n"
+          s=$(curl -s -o /dev/null -w "%{http_code} %{size_download}" https://aegis-id.pages.dev/style.css)
+          echo "style.css -> $s"
+          f=$(curl -s -o /dev/null -w "%{http_code} %{size_download}" https://aegis-id.pages.dev/favicon-192.png)
+          echo "favicon-192.png -> $f"
 
       - name: Diagnose production alias (which deployment is live?)
         run: |
