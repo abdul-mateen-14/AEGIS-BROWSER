@@ -57,6 +57,12 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
+      - name: Stamp a unique marker into the bundle
+        run: |
+          echo "aegis-id deploy $(date -u +%Y-%m-%dT%H:%M:%SZ) commit $(git -C aegis-os rev-parse --short HEAD) patch $(git rev-parse --short HEAD)" \
+            > aegis-os/services/aegis-id-portal/public/deploy-marker.txt
+          cat aegis-os/services/aegis-id-portal/public/deploy-marker.txt
+
       - name: Deploy services/aegis-id-portal to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
@@ -79,6 +85,8 @@ jobs:
           echo "style.css -> $s"
           f=$(curl -s -o /dev/null -w "%{http_code} %{size_download}" https://aegis-id.pages.dev/favicon-192.png)
           echo "favicon-192.png -> $f"
+          m=$(curl -s https://aegis-id.pages.dev/deploy-marker.txt)
+          echo "deploy-marker.txt -> $m"
 
       - name: Diagnose production alias (which deployment is live?)
         run: |
