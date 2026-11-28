@@ -45,13 +45,25 @@ jobs:
           cd aegis-os
           git apply -p1 --verbose ../aegis-id-portal.patch
 
+      - name: Resolve the project's production branch
+        id: proj
+        run: |
+          PROD_BRANCH=$(curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/aegis-id" \
+            | jq -r '.result.production_branch')
+          echo "production branch: $PROD_BRANCH"
+          echo "branch=$PROD_BRANCH" >> "$GITHUB_OUTPUT"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
       - name: Deploy services/aegis-id-portal to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           workingDirectory: aegis-os/services/aegis-id-portal
           wranglerVersion: "4"
-          command: pages deploy . --project-name=aegis-id --branch=main --commit-dirty=true
+          command: pages deploy . --project-name=aegis-id --branch=${{ steps.proj.outputs.branch }} --commit-dirty=true
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
