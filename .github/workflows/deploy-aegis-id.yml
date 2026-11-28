@@ -69,7 +69,11 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           workingDirectory: aegis-os/services/aegis-id-portal
           wranglerVersion: "4"
-          command: pages deploy . --project-name=aegis-id --branch=${{ steps.proj.outputs.branch }} --commit-dirty=true
+          # no positional: wrangler v4 reads pages_build_output_dir ("public")
+          # from wrangler.toml - the earlier `pages deploy .` uploaded the
+          # portal ROOT (wrangler.toml/schema/tests + public/ nested), which
+          # 404s every route on the domain
+          command: pages deploy --project-name=aegis-id --branch=${{ steps.proj.outputs.branch }} --commit-dirty=true
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
