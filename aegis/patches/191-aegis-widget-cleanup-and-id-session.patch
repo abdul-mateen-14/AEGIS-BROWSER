@@ -1,0 +1,206 @@
+# Aegis patch 191 - widget cleanup + Aegis ID session persistence
+# r147 follow-up report (2026-11-28):
+#   1. Widget picker pages still titled 'Chromium bookmarks' and
+#      'Chromium search' - the upstream label resources are not
+#      rebrandable, so the manifest receivers carry Aegis literals
+#      (same approach as patch 190 for the quick action widget).
+#   2. The Dino widget variant is gone for good: the Dino page was
+#      removed from the browser, so initialize() now disables the Dino
+#      component (launchers drop it from the picker) and the quick
+#      action widget no longer offers the Dino button.
+#   3. Aegis ID session persistence: tokens and the vault key lived only
+#      in memory, so every restart demanded a fresh sign-in before
+#      password sync resumed ('sign in to Aegis ID' on second launch).
+#      The session is now sealed with a non-exportable AndroidKeyStore
+#      AES-GCM key into one prefs blob and restored in the constructor;
+#      token rotations (adopt) re-seal, sign-out clears.
+# Staged alphabetically after 190.
+
+--- a/chrome/android/java/AndroidManifest.xml
++++ b/chrome/android/java/AndroidManifest.xml
+@@ -1044,7 +1044,7 @@
+ 
+         <!-- Bookmarks widget -->
+         <receiver android:name="com.google.android.apps.chrome.appwidget.bookmarks.BookmarkThumbnailWidgetProvider"
+-            android:label="@string/bookmark_widget_title"
++            android:label="Aegis bookmarks"
+             android:exported="true">
+             <intent-filter>
+                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+@@ -1068,7 +1068,7 @@
+         <!-- Search widget -->
+         <receiver
+                 android:name="org.chromium.chrome.browser.searchwidget.SearchWidgetProvider"
+-                android:label="@string/search_widget_title"
++                android:label="Aegis search"
+                 android:exported="true">
+             <intent-filter>
+                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+--- a/chrome/android/java/src/org/chromium/chrome/browser/quickactionsearchwidget/QuickActionSearchWidgetProvider.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/quickactionsearchwidget/QuickActionSearchWidgetProvider.java
+@@ -345,7 +345,11 @@
+                     // experiment in the past. This can trigger disk access. Unfortunately,
+                     // we need to keep it for a little bit longer -- see:
+                     // https://crbug.com/40219337
+-                    setWidgetEnabled(true, true);
++                    // AEGIS (patch 191): the Dino page was removed from
++                    // the browser, so the Dino widget variant stays
++                    // disabled; the component-off state also makes
++                    // launchers drop it from the widget picker.
++                    setWidgetEnabled(true, false);
+                 });
+ 
+         SearchActivityPreferencesManager.addObserver(
+--- a/chrome/browser/ui/android/quickactionsearchwidget/java/src/org/chromium/chrome/browser/ui/quickactionsearchwidget/QuickActionSearchWidgetProviderDelegate.java
++++ b/chrome/browser/ui/android/quickactionsearchwidget/java/src/org/chromium/chrome/browser/ui/quickactionsearchwidget/QuickActionSearchWidgetProviderDelegate.java
+@@ -134,7 +134,9 @@
+             voiceSearchVisible = prefs.voiceSearchAvailable;
+             incognitoModeVisible = prefs.incognitoAvailable;
+             googleLensVisible = prefs.googleLensAvailable;
+-            dinoGameVisible = true;
++            // AEGIS (patch 191): the Dino game surface was removed;
++            // never offer the Dino button on the widget.
++            dinoGameVisible = false;
+         }
+ 
+         /**
+--- a/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisIdManager.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/aegis/AegisIdManager.java
+@@ -11,6 +11,15 @@
+ import android.os.Build;
+ import android.os.Handler;
+ import android.os.Looper;
++import android.security.keystore.KeyGenParameterSpec;
++import android.security.keystore.KeyProperties;
++import android.util.Base64;
++import java.nio.charset.StandardCharsets;
++import java.security.KeyStore;
++import javax.crypto.Cipher;
++import javax.crypto.KeyGenerator;
++import javax.crypto.SecretKey;
++import javax.crypto.spec.GCMParameterSpec;
+ 
+ import org.chromium.build.annotations.NullMarked;
+ import org.chromium.build.annotations.Nullable;
+@@ -58,6 +67,8 @@
+     private static final String KEY_EMAIL = "aegis_id_email";
+     private static final String KEY_DEVICE_UUID = "aegis_id_device_uuid";
+     private static final String KEY_SIGNED_IN = "aegis_id_signed_in";
++    private static final String KEY_SESSION_BLOB = "aegis_id_session_blob";
++    private static final String KEYSTORE_ALIAS = "aegis_id_session_key";
+     private static final int DEVICE_NAME_MAX = 64;
+ 
+     private static AegisIdManager sInstance;
+@@ -88,6 +99,10 @@
+         mPrefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+         mDeviceUuid = getOrCreateDeviceUuid();
+         mDeviceName = sanitizeDeviceName(Build.MODEL);
++        // AEGIS (patch 191): unseal the persisted session (tokens +
++        // vault key) so sync resumes across restarts without a new
++        // sign-in; the keystore key is non-exportable.
++        if (isSignedIn()) restoreSession();
+     }
+ 
+     /** True when this device's identity is marked signed-in. */
+@@ -213,6 +228,7 @@
+         mVaultKey = unwrapVaultKey(password, creds, kdf, user);
+         client.setVaultKey(mVaultKey);
+         mPrefs.edit().putString(KEY_EMAIL, email).putBoolean(KEY_SIGNED_IN, true).apply();
++        persistSession();
+         return email;
+     }
+ 
+@@ -248,6 +264,7 @@
+     private void adopt(AegisSyncClient client) {
+         mAccessToken = client.accessToken();
+         mRefreshToken = client.refreshToken();
++        persistSession();
+     }
+ 
+     /** A 401 with no tokens left means the volatile session died with the
+@@ -258,11 +275,84 @@
+         }
+     }
+ 
++    // --- session persistence (patch 191) ---------------------------------
++    // Seals {refresh, access, vaultKey} into one prefs blob under an
++    // AndroidKeyStore AES-GCM key (non-exportable, device-bound).
++    private SecretKey sessionKey() {
++        try {
++            KeyStore ks = KeyStore.getInstance("AndroidKeyStore");
++            ks.load(null);
++            java.security.Key existing = ks.getKey(KEYSTORE_ALIAS, null);
++            if (existing instanceof SecretKey) return (SecretKey) existing;
++            KeyGenerator kg = KeyGenerator.getInstance(
++                    KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
++            kg.init(new KeyGenParameterSpec.Builder(KEYSTORE_ALIAS,
++                    KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
++                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
++                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
++                    .setKeySize(256)
++                    .build());
++            return kg.generateKey();
++        } catch (Exception e) {
++            return null; // keystore unavailable - session stays volatile
++        }
++    }
++
++    private void persistSession() {
++        if (mRefreshToken == null || mAccessToken == null) return;
++        SecretKey key = sessionKey();
++        if (key == null) return;
++        try {
++            JSONObject j = new JSONObject()
++                    .put("rt", mRefreshToken)
++                    .put("at", mAccessToken)
++                    .put("vk", mVaultKey == null ? "" : AegisCrypto.b64(mVaultKey));
++            byte[] plain = j.toString().getBytes(StandardCharsets.UTF_8);
++            Cipher c = Cipher.getInstance("AES/GCM/NoPadding");
++            c.init(Cipher.ENCRYPT_MODE, key);
++            byte[] iv = c.getIV();
++            byte[] ct = c.doFinal(plain);
++            byte[] blob = new byte[iv.length + ct.length];
++            System.arraycopy(iv, 0, blob, 0, iv.length);
++            System.arraycopy(ct, 0, blob, iv.length, ct.length);
++            mPrefs.edit().putString(KEY_SESSION_BLOB,
++                    Base64.encodeToString(blob, Base64.NO_WRAP)).apply();
++        } catch (Exception e) {
++            // best-effort: the volatile session keeps working either way
++        }
++    }
++
++    private void restoreSession() {
++        String blob = mPrefs.getString(KEY_SESSION_BLOB, "");
++        SecretKey key = sessionKey();
++        if (blob.isEmpty() || key == null) return;
++        try {
++            byte[] raw = Base64.decode(blob, Base64.NO_WRAP);
++            Cipher c = Cipher.getInstance("AES/GCM/NoPadding");
++            c.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(128, raw, 0, 12));
++            JSONObject j = new JSONObject(new String(
++                    c.doFinal(raw, 12, raw.length - 12), StandardCharsets.UTF_8));
++            mRefreshToken = j.getString("rt");
++            mAccessToken = j.getString("at");
++            String vk = j.optString("vk", "");
++            if (!vk.isEmpty()) mVaultKey = AegisCrypto.unb64(vk);
++            if (mClient != null) {
++                mClient.setTokens(mAccessToken, mRefreshToken);
++                if (mVaultKey != null) mClient.setVaultKey(mVaultKey);
++            }
++        } catch (Exception e) {
++            // a blob the keystore cannot open is stale - drop it so the
++            // next sign-in writes a fresh one
++            mPrefs.edit().remove(KEY_SESSION_BLOB).apply();
++        }
++    }
++
+     private void clearSession() {
+         mAccessToken = null;
+         mRefreshToken = null;
+         mVaultKey = null;
+-        mPrefs.edit().putBoolean(KEY_SIGNED_IN, false).remove(KEY_EMAIL).apply();
++        mPrefs.edit().putBoolean(KEY_SIGNED_IN, false).remove(KEY_EMAIL)
++                .remove(KEY_SESSION_BLOB).apply();
+     }
+ 
+     private String getOrCreateDeviceUuid() {

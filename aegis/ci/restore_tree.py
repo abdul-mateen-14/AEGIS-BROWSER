@@ -35,6 +35,7 @@ build.ninja* / toolchain.ninja or anything build.ninja.d lists as a
 manifest input.
 """
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -171,9 +172,19 @@ def resume_gn_gen(src, out, odir):
 
 
 def patch_target_paths(content):
-    """chromium-relative paths a patch file writes to (its '+++ b/' lines)."""
+    """chromium-relative paths a patch file writes to (its '+++ b/' lines).
+    Binary sections carry no '---/+++' header pair - only 'diff --git a/X
+    b/X' - and missing them is how r150 shipped vanilla widget preview
+    PNGs while every text hunk of the same patch applied (lap 46120155131:
+    'invalidated 0 outputs')."""
     paths = set()
     for line in content.splitlines():
+        if line.startswith("diff --git "):
+            toks = line.split(" b/", 1)
+            if len(toks) == 2:
+                p = toks[1].strip()
+                if p:
+                    paths.add(p)
         if line.startswith("+++ ") and not line.startswith("+++ /dev/null"):
             tok = line[4:].split("\t")[0].strip()
             if tok.startswith("b/"):
@@ -365,6 +376,34 @@ def main():
             drop_tree(out, src, odir)
             return
         print("res values touched but no banked R srcjar - fresh tree, nothing to drop")
+    # DURABLE android res-BYTE invalidation (r150 lesson, 2026-11-28): binary
+    # res files (png/webp/svg/jpg) hit the same ACTION-edge blindness as
+    # res/values xml - aapt2 compile outputs (compiled_res flats) and the
+    # packaged arsc are invisible to ninja -t deps, and the re-stamp pins the
+    # patched sources to the bank epoch so the banked flats stay "fresh"
+    # forever (r150 shipped vanilla widget preview PNGs while the text hunks
+    # of the same patch landed). Unlike res/values, a byte change cannot
+    # alter R, so dropping the whole bank is unnecessary: delete every
+    # compiled_res directory and every packaged arsc; aapt2 recompiles the
+    # res tree and the link repackages it (~2-4 min), everything else stays
+    # banked.
+    res_byte_re = re.compile(r"\.(png|webp|svg|jpg|jpeg|ico)$")
+    if any("/res/" in t and res_byte_re.search(t) for t in targets):
+        dropped = 0
+        for root, dirs, files in os.walk(out):
+            if os.path.basename(root).startswith("compiled_res"):
+                shutil.rmtree(root, ignore_errors=True)
+                dirs[:] = []
+                dropped += 1
+        for root, dirs, files in os.walk(out):
+            for f in files:
+                if f.endswith(".arsc"):
+                    try:
+                        os.remove(os.path.join(root, f))
+                    except OSError:
+                        pass
+        print(f"res bytes touched ({len([t for t in targets if '/res/' in t and res_byte_re.search(t)])} files) "
+              f"- dropped {dropped} compiled_res dirs + every arsc")
     # DURABLE webui/locale/theme invalidation (r68 lesson, 2026-11-14):
     # grit/repack/rollup products (grd/grdp -> pak, webui TS bundles, locale
     # paks, theme paks, copied raw resources) are ACTION edges - ninja -t

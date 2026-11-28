@@ -1,0 +1,63 @@
+name: Deploy Aegis ID portal (Cloudflare Pages free tier)
+
+# The central identity portal at https://aegis-id.pages.dev
+# (Pages + Functions: create account, password/Google/passkey sign-in,
+# profile, connections, danger zone).
+#
+# The portal SOURCE lives in the AEGIS-OS repo
+# (services/aegis-id-portal/); this repo holds the Cloudflare
+# credentials, so the deployment flow is:
+#   checkout AEGIS-OS main -> apply aegis-id-portal.patch (branding +
+#   theme-aware favicon wave) -> wrangler pages deploy.
+#
+# Requires the same two repository Secrets as deploy-landing.yml:
+#   CLOUDFLARE_API_TOKEN (needs "Cloudflare Pages: Edit")
+#   CLOUDFLARE_ACCOUNT_ID
+# The Pages project 'aegis-id' already exists (site is live).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'aegis-id-portal.patch'
+      - '.github/workflows/deploy-aegis-id.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: pages-aegis-id
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout the portal source (AEGIS-OS repo)
+        uses: actions/checkout@v4
+        with:
+          repository: abdul-mateen-14/AEGIS-OS
+          ref: main
+          path: aegis-os
+
+      - name: Apply the portal branding patch
+        run: |
+          cd aegis-os
+          git apply -p1 --verbose ../aegis-id-portal.patch
+
+      - name: Deploy services/aegis-id-portal to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          workingDirectory: aegis-os/services/aegis-id-portal
+          wranglerVersion: "4"
+          command: pages deploy . --project-name=aegis-id --branch=main --commit-dirty=true
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Verify the production domain serves it
+        run: |
+          sleep 12
+          code=$(curl -s -o /dev/null -w "%{http_code}" https://aegis-id.pages.dev/)
+          echo "https://aegis-id.pages.dev/ -> HTTP $code"
+          test "$code" = "200"
