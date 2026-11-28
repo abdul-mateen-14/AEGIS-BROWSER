@@ -43,7 +43,7 @@
 +  registry->RegisterBooleanPref("aegis.favicon_refresh_done", false);
    registry->RegisterBooleanPref(policy::policy_prefs::kForceGoogleSafeSearch,
                                  false);
-@@ -749,4 +749,21 @@
+@@ -749,7 +749,24 @@
    pref_change_registrar_.Add(
        prefs::kSupervisedUserId,
        base::BindRepeating(&ProfileImpl::UpdateSupervisedUserIdInStorage,
@@ -65,6 +65,9 @@
 +                                            base::DoNothing(), aegis_tracker);
 +    }
 +  }
+ 
+   // Changes in the profile avatar.
+   pref_change_registrar_.Add(
 diff --git a/chrome/browser/ui/android/quickactionsearchwidget/java/res/drawable-nodpi/quick_action_search_widget_small_preview.png b/chrome/browser/ui/android/quickactionsearchwidget/java/res/drawable-nodpi/quick_action_search_widget_small_preview.png
 index c999210b9cea70d01963f8767d3554a42ee1cc67..1daf70d9ebe2bc7a067c37317d415aaab14b7729 100644
 GIT binary patch
